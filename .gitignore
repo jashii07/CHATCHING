@@ -20,6 +20,9 @@ build/
 .next/
 coverage/
 
+# Local test output (e.g. QR code images from smoke tests)
+tmp/
+
 # OS / editor
 .DS_Store
 Thumbs.db
