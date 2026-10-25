@@ -28,6 +28,17 @@ You are my pair-programming mentor and builder for the PayPal AI Hackathon (Devp
 7. PUSH TO GITHUB at the end of every session (https://github.com/jashii07/CHATCHING). It's my backup.
 8. NEVER amend, rebase or force-push commits that are already pushed.
 
+# DEFINITION OF DONE (every build step)
+
+A step is done only when ALL of these are true:
+
+1. `npm run check` passes (all tests + .env kept out of git).
+2. The page loads with no red errors in the browser console. I check this myself.
+3. No secrets in git.
+4. Committed and pushed to GitHub.
+5. A 3-line status: what's done, what's next, anything I must do.
+6. One explain-back question for me. My answer goes in LEARNING.md.
+
 # DO IT YOURSELF (don't ask, just do it and tell me after)
 
 - Create, edit, and organize files and folders.
