@@ -229,7 +229,7 @@ Proven in the smoke tests on 2026-10-25:
 
 ## 9. Checkpoints (2 h on weekdays; 6 h available on 31 Oct / 1 Nov / 7 Nov / 8 Nov, 5 h planned; ~46 h planned + 4 h buffer)
 
-Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th hour each weekend day is buffer (4 h buffer in total).
+Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th hour each weekend day is buffer. Sat 31 Oct spends its buffer hour on a first Render deploy (a "walking skeleton": the thinnest version that runs end to end on the real host), so hosting problems show up early, not on 5 Nov. That leaves 3 h of buffer (1 Nov, 7 Nov, 8 Nov).
 
 | Date | Goal | Done when |
 |---|---|---|
@@ -238,7 +238,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Wed 28 Oct (2 h) | Step 3: orders.js + dates.js + tests | `npm test` passes, incl. "brwnies" → unclear and "cheese brownies" → cheese_brownies |
 | Thu 29 Oct (2 h) | Step 4: parse with mock AI + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
 | Fri 30 Oct (2 h) | Step 5: create + send invoices per buyer + double-invoice guard | Payer link + Copy work; double-click still gives one invoice per buyer |
-| Sat 31 Oct (5 h) | Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel |
+| Sat 31 Oct (6 h) | Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank. **Buffer hour: FIRST DEPLOY to Render of whatever exists (walking skeleton)**, and check Render's free-tier rules (sleep after inactivity, monthly hours, whether it asks for a card; **if it asks for a card, stop and ask Jasper**) → note them in DECISIONS.md | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel; **the app loads from a Render URL** |
 | Sun 1 Nov (5 h) | Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR | Real call once, cached after; clicking Arif shows his 2 messages + a QR. **You: holdout chats + expected answers saved** |
 | Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give 7 orders / RM 387.00 |
 | Tue 3 Nov (2 h) | Step 9: timeout, retry, backup, counter | "AI calls left" shown; quota 0 → friendly "AI busy" message |
@@ -290,7 +290,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 - **c.** Three layers:
   1. The server skips buyers that already have an invoice.
   2. A per-buyer "in progress" lock, with the button disabled while sending, so a double-click can't create two.
-  3. Every invoice gets `invoice_number` = `CHING-{batch}-{nn}`, e.g. `CHING-K3F9Q2ZA-07`. The batch is 8 characters, so the number is 17 characters, within PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the row shows "Already invoiced, click Refresh".
+  3. Every invoice gets `invoice_number` = `CHATCHING-{batch}-{nn}`, e.g. `CHATCHING-K3F9Q2ZA-07`. The batch is 8 characters, so the number is 21 characters, within PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the row shows "Already invoiced, click Refresh".
 
 ### 4. AG Grid extras (both Community, checked in AG Grid's module list)
 - **"Export CSV (opens in Excel)"** → `api.exportDataAsCsv()` (CsvExportModule, Community).

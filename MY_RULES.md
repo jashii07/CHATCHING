@@ -25,6 +25,8 @@ You are my pair-programming mentor and builder for the PayPal AI Hackathon (Devp
 4. BUILD IN SMALL STEPS, one component at a time. Run it and show real output after each step. Then give a 3-line status: what's done, what's next, anything I must do. Keep going on routine work without waiting for me.
 5. SIMPLEST WORKING VERSION FIRST. Get an end-to-end PayPal sandbox flow working early, then deploy it to a hosted URL early. Improve after that.
 6. COMMIT OFTEN with clear messages after each working step. Each message says what changed and why.
+7. PUSH TO GITHUB at the end of every session (https://github.com/jashii07/CHATCHING). It's my backup.
+8. NEVER amend, rebase or force-push commits that are already pushed.
 
 # DO IT YOURSELF (don't ask, just do it and tell me after)
 

@@ -29,7 +29,10 @@
 | 2026-10-25 | CSV export instead of Excel .xlsx; flash only the change to Paid | Excel export is AG Grid Enterprise; CSV export and cell flashing are Community | Excel export (Enterprise trial) |
 | 2026-10-25 | Holdout = friend's real chats, anonymised, with permission covering a public repo + Gemini free tier | Gemini free-tier terms: inputs may improve Google products, human reviewers may read them, "do not submit ... personal information" | Fictional holdout chats |
 | 2026-10-25 | Cut: "ask the agent" chat box; AI sending invoices/messages without the seller's approval | The chat box burns AI quota; the seller must stay in control of money and messages | Build them |
-| 2026-10-25 | Name: ChatChing (chat + "cha-ching", the cash register sound); invoice numbers `CHING-{batch}-{nn}` (17 of PayPal's max 25 chars) | it has the sound of cash and coins, and it sounds more familiar and less boring than Chat-to-Checkout | Chat-to-Checkout; Ching-Chat (rejected: could be misread as mocking Chinese speech) |
+| 2026-10-25 | Name: ChatChing (chat + "cha-ching", the cash register sound); invoice numbers `CHATCHING-{batch}-{nn}` (21 of PayPal's max 25 chars; first planned as `CHING-`) | it has the sound of cash and coins, and it sounds more familiar and less boring than Chat-to-Checkout | Chat-to-Checkout; Ching-Chat (rejected: could be misread as mocking Chinese speech) |
+| 2026-10-25 | Invoice number prefix `CHATCHING-` instead of `CHING-` | it matches the full name and avoids "CHING" on its own | `CHING-` (17 chars) |
+| 2026-10-25 | First Render deploy on Sat 31 Oct (buffer hour), a "walking skeleton"; check Render free-tier rules that day and stop if it asks for a card | Hosting problems should show up early, not on 5 Nov | Deploy only on 5 Nov |
+| 2026-10-25 | GitHub repo jashii07/CHATCHING (private for now); push at the end of every session; never amend, rebase or force-push pushed commits | GitHub is my backup; rewriting pushed history can lose work | Local-only until submission |
 | 2026-10-25 | Hours update: 4 h extra on each weekend day (6 h total on 31 Oct, 1 Nov, 7 Nov, 8 Nov); plan stays at 5 h, the 6th hour is buffer (replaces the "3-6 h" row) | Keep the plan unchanged and add 4 h of buffer | Plan 6 h/day with no buffer |
 
 ### Why the Top 5 (my reason)
