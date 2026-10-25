@@ -1,0 +1,29 @@
+{
+  "name": "chatching",
+  "version": "1.0.0",
+  "description": "Turn messy chat orders into PayPal invoices",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "check": "node scripts/check.mjs",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jashii07/CHATCHING.git"
+  },
+  "keywords": [],
+  "author": "Jasper",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/jashii07/CHATCHING/issues"
+  },
+  "homepage": "https://github.com/jashii07/CHATCHING#readme",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "express": "5.3.0"
+  }
+}
