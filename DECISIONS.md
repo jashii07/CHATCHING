@@ -3,7 +3,8 @@
 | Date | Decision | My reason | Alternatives |
 |------|----------|-----------|--------------|
 | 2026-10-25 | Join PayPal AI Hackathon | My goal is experience: learn to direct AI and practise vibe coding; prizes are a bonus | Plan B: HackOnVibe + next Orchestrate |
-| 2026-10-25 | AI model at runtime: Gemini free tier (candidate, not final) | free, no billing set up, judges can use the demo without me paying | Groq free tier, Claude API (paid) |
+| 2026-10-25 | AI model at runtime: Gemini free tier (candidate, not final) | Both models are free, but 3.6-flash answered every time in my test while 3.8-flash was overloaded, so I picked the one that is free AND reliable. (Earlier: free, no billing set up, judges can use the demo without me paying.) | Groq free tier, Claude API (paid) |
+| 2026-10-25 | App idea: Chat-to-Checkout | My seller friend tracks chat orders in Excel by hand and chases payments one by one, so the problem is real. It also fits AI-in-batches (20 calls/day), an AG Grid table and PayPal invoices | Club treasurer copilot, split-bill agent, subscription watchdog, freelancer invoice chaser |
 
 ## AI model limits (checked 2026-10-25)
 
