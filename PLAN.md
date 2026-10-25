@@ -101,7 +101,7 @@ Money is calculated in sen (whole numbers) to avoid rounding errors, then shown 
 | `PAID`, `MARKED_AS_PAID` | Paid |
 | `CANCELLED`, `REFUNDED`, `PARTIALLY_REFUNDED`, `MARKED_AS_REFUNDED` | Cancelled/Refunded |
 
-Proven in the smoke test on 2026-10-25: MYR works; after sending, the status is `UNPAID`; the payer link is the `href` with `rel: "payer-view"` in the send response.
+Proven in the smoke test on 2026-10-25: MYR works; after sending, the status is `UNPAID`; the payer link is the `href` with `rel: "payer-view"` in the send response. After paying by hand with the sandbox personal account, `GET` shows `PAID` with a payment of 55.00 MYR, method `PAYPAL`, so polling works.
 
 ## 6. AI design
 
