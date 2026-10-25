@@ -174,7 +174,9 @@ Proven in the smoke tests on 2026-10-25:
 - **One batched call** per action. All messages go in one prompt, and the final order per buyer comes out, each with a note. Messages and reminders are also one call each (Section 10, #2). The JSON shape is forced with Gemini's response schema. The prompt includes the menu ids and aliases, and the "plain brownies = unclear" rule.
 - **Dates come from each message's own timestamp plus the Chat date, never from today's date.**
   - Timestamps like `[28/10 9:02 AM]` have no year. The page sends a **Chat date** with the paste (default: today; the demo carries its own fixed chat date, 2026-10-28).
-  - **Year rule:** each message's year = the most recent year in which its day/month is **not after** the chat date. So `[31/12]` with chat date 2 Jan 2027 is 31 Dec 2026, and `[28/10]` with chat date 28 Oct 2026 is 28 Oct 2026.
+  - **Year rule ("nearest date"):** each message gets the year (the chat date's year, or one before or after) that puts it **nearest** to the chat date. On a tie, the earlier year wins. So `[31/12]` with chat date 2 Jan 2027 is 31 Dec 2026, and `[28/10]` with chat date 28 Oct 2026 is 28 Oct 2026.
+  - **Warning, never a silent move:** if the result is **after** the chat date, or **more than 60 days** away from it, the row gets a visible warning "Check the Chat date". The seller decides; the code never quietly moves a message to another year.
+  - **Impossible dates** (for example `[29/2]` when the nearest year has no 29 Feb, or `[31/4]`) make the row unclear. No guessing.
   - The code turns each timestamp into a full date with its weekday ("Wed 28 Oct 2026") before sending it to the AI. A day name means the next such day after the message date, so "esok" in a message from Wed 28 Oct is Thu 29 Oct, and "sabtu" is Sat 31 Oct.
   - `src/dates.js` takes the chat date as an input and never reads the computer's clock. It does the same conversion without AI for the fallback parser. Our code then checks the AI's dates (Section 5).
   - The chat date is part of the AI cache key, so the same chats with a different chat date are not answered from the cache.
@@ -184,10 +186,12 @@ Proven in the smoke tests on 2026-10-25:
     |---|---|---|
     | 2026-10-28 | `[28/10]` "sabtu" | 2026-10-31, the same whether the test runs on 26 Oct 2026 or in December (test runs with the clock faked to both days) |
     | 2026-10-28 | `[28/10]` "esok" / "Friday" / "ahad" | 2026-10-29 / 2026-10-30 / 2026-11-01 |
-    | 2027-01-02 | `[31/12]` | message date 2026-12-31 |
-    | 2027-01-02 | `[2/1]` | message date 2027-01-02 |
-    | 2026-10-28 | `[29/10]` (after the chat date) | message date 2025-10-29 (the rule picks last year) |
-    | 2027-03-01 | `[29/2]` (no 29 Feb in 2027) | invalid date: the row becomes unclear, no guessing (my assumption) |
+    | 2027-01-02 | `[31/12]` | message date 2026-12-31, no warning (2 days before) |
+    | 2027-01-02 | `[2/1]` | message date 2027-01-02, no warning |
+    | 2026-10-28 | `[29/10]` (1 day after the chat date) | message date 2026-10-29 **+ warning "Check the Chat date"** |
+    | 2026-10-28 | `[15/7]` (105 days before) | message date 2026-07-15 **+ warning "Check the Chat date"** |
+    | 2027-03-01 | `[29/2]` (no 29 Feb in 2027) | impossible date: the row becomes unclear, no guessing |
+    | 2028-03-01 | `[29/2]` (2028 is a leap year) | message date 2028-02-29, no warning |
 - **Mock mode** (`AI_MODE=mock`): returns saved results from `data/ai-cache/`, using 0 real calls. This is the default during development.
 - **Cache:** every real AI result is saved to disk with the hash of its input as the key. The same input never costs a second call.
 - **Preloaded demo:** the demo chats and their saved AI results (parse, messages, reminders) ship in the repo. "Reset demo" uses them, with 0 calls.

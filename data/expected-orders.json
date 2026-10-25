@@ -5,7 +5,7 @@
     {
       "buyer": "Lina", "status": "active", "sourceMsgs": [1, 4],
       "items": [{ "itemId": "classic_brownies", "qty": 3 }],
-      "deliveryDate": "2026-10-31", "fulfilment": null,
+      "deliveryDate": "2026-10-31", "fulfilment": "delivery",
       "unclear": false, "reason": "", "note": "Changed from 2 to 3 boxes in message 4.",
       "total": "54.00"
     },
