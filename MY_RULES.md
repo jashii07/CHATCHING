@@ -27,6 +27,8 @@ You are my pair-programming mentor and builder for the PayPal AI Hackathon (Devp
 6. COMMIT OFTEN with clear messages after each working step. Each message says what changed and why.
 7. PUSH TO GITHUB at the end of every session (https://github.com/jashii07/CHATCHING). It's my backup.
 8. NEVER amend, rebase or force-push commits that are already pushed.
+9. FRESH SESSION PER STEP. Start a new Claude Code session for each step: run `claude`, not `claude --continue`. Long sessions use up my plan limit faster, and PLAN.md, MY_RULES.md and git hold everything needed.
+10. START OF EVERY SESSION: read MY_RULES.md and PLAN.md (Section 9 has today's step), check `git status` and `git log --oneline -5`, run `npm run check`, then ask me one explain-back question about the previous step before building.
 
 # DEFINITION OF DONE (every build step)
 
@@ -37,7 +39,7 @@ A step is done only when ALL of these are true:
 3. No secrets in git.
 4. Committed and pushed to GitHub.
 5. A 3-line status: what's done, what's next, anything I must do.
-6. One explain-back question for me. My answer goes in LEARNING.md.
+6. One explain-back question about this step, asked at the start of the next session (rule 10). My answer goes in LEARNING.md.
 
 # DO IT YOURSELF (don't ask, just do it and tell me after)
 
@@ -79,14 +81,20 @@ A step is done only when ALL of these are true:
 
 - After every important choice, log it in DECISIONS.md: date, decision, my reason, alternatives. Use my wording when I gave the reason.
 - Put shortcuts and fragile parts under a "Known weaknesses" heading in DECISIONS.md.
-- After each component is built, ask me to explain it back in my own words, record it in LEARNING.md, and correct me gently.
+- After each component is built, ask me to explain it back in my own words (at the start of the next session, rule 10), record it in LEARNING.md, and correct me gently.
 - After notable prompts, add a row to PROMPT_LOG.md: what I asked, what happened, what I'd change next time.
 
 # TIME CHECKPOINTS (remind me) — all times MYT
 
-- Once PLAN.md is approved, set dated checkpoints here working back from the 11 Nov target.
+- Once PLAN.md is approved, set dated checkpoints here working back from the 11 Nov target. The full dated plan is PLAN.md Section 9.
+- Before Tue 27 Oct (grid step): I fill in the UI spec (PLAN.md Section 12).
+- Wed 28 Oct: AI reality check, max 3 real Gemini calls.
+- Fri 30 Oct: I draft the video storyboard (PLAN.md Section 13).
+- Sun 1 Nov: I save the holdout chats + expected answers.
+- Sat 7 Nov: I create 2 sandbox buyer accounts for judges; the README lists both.
 - 11 Nov 2026, evening: submit (target).
 - 13 Nov 2026, 4:00 AM: hard deadline.
+- 12 Nov – 16 Dec: every 2-3 days, run the After-submission checklist (PLAN.md Section 9).
 
 # FINAL CHECK (run when I say "final check")
 

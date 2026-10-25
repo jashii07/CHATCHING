@@ -192,7 +192,7 @@ Proven in the smoke tests on 2026-10-25:
     | 2026-10-28 | `[15/7]` (105 days before) | message date 2026-07-15 **+ warning "Check the Chat date"** |
     | 2027-03-01 | `[29/2]` (no 29 Feb in 2027) | impossible date: the row becomes unclear, no guessing |
     | 2028-03-01 | `[29/2]` (2028 is a leap year) | message date 2028-02-29, no warning |
-- **Mock mode** (`AI_MODE=mock`): returns saved results from `data/ai-cache/`, using 0 real calls. This is the default during development.
+- **Mock mode** (`AI_MODE=mock`): returns saved results from `data/ai-cache/`, using 0 real calls. This is the default during development. The demo's parse result is Gemini's real reply from the AI reality check (Step 3b), saved unchanged, so mock mode behaves like the real AI.
 - **Cache:** every real AI result is saved to disk with the hash of its input as the key. The same input never costs a second call.
 - **Preloaded demo:** the demo chats and their saved AI results (parse, messages, reminders) ship in the repo. "Reset demo" uses them, with 0 calls.
 - **Timeout + retry + backup model:** a 30 s timeout. On 503, 429 or a timeout, retry once after a short wait, then try the backup model (`gemini-3.6-flash` first, then `gemini-3.8-flash`; each has its own 20/day).
@@ -208,9 +208,20 @@ Proven in the smoke tests on 2026-10-25:
 
 ## 7. Build order (mock AI first)
 
+Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Step 3 (pure logic) runs before Step 2, so the grid is built after the UI spec (Section 12) and can use the price logic. Every UI step follows Section 12.
+
 1. ✅ (done Sun 25 Oct) Express skeleton, menu, demo chats, empty page. Load AG Grid 36.2.0 from the CDN, and check that CSV export, cell flashing and the quick filter are in the bundle.
 2. AG Grid table showing orders; edit cells → `PUT /api/orders/:id`. Select editor (menu items) + date editor.
 3. `orders.js` + `dates.js` pure logic (prices, totals, grouping per buyer, status mapping, day words) + tests.
+
+**3b. AI reality check (spike), Wed 28 Oct.** Why: the AI is the least-proven part. We proved PayPal on day 1; now we prove the AI before building on it.
+- `scripts/spike-parse.mjs` makes ONE real `gemini-3.6-flash` call on `data/demo-chats.txt`, with the menu (ids, aliases, the "plain brownies = unclear" rule), chat date 2026-10-28 (each message gets its full date from `dates.js`) and the planned JSON schema (Section 5).
+- It prints how long the call took, and compares the reply with `data/expected-orders.json`: buyers, items, qty, dates, unclear and cancelled (for example "items 8/9").
+- It uses a long timeout (90 s) to measure the real time, so we can check the app's planned 30 s timeout (Section 6) against it.
+- **Max 3 real calls that day** (of the 20/day free quota): the script counts its own calls in `tmp/` and refuses a 4th. Run it with `node --env-file=.env` (it never opens .env). The demo chats are fictional, so they're safe for the free tier.
+- **The real reply is saved unchanged** as `data/ai-cache/demo-parse.json`. Step 4's mock mode returns it, so the mock data matches what Gemini really returns, mistakes included.
+- The prompt, schema and comparison code are reused in Step 7 (the real call inside the app) and Step 8 (`accuracy.mjs`).
+
 4. Parse with **mock AI** (results already include `note` and `fulfilment`) + validation + unclear rows (`rowClassRules` highlight).
 5. PayPal invoices: create + send per buyer, payer link + Copy-link renderer, **double-invoice guard (#3c)**.
    - Missing PayPal keys → the clear message "PayPal is not configured", sent on purpose (the error handler hides every 5xx message), plus a test.
@@ -250,11 +261,11 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Date | Goal | Done when |
 |---|---|---|
 | Sun 25 Oct (extra) | ✅ **Step 1 DONE early**: Express skeleton, page, AG Grid from CDN, config, error handler, tests + `npm run check` | `npm start` shows a page with an empty grid; CSV/flash/quick filter present in the bundle; `npm run check` passes |
-| Mon 26 Oct (2 h) | Step 2: AG Grid table + edits, select + date editors (moved up from Tue) | Edits survive a page reload |
-| Tue 27 Oct (2 h) | Buffer gained by doing Step 1 early: finish Step 2 if needed, then start Step 3 early | Step 2 meets the Definition of done (MY_RULES.md) |
-| Wed 28 Oct (2 h) | Step 3: orders.js + dates.js + tests | `npm test` passes, incl. "brwnies" → unclear and "cheese brownies" → cheese_brownies |
-| Thu 29 Oct (2 h) | Step 4: parse with mock AI + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
-| Fri 30 Oct (2 h) | Step 5: create + send invoices per buyer + double-invoice guard | Payer link + Copy work; double-click still gives one invoice per buyer |
+| Mon 26 Oct (2 h) | Step 3: orders.js + dates.js + tests (moved up from Wed: pure logic, no UI, so it doesn't wait for the UI spec) | `npm test` passes, incl. "brwnies" → unclear, "cheese brownies" → cheese_brownies and the 8 date cases in Section 6 |
+| Tue 27 Oct (2 h) | Step 2: AG Grid table + edits, select + date editors, **following the UI spec (Section 12)**. **You: fill in Section 12 from your sketch before this session** | Edits survive a page reload; the page matches Section 12 |
+| Wed 28 Oct (2 h) | **Step 3b: AI reality check** (the day freed by finishing Step 1 early): one real gemini-3.6-flash call, **max 3 that day** | Call time + comparison with expected-orders.json printed and logged in DECISIONS.md; the real reply saved as the mock-AI data |
+| Thu 29 Oct (2 h) | Step 4: parse with mock AI (= Wednesday's real Gemini reply) + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
+| Fri 30 Oct (2 h) | Step 5: create + send invoices per buyer + double-invoice guard. **You: draft the video storyboard (Section 13)** | Payer link + Copy work; double-click still gives one invoice per buyer; storyboard drafted |
 | Sat 31 Oct (6 h) | Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank. **Buffer hour: FIRST DEPLOY to Render of whatever exists (walking skeleton)**, and check Render's free-tier rules (sleep after inactivity, monthly hours, whether it asks for a card; **if it asks for a card, stop and ask Jasper**) → note them in DECISIONS.md | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel; **the app loads from a Render URL** |
 | Sun 1 Nov (5 h) | Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR | Real call once, cached after; clicking Arif shows his 2 messages + a QR. **You: holdout chats + expected answers saved** |
 | Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give 7 orders / RM 387.00 |
@@ -262,15 +273,30 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Wed 4 Nov (2 h) | Step 10: ready-to-send messages + reminders | Every invoiced buyer has a copyable message with the real total + link, in their language |
 | Thu 5 Nov (2 h) | Step 11: deploy to Render | **Full flow works on the hosted URL** |
 | Fri 6 Nov (2 h) | 7 PM: **user test with your friend (10 min)** → LEARNING.md; then Step 12: non-AI fallback parser | Test notes saved; app works with `AI_MODE=off` |
-| Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins); **video script draft**; **save a Devpost draft** | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved |
+| Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins = the 2 judge accounts); **video script draft** (from the Section 13 storyboard); **save a Devpost draft**. **You: create 2 sandbox buyer accounts just for judges**, in English so judges can read the payment page (if one gets locked or its password changed, judges use the other) | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved; both judge logins work |
 | Sun 8 Nov (5 h) | **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green | All RULES.md build items ticked |
-| Mon 9 Nov (2 h) | **First: test paying with an English-language sandbox buyer account**, then record the video | Payment page in English; video under 3 min, no copyrighted music/logos |
+| Mon 9 Nov (2 h) | **First: test paying with an English-language sandbox buyer account** (one of the judge accounts), then record the video | Payment page in English; video under 3 min, no copyrighted music/logos |
 | Tue 10 Nov (2 h) | Video upload, GitHub public + MIT in About, Devpost details | All links work in a private window |
 | Wed 11 Nov (2 h) | "final check", then **submit (evening)** | Devpost shows Submitted |
 
 Hard deadline: 13 Nov 2026, 4:00 AM MYT. Hosted demo and sandbox logins must keep working until 16 Dec 2026.
 
 **Tightest part:** Mon 2 – Fri 6 Nov has ~11 h of work in 10 h, and Fri 6 Nov has two jobs. If it slips, it spills into the buffer hour on 7 or 8 Nov. If that isn't enough, cut in this order: 3 first, then 2, then 1, keeping 5 and 4.
+
+### After submission (12 Nov – 16 Dec)
+
+Judging runs until 16 Dec, and judges need free access the whole time. **Every 2–3 days:**
+- [ ] The hosted URL loads (a slow first load can be Render waking the free service up).
+- [ ] Both judge logins work at https://www.sandbox.paypal.com.
+- [ ] The PayPal sandbox app still works: `node --env-file=.env scripts/smoke-paypal.mjs` → "token OK: yes" (same keys as on Render).
+- [ ] The Gemini key still works and the model still exists (models get retired): `node --env-file=.env scripts/smoke-gemini.mjs` (1 call).
+- [ ] Render hasn't paused or suspended the service (the dashboard shows it live).
+- [ ] Write the date and results in the log below. Fix anything that fails the same day.
+
+Open question: RULES.md doesn't say whether code or README changes are allowed after the deadline. Check the official rules before fixing anything that needs a commit.
+
+| Date | URL loads | Judge login 1 | Judge login 2 | PayPal | Gemini | Render live | Notes |
+|---|---|---|---|---|---|---|---|
 
 ## 10. Standout features (Top 5)
 
@@ -339,3 +365,27 @@ In suggested order:
    - PayPal `remind` endpoint.
    - Webhooks.
    - Finding the existing invoice after `DUPLICATE_INVOICE_NUMBER`, via invoice search.
+
+## 12. UI spec (placeholder: you fill it from your sketch before the grid step, Tue 27 Oct)
+
+**Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10). If a step needs something the spec doesn't cover, Claude asks before inventing it.
+
+| Topic | Your spec (to fill in) | Now (Step 1 page, for reference) |
+|---|---|---|
+| Layout | _TODO_ | One column, max 1200 px wide: title + status line, chat card, orders card. The buyer panel (Step 7) opens on the right. |
+| Colours | _TODO_ | Light grey page `#f6f7f9`, white cards, blue button `#0b6bcb`, red errors `#b42318` |
+| AG Grid theme | _TODO_ | Quartz (the default). Free themes in 36.2.0: Quartz, Alpine, Balham, Material; colours, fonts and spacing can be tuned with `withParams` |
+| Spacing | _TODO_ | 16 px side gutters and card padding, 8 px rounded corners, grid 420 px tall |
+| Small screens | _TODO_ | The date + button row wraps; the grid scrolls sideways (11 columns) |
+
+Add rows if your sketch covers more (for example fonts or the buyer panel).
+
+## 13. Video storyboard (placeholder: you draft it by Fri 30 Oct)
+
+Drafted early so we build the moments the video needs. Rules (RULES.md): public on YouTube, **under 3 minutes**, shows the app working end to end, no copyrighted music, no third-party trademarks (no WhatsApp/Instagram logos). The words come later: video script on Sat 7 Nov, recording on Mon 9 Nov.
+
+| # | Time | On screen | What I say | Moment the app must have | Built in step |
+|---|---|---|---|---|---|
+| 1 | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+
+Moments the plan already has (ideas, not decisions): messy chats → a clean table with totals; fixing the "which brownies?" unclear row; one click → an invoice per buyer; copying a payer link and a ready-to-send message; paying in sandbox → the status cell flashes Paid; recording cash; the pickup QR; the CSV opening in Excel; the buyer panel showing the AI's note and source messages.
