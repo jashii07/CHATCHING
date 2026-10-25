@@ -213,6 +213,7 @@ Proven in the smoke tests on 2026-10-25:
 3. `orders.js` + `dates.js` pure logic (prices, totals, grouping per buyer, status mapping, day words) + tests.
 4. Parse with **mock AI** (results already include `note` and `fulfilment`) + validation + unclear rows (`rowClassRules` highlight).
 5. PayPal invoices: create + send per buyer, payer link + Copy-link renderer, **double-invoice guard (#3c)**.
+   - Missing PayPal keys → the clear message "PayPal is not configured", sent on purpose (the error handler hides every 5xx message), plus a test.
 6. Status polling + Refresh button + status badges + Reset demo. **Paid flash + CSV export (#4)**, pinned totals row + quick filter, **record cash / bank (#3a)**.
 7. Real Gemini call (one batched call, final order per buyer, JSON schema), cache. **Buyer panel with note + highlighted source messages (#1)**, **pickup QR in the panel (#3b)**.
 8. **`scripts/accuracy.mjs`**: compares AI output with `data/expected-orders.json` and prints a score for each of buyers, items, quantities, dates, unclear flags and cancellations.
