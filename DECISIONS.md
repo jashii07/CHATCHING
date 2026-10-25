@@ -14,6 +14,13 @@
 | 2026-10-25 | Pin an exact AG Grid Community version from the CDN | An unpinned version could change and break the demo before judging ends | Load "latest" |
 | 2026-10-25 | Use MYR for invoices; payer link = send response `href` with `rel: "payer-view"` | Smoke test: MYR draft accepted, sent invoice became UNPAID, send returned the payer-view link | USD; build the link from `recipient_view_url` |
 | 2026-10-25 | Pin AG Grid Community 36.2.0 (jsDelivr) | Newest release (16 Sep 2026), over a month old, file confirmed on the CDN | 36.1.0 |
+| 2026-10-25 | PLAN.md approved with changes | Plan covers the full flow, AI limits and dated checkpoints; changes below make it more accurate and showcase AG Grid | Approve as drafted |
+| 2026-10-25 | Menu aliases; plain "brownies"/"brwnies" = unclear row | One word must not silently pick the wrong item: "which brownies: classic or cheese?" | Map plain "brownies" to classic |
+| 2026-10-25 | AI returns the FINAL order per buyer (status active/cancelled, sourceMsgs, itemId may be null) | Real chats change, add to and cancel orders in later messages; questions and payment requests are not orders | One row per message, seller merges by hand |
+| 2026-10-25 | Resolve day words from each message's own timestamp | The demo gives the same dates in December as in October | Resolve from today's date |
+| 2026-10-25 | Add scripts/accuracy.mjs (mock default, --real) + later holdout chats | Measure AI accuracy with a score, and test on chats the prompt wasn't tuned on | Judge accuracy by eye |
+| 2026-10-25 | AG Grid showcase, Community features only (no row grouping) | Targets the AG Grid sponsor prize with the free version | Plain HTML table; Enterprise trial |
+| 2026-10-25 | 7 Nov: video script + Devpost draft; 9 Nov: test an English-language sandbox buyer before recording | Avoid last-minute surprises in the video and submission | Do it all on 10-11 Nov |
 
 ## AI model limits (checked 2026-10-25)
 
@@ -36,3 +43,5 @@ Groq (backup candidate): free-tier limits NOT confirmed. The official rate-limit
   - A mock-AI mode for development, so building doesn't use up quota.
   - A non-AI fallback when the quota runs out.
 - PayPal reuses an access token until it expires (~9 h), and an old token keeps its old permissions. After ticking Invoicing on 2026-10-25 we still got 403 until we revoked the old token (`POST /v1/oauth2/token/terminate`). If app features change again, revoke the token or restart the server. Put this in the README troubleshooting section.
+- The shared demo means two judges using it at the same time can overwrite each other's rows. "Reset demo" puts it back.
+- Fitting the accuracy step in moved the Render deploy from 4 to 5 Nov and merged design polish into the 8 Nov buffer day.

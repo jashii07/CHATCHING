@@ -1,10 +1,13 @@
 {
   "currency": "MYR",
   "items": [
-    { "id": "classic_brownies", "name": "Classic brownies (box of 6)", "price": "18.00" },
-    { "id": "cheese_brownies", "name": "Cheese brownies (box of 6)", "price": "22.00" },
-    { "id": "burnt_cheesecake", "name": "Burnt cheesecake 6-inch", "price": "45.00" },
-    { "id": "bahulu", "name": "Kuih bahulu (pack of 20)", "price": "12.00" },
-    { "id": "cookies", "name": "Choc chip cookies (jar)", "price": "25.00" }
+    { "id": "classic_brownies", "name": "Classic brownies (box of 6)", "price": "18.00", "aliases": ["classic", "brownies classic", "classic brownies", "classic brownie"] },
+    { "id": "cheese_brownies", "name": "Cheese brownies (box of 6)", "price": "22.00", "aliases": ["cheese brownie", "cheese brownies", "brownies cheese"] },
+    { "id": "burnt_cheesecake", "name": "Burnt cheesecake 6-inch", "price": "45.00", "aliases": ["cheesecake", "burnt cheesecake"] },
+    { "id": "bahulu", "name": "Kuih bahulu (pack of 20)", "price": "12.00", "aliases": ["kuih bahulu", "bahulu"] },
+    { "id": "cookies", "name": "Choc chip cookies (jar)", "price": "25.00", "aliases": ["cookies", "cookie", "choc chip"] }
+  ],
+  "ambiguous": [
+    { "words": ["brownies", "brownie", "brwnies"], "reason": "Which brownies: classic or cheese?" }
   ]
 }
