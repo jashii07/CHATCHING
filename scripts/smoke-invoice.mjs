@@ -89,7 +89,7 @@ async function getToken() {
 function draftBody(currency, buyerEmail) {
   const money = (value) => ({ currency_code: currency, value });
   const invoice = {
-    detail: { currency_code: currency, note: "Smoke test invoice from Chat-to-Checkout." },
+    detail: { currency_code: currency, note: "Smoke test invoice from ChatChing." },
     items: [
       { name: "Brownies (box of 6)", quantity: "2", unit_amount: money("15.00") },
       { name: "Kek batik (1 slab)", quantity: "1", unit_amount: money("25.00") },

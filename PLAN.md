@@ -1,4 +1,4 @@
-# PLAN — Chat-to-Checkout
+# PLAN — ChatChing
 
 Status: APPROVED 2026-10-25 (with changes). Standout features added 2026-10-25 (Sections 10-11). Build starts Mon 26 Oct, 7 PM MYT.
 
@@ -227,9 +227,9 @@ Proven in the smoke tests on 2026-10-25:
 - The AI never sends invoices or messages by itself: the seller always clicks to approve.
 - No `PayPal-Request-Id` header for invoices: not documented for Invoicing, and not honoured in our sandbox test.
 
-## 9. Checkpoints (2 h on weekdays, 5 h on 31 Oct / 1 Nov / 7 Nov / 8 Nov; ~46 h)
+## 9. Checkpoints (2 h on weekdays; 6 h available on 31 Oct / 1 Nov / 7 Nov / 8 Nov, 5 h planned; ~46 h planned + 4 h buffer)
 
-Weekend days are planned at 2 h + 3 h extra (the low end of "3-6 h extra"). Any extra time beyond that is buffer.
+Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th hour each weekend day is buffer (4 h buffer in total).
 
 | Date | Goal | Done when |
 |---|---|---|
@@ -253,7 +253,7 @@ Weekend days are planned at 2 h + 3 h extra (the low end of "3-6 h extra"). Any 
 
 Hard deadline: 13 Nov 2026, 4:00 AM MYT. Hosted demo and sandbox logins must keep working until 16 Dec 2026.
 
-**Tightest part:** Mon 2 – Fri 6 Nov has ~11 h of work in 10 h, and Fri 6 Nov has two jobs. If it slips, it spills into the extra weekend hours (up to 6 h/day). If those aren't there either, cut in this order: 3 first, then 2, then 1, keeping 5 and 4.
+**Tightest part:** Mon 2 – Fri 6 Nov has ~11 h of work in 10 h, and Fri 6 Nov has two jobs. If it slips, it spills into the buffer hour on 7 or 8 Nov. If that isn't enough, cut in this order: 3 first, then 2, then 1, keeping 5 and 4.
 
 ## 10. Standout features (Top 5)
 
@@ -290,7 +290,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 - **c.** Three layers:
   1. The server skips buyers that already have an invoice.
   2. A per-buyer "in progress" lock, with the button disabled while sending, so a double-click can't create two.
-  3. Every invoice gets `invoice_number` = `C2C-{batch}-{nn}`. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the row shows "Already invoiced, click Refresh". Check the maximum length of `invoice_number` in step 5.
+  3. Every invoice gets `invoice_number` = `CHING-{batch}-{nn}`, e.g. `CHING-K3F9Q2ZA-07`. The batch is 8 characters, so the number is 17 characters, within PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the row shows "Already invoiced, click Refresh".
 
 ### 4. AG Grid extras (both Community, checked in AG Grid's module list)
 - **"Export CSV (opens in Excel)"** → `api.exportDataAsCsv()` (CsvExportModule, Community).
