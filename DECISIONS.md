@@ -12,6 +12,8 @@
 | 2026-10-25 | Reminders: AI drafts text + "Copy" button; PayPal remind endpoint is a stretch goal | Seller pastes it into the chat themselves | Send reminders through PayPal |
 | 2026-10-25 | Judges: one shared demo + "Reset demo" (preloaded data + saved AI results, 0 AI calls) + "AI calls left today: X/20" | Free tier has 20 calls/day shared with judges | A separate copy per visitor |
 | 2026-10-25 | Pin an exact AG Grid Community version from the CDN | An unpinned version could change and break the demo before judging ends | Load "latest" |
+| 2026-10-25 | Use MYR for invoices; payer link = send response `href` with `rel: "payer-view"` | Smoke test: MYR draft accepted, sent invoice became UNPAID, send returned the payer-view link | USD; build the link from `recipient_view_url` |
+| 2026-10-25 | Pin AG Grid Community 36.2.0 (jsDelivr) | Newest release (16 Sep 2026), over a month old, file confirmed on the CDN | 36.1.0 |
 
 ## AI model limits (checked 2026-10-25)
 
@@ -33,3 +35,4 @@ Groq (backup candidate): free-tier limits NOT confirmed. The official rate-limit
   - Preload demo data with saved AI results.
   - A mock-AI mode for development, so building doesn't use up quota.
   - A non-AI fallback when the quota runs out.
+- PayPal reuses an access token until it expires (~9 h), and an old token keeps its old permissions. After ticking Invoicing on 2026-10-25 we still got 403 until we revoked the old token (`POST /v1/oauth2/token/terminate`). If app features change again, revoke the token or restart the server. Put this in the README troubleshooting section.
