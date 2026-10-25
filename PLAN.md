@@ -13,7 +13,7 @@ Small home sellers in Malaysia take orders as messy chat messages in mixed Engli
 
 ## 3. Flow
 
-1. **Paste:** the seller pastes a day of chat messages into a text box.
+1. **Paste:** the seller pastes a day of chat messages into a text box, and checks the **Chat date** field (the day the chats are from; default: today). The demo uses its own fixed chat date, 2026-10-28.
 2. **Read (AI, 1 call):** Gemini turns all messages into the **final order per buyer**. It applies changes, add-ons and cancellations from later messages, resolves delivery dates, notes pickup vs delivery, and flags anything unclear with a reason. Each order comes with a one-line note explaining what it did. The AI never sets prices.
 3. **Review:** rows appear in an AG Grid table, one row per item, so a buyer can have several rows. The code fills in the price from the menu and calculates the totals. The seller fixes unclear rows by editing cells. Clicking a row opens the buyer panel, which shows the buyer's own messages (Section 10, #1).
 4. **Invoice (no AI):** one click creates and sends one PayPal sandbox invoice per buyer, grouping that buyer's rows, without emailing anyone. Cancelled and unclear rows are skipped. Each buyer gets a payer link and a ready-to-send message, each with a "Copy" button for pasting into the chat (#2).
@@ -58,7 +58,7 @@ Only one new package is planned: **express**.
 |---|---|---|
 | `GET /` | the page | No |
 | `GET /api/state` | menu, orders, "AI calls left today", AI mode | No |
-| `POST /api/parse` | chat text → order rows (replaces the current rows) | 1 call, or cache/fallback |
+| `POST /api/parse` | chat text + chat date → order rows (replaces the current rows) | 1 call, or cache/fallback |
 | `PUT /api/orders/:id` | save one edited row | No |
 | `POST /api/invoices` | create + send one invoice per buyer that has no invoice yet (double-invoice guard, #3c) | **Never** |
 | `POST /api/invoices/refresh` | ask PayPal for the status of every open invoice | No |
@@ -149,7 +149,7 @@ Anything that fails a check becomes an unclear row. It is never dropped silently
 - Money is calculated in sen (whole numbers) to avoid rounding errors, then shown as "54.00".
 - Invoices group rows per buyer. A buyer is invoiced only when all their active rows are clear.
 
-**Accuracy check:** `data/expected-orders.json` holds the correct answers for the demo chats: 7 clear orders worth RM 387.00, 1 unclear, 1 cancelled and 1 non-order. `scripts/accuracy.mjs` compares the parser's output against it (see Section 7).
+**Accuracy check:** `data/expected-orders.json` holds the correct answers for the demo chats: 7 clear orders worth RM 387.00, 1 unclear, 1 cancelled and 1 non-order, plus the demo's fixed `chatDate` (2026-10-28). Its orders use the same field names as the AI output above, so `scripts/accuracy.mjs` compares the parser's output against it directly, with no name translation (see Section 7).
 
 **Invoice status**: PayPal's status → what the app shows:
 
@@ -172,11 +172,22 @@ Proven in the smoke tests on 2026-10-25:
 ## 6. AI design
 
 - **One batched call** per action. All messages go in one prompt, and the final order per buyer comes out, each with a note. Messages and reminders are also one call each (Section 10, #2). The JSON shape is forced with Gemini's response schema. The prompt includes the menu ids and aliases, and the "plain brownies = unclear" rule.
-- **Dates come from each message's own timestamp, not today's date.**
-  - The code reads each message's `[28/10 9:02 AM]` and turns it into a full date with its weekday ("Wed 28 Oct 2026") before sending it to the AI.
-  - So "esok" in a message from Wed 28 Oct is Thu 29 Oct, and "sabtu" is Sat 31 Oct. The demo gives the same dates in December.
-  - A day name means the next such day after the message date. The year is the most recent year in which that day and month is not in the future.
-  - `src/dates.js` does the same conversion without AI for the fallback parser. Our code then checks the AI's dates (Section 5).
+- **Dates come from each message's own timestamp plus the Chat date, never from today's date.**
+  - Timestamps like `[28/10 9:02 AM]` have no year. The page sends a **Chat date** with the paste (default: today; the demo carries its own fixed chat date, 2026-10-28).
+  - **Year rule:** each message's year = the most recent year in which its day/month is **not after** the chat date. So `[31/12]` with chat date 2 Jan 2027 is 31 Dec 2026, and `[28/10]` with chat date 28 Oct 2026 is 28 Oct 2026.
+  - The code turns each timestamp into a full date with its weekday ("Wed 28 Oct 2026") before sending it to the AI. A day name means the next such day after the message date, so "esok" in a message from Wed 28 Oct is Thu 29 Oct, and "sabtu" is Sat 31 Oct.
+  - `src/dates.js` takes the chat date as an input and never reads the computer's clock. It does the same conversion without AI for the fallback parser. Our code then checks the AI's dates (Section 5).
+  - The chat date is part of the AI cache key, so the same chats with a different chat date are not answered from the cache.
+  - **Test cases** (`test/dates.test.js`):
+
+    | Chat date | Message | Expected |
+    |---|---|---|
+    | 2026-10-28 | `[28/10]` "sabtu" | 2026-10-31, the same whether the test runs on 26 Oct 2026 or in December (test runs with the clock faked to both days) |
+    | 2026-10-28 | `[28/10]` "esok" / "Friday" / "ahad" | 2026-10-29 / 2026-10-30 / 2026-11-01 |
+    | 2027-01-02 | `[31/12]` | message date 2026-12-31 |
+    | 2027-01-02 | `[2/1]` | message date 2027-01-02 |
+    | 2026-10-28 | `[29/10]` (after the chat date) | message date 2025-10-29 (the rule picks last year) |
+    | 2027-03-01 | `[29/2]` (no 29 Feb in 2027) | invalid date: the row becomes unclear, no guessing (my assumption) |
 - **Mock mode** (`AI_MODE=mock`): returns saved results from `data/ai-cache/`, using 0 real calls. This is the default during development.
 - **Cache:** every real AI result is saved to disk with the hash of its input as the key. The same input never costs a second call.
 - **Preloaded demo:** the demo chats and their saved AI results (parse, messages, reminders) ship in the repo. "Reset demo" uses them, with 0 calls.

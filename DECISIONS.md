@@ -33,6 +33,8 @@
 | 2026-10-25 | Invoice number prefix `CHATCHING-` instead of `CHING-` | it matches the full name and avoids "CHING" on its own | `CHING-` (17 chars) |
 | 2026-10-25 | First Render deploy on Sat 31 Oct (buffer hour), a "walking skeleton"; check Render free-tier rules that day and stop if it asks for a card | Hosting problems should show up early, not on 5 Nov | Deploy only on 5 Nov |
 | 2026-10-25 | GitHub repo jashii07/CHATCHING (private for now); push at the end of every session; never amend, rebase or force-push pushed commits | GitHub is my backup; rewriting pushed history can lose work | Local-only until submission |
+| 2026-10-25 | Year rule for timestamps without a year: a "Chat date" field (default today; demo fixed at 2026-10-28); each message's year = the most recent year in which its day/month is not after the chat date. Never based on today's date (replaces the "not in the future" rule in the row "Resolve day words…") | the demo must give the same dates on any day | Most recent year not in the future, based on today (breaks before 28 Oct 2026: picks 2025, so "sabtu" becomes Sat 1 Nov 2025) |
+| 2026-10-25 | `data/expected-orders.json` uses the same field names as the AI output in PLAN.md Section 5 (status active/cancelled, sourceMsgs, fulfilment, unclear, reason, note); same answers | The accuracy script can compare directly, with no name translation | Keep the old names and translate in the script |
 | 2026-10-25 | Hours update: 4 h extra on each weekend day (6 h total on 31 Oct, 1 Nov, 7 Nov, 8 Nov); plan stays at 5 h, the 6th hour is buffer (replaces the "3-6 h" row) | Keep the plan unchanged and add 4 h of buffer | Plan 6 h/day with no buffer |
 
 ### Why the Top 5 (my reason)

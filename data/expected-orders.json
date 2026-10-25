@@ -3,84 +3,69 @@
   "dateHints": { "esok": "2026-10-29", "sabtu": "2026-10-31", "ahad": "2026-11-01" },
   "orders": [
     {
-      "buyer": "Lina",
-      "status": "clear",
+      "buyer": "Lina", "status": "active", "sourceMsgs": [1, 4],
       "items": [{ "itemId": "classic_brownies", "qty": 3 }],
-      "deliveryDate": "2026-10-31",
-      "total": "54.00",
-      "messages": [1, 4],
-      "note": "Quantity changed from 2 to 3 in a later message."
+      "deliveryDate": "2026-10-31", "fulfilment": null,
+      "unclear": false, "reason": "", "note": "Changed from 2 to 3 boxes in message 4.",
+      "total": "54.00"
     },
     {
-      "buyer": "Hafiz",
-      "status": "clear",
+      "buyer": "Hafiz", "status": "active", "sourceMsgs": [2, 10],
       "items": [{ "itemId": "burnt_cheesecake", "qty": 1 }, { "itemId": "cookies", "qty": 1 }],
-      "deliveryDate": "2026-10-30",
-      "total": "70.00",
-      "messages": [2, 10],
-      "note": "Cookies are an add-on in a later message."
+      "deliveryDate": "2026-10-30", "fulfilment": null,
+      "unclear": false, "reason": "", "note": "Cookies added in message 10.",
+      "total": "70.00"
     },
     {
-      "buyer": "Mei Ling",
-      "status": "clear",
+      "buyer": "Mei Ling", "status": "active", "sourceMsgs": [3, 11],
       "items": [{ "itemId": "cheese_brownies", "qty": 1 }, { "itemId": "cookies", "qty": 2 }],
-      "deliveryDate": "2026-10-31",
-      "total": "72.00",
-      "messages": [3, 11],
-      "note": "Delivery date given in a later message."
+      "deliveryDate": "2026-10-31", "fulfilment": null,
+      "unclear": false, "reason": "", "note": "Delivery date given in message 11.",
+      "total": "72.00"
     },
     {
-      "buyer": "Arif",
-      "status": "clear",
+      "buyer": "Arif", "status": "active", "sourceMsgs": [5, 6],
       "items": [{ "itemId": "bahulu", "qty": 2 }],
-      "deliveryDate": "2026-10-29",
-      "delivery": "pickup",
-      "total": "24.00",
-      "messages": [5, 6],
-      "note": "First message is only a question; pickup, not delivery."
+      "deliveryDate": "2026-10-29", "fulfilment": "pickup",
+      "unclear": false, "reason": "", "note": "Message 5 is only a question; pickup, not delivery.",
+      "total": "24.00"
     },
     {
-      "buyer": "Sarah",
-      "status": "clear",
-      "flag": "Conditional on the cheesecake being 6-inch, which matches the menu.",
+      "buyer": "Sarah", "status": "active", "sourceMsgs": [9],
       "items": [{ "itemId": "burnt_cheesecake", "qty": 1 }],
-      "deliveryDate": "2026-10-31",
-      "total": "45.00",
-      "messages": [9]
+      "deliveryDate": "2026-10-31", "fulfilment": null,
+      "unclear": false, "reason": "", "note": "Conditional on the cheesecake being 6-inch, which matches the menu.",
+      "total": "45.00"
     },
     {
-      "buyer": "Kak Ros",
-      "status": "clear",
+      "buyer": "Kak Ros", "status": "active", "sourceMsgs": [12],
       "items": [{ "itemId": "bahulu", "qty": 5 }],
-      "deliveryDate": "2026-11-01",
-      "total": "60.00",
-      "messages": [12]
+      "deliveryDate": "2026-11-01", "fulfilment": null,
+      "unclear": false, "reason": "", "note": "",
+      "total": "60.00"
     },
     {
-      "buyer": "Jun Wei",
-      "status": "clear",
+      "buyer": "Jun Wei", "status": "active", "sourceMsgs": [14],
       "items": [{ "itemId": "cheese_brownies", "qty": 2 }, { "itemId": "classic_brownies", "qty": 1 }],
-      "deliveryDate": "2026-10-31",
-      "total": "62.00",
-      "messages": [14]
+      "deliveryDate": "2026-10-31", "fulfilment": null,
+      "unclear": false, "reason": "", "note": "",
+      "total": "62.00"
     },
     {
-      "buyer": "Priya",
-      "status": "unclear",
-      "items": [],
-      "deliveryDate": null,
-      "total": null,
-      "messages": [7],
-      "reason": "\"Same order as last week\": the seller must fill in the items."
+      "buyer": "Priya", "status": "active", "sourceMsgs": [7],
+      "items": [{ "itemId": null, "qty": null }],
+      "deliveryDate": null, "fulfilment": null,
+      "unclear": true, "reason": "\"Same order as last week\": items not stated.",
+      "note": "The seller must fill in the items.",
+      "total": null
     },
     {
-      "buyer": "Danish",
-      "status": "cancelled",
+      "buyer": "Danish", "status": "cancelled", "sourceMsgs": [8, 13],
       "items": [],
-      "deliveryDate": null,
-      "total": null,
-      "messages": [8, 13],
-      "reason": "Cancelled in a later message. \"brwnies 1\" was also unclear: which brownies?"
+      "deliveryDate": null, "fulfilment": null,
+      "unclear": false, "reason": "",
+      "note": "Cancelled in message 13. \"brwnies 1\" was also unclear: which brownies?",
+      "total": null
     }
   ],
   "notOrders": [
