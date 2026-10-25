@@ -208,7 +208,7 @@ Proven in the smoke tests on 2026-10-25:
 
 ## 7. Build order (mock AI first)
 
-1. Express skeleton, menu, demo chats, empty page. Load AG Grid 36.2.0 from the CDN, and check that CSV export, cell flashing and the quick filter are in the bundle.
+1. ✅ (done Sun 25 Oct) Express skeleton, menu, demo chats, empty page. Load AG Grid 36.2.0 from the CDN, and check that CSV export, cell flashing and the quick filter are in the bundle.
 2. AG Grid table showing orders; edit cells → `PUT /api/orders/:id`. Select editor (menu items) + date editor.
 3. `orders.js` + `dates.js` pure logic (prices, totals, grouping per buyer, status mapping, day words) + tests.
 4. Parse with **mock AI** (results already include `note` and `fulfilment`) + validation + unclear rows (`rowClassRules` highlight).
@@ -248,8 +248,9 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 
 | Date | Goal | Done when |
 |---|---|---|
-| Mon 26 Oct (2 h) | Step 1: Express skeleton, page, AG Grid from CDN | `npm start` shows a page with an empty grid; CSV/flash/quick filter present in the bundle |
-| Tue 27 Oct (2 h) | Step 2: AG Grid table + edits, select + date editors | Edits survive a page reload |
+| Sun 25 Oct (extra) | ✅ **Step 1 DONE early**: Express skeleton, page, AG Grid from CDN, config, error handler, tests + `npm run check` | `npm start` shows a page with an empty grid; CSV/flash/quick filter present in the bundle; `npm run check` passes |
+| Mon 26 Oct (2 h) | Step 2: AG Grid table + edits, select + date editors (moved up from Tue) | Edits survive a page reload |
+| Tue 27 Oct (2 h) | Buffer gained by doing Step 1 early: finish Step 2 if needed, then start Step 3 early | Step 2 meets the Definition of done (MY_RULES.md) |
 | Wed 28 Oct (2 h) | Step 3: orders.js + dates.js + tests | `npm test` passes, incl. "brwnies" → unclear and "cheese brownies" → cheese_brownies |
 | Thu 29 Oct (2 h) | Step 4: parse with mock AI + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
 | Fri 30 Oct (2 h) | Step 5: create + send invoices per buyer + double-invoice guard | Payer link + Copy work; double-click still gives one invoice per buyer |
