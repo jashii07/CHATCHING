@@ -41,6 +41,7 @@
 | 2026-10-25 | package.json: name `chatching`, `"type": "module"`, `"engines": { "node": ">=24" }`, start = `node --env-file-if-exists=.env server.js`; only express installed, pinned to exactly 5.3.0 | one module style everywhere; so Render uses the same Node version as my laptop; Render has no .env file and plain --env-file crashes when it's missing. (Pin: 5.3.0 was released 9 Oct 2026, over 2 weeks old; same reason as pinning AG Grid.) | CommonJS; plain `--env-file`; `"^5.3.0"` |
 | 2026-10-25 | Load AG Grid with an integrity hash (sha384) and check at page load that the CSV export, cell flashing and quick filter modules are registered (one console line). No module-registration code: the UMD bundle ends with `registerModules([AllCommunityModule])` | The browser refuses the file if the CDN ever serves different bytes; the console line proves in the real browser that the 3 features are in the bundle (the bundle defines 86 Community modules, 0 Enterprise) | No hash; trust the docs; register modules by hand |
 | 2026-10-25 | Hours update: 4 h extra on each weekend day (6 h total on 31 Oct, 1 Nov, 7 Nov, 8 Nov); plan stays at 5 h, the 6th hour is buffer (replaces the "3-6 h" row) | Keep the plan unchanged and add 4 h of buffer | Plan 6 h/day with no buffer |
+| 2026-10-25 | `"engines": { "node": "24.x" }` (replaces `">=24"` in the package.json row above). Checked with npm's semver: v24.15.0 (laptop) and v24.22.1 (Render's default) match; v25 and v26 don't | to prevent syntax errors and broken dependencies | `">=24"`: Render's docs say an unbounded range "always resolves to the latest release of Node.js" |
 
 ### Why the Top 5 (my reason)
 
@@ -78,4 +79,3 @@ Groq (backup candidate): free-tier limits NOT confirmed. The official rate-limit
 - Gemini free tier: Google may use inputs to improve its products and human reviewers may read them. Fine for fictional/anonymised demo data; a real seller would need the paid tier.
 - The QR code reply format (Base64 PNG inside multipart/form-data) is not documented. If PayPal changes it, the QR button breaks; the code checks for the PNG signature and shows an error instead of a broken image.
 - Recording a cash/bank payment has no undo planned.
-- `"engines": { "node": ">=24" }` has no upper bound. Render's docs say "An unbounded range (such as `>=20`) always resolves to the latest release of Node.js", so Render may run a newer Node than the laptop (v24.15.0). To decide before the first deploy on 31 Oct (option: `"24.x"`).
