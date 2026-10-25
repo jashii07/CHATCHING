@@ -5,6 +5,13 @@
 | 2026-10-25 | Join PayPal AI Hackathon | My goal is experience: learn to direct AI and practise vibe coding; prizes are a bonus | Plan B: HackOnVibe + next Orchestrate |
 | 2026-10-25 | AI model at runtime: Gemini free tier (candidate, not final) | Both models are free, but 3.6-flash answered every time in my test while 3.8-flash was overloaded, so I picked the one that is free AND reliable. (Earlier: free, no billing set up, judges can use the demo without me paying.) | Groq free tier, Claude API (paid) |
 | 2026-10-25 | App idea: Chat-to-Checkout | My seller friend tracks chat orders in Excel by hand and chases payments one by one, so the problem is real. It also fits AI-in-batches (20 calls/day), an AG Grid table and PayPal invoices | Club treasurer copilot, split-bill agent, subscription watchdog, freelancer invoice chaser |
+| 2026-10-25 | Architecture: Option A, one simple server (Express + plain HTML/JS + AG Grid from CDN, polling for status) | it's simpler, so it reduces my workload and saves more time for the other parts of this competition, like testing, the README and the video | Option B (React + webhooks + database) |
+| 2026-10-25 | Buyer contact: payment link the seller pastes into the chat; buyer email optional | Matches how sellers really work in chat | Require buyer email for every invoice |
+| 2026-10-25 | Prices: fixed menu (item -> price) in a JSON file; AI picks only item + quantity, code calculates totals | The AI must never invent a price | AI reads prices from the chat |
+| 2026-10-25 | Currency: test MYR first, USD if sandbox rejects it | MYR is realistic for Malaysian sellers | USD only |
+| 2026-10-25 | Reminders: AI drafts text + "Copy" button; PayPal remind endpoint is a stretch goal | Seller pastes it into the chat themselves | Send reminders through PayPal |
+| 2026-10-25 | Judges: one shared demo + "Reset demo" (preloaded data + saved AI results, 0 AI calls) + "AI calls left today: X/20" | Free tier has 20 calls/day shared with judges | A separate copy per visitor |
+| 2026-10-25 | Pin an exact AG Grid Community version from the CDN | An unpinned version could change and break the demo before judging ends | Load "latest" |
 
 ## AI model limits (checked 2026-10-25)
 
