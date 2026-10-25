@@ -1,0 +1,90 @@
+{
+  "chatDate": "2026-10-28",
+  "dateHints": { "esok": "2026-10-29", "sabtu": "2026-10-31", "ahad": "2026-11-01" },
+  "orders": [
+    {
+      "buyer": "Lina",
+      "status": "clear",
+      "items": [{ "itemId": "classic_brownies", "qty": 3 }],
+      "deliveryDate": "2026-10-31",
+      "total": "54.00",
+      "messages": [1, 4],
+      "note": "Quantity changed from 2 to 3 in a later message."
+    },
+    {
+      "buyer": "Hafiz",
+      "status": "clear",
+      "items": [{ "itemId": "burnt_cheesecake", "qty": 1 }, { "itemId": "cookies", "qty": 1 }],
+      "deliveryDate": "2026-10-30",
+      "total": "70.00",
+      "messages": [2, 10],
+      "note": "Cookies are an add-on in a later message."
+    },
+    {
+      "buyer": "Mei Ling",
+      "status": "clear",
+      "items": [{ "itemId": "cheese_brownies", "qty": 1 }, { "itemId": "cookies", "qty": 2 }],
+      "deliveryDate": "2026-10-31",
+      "total": "72.00",
+      "messages": [3, 11],
+      "note": "Delivery date given in a later message."
+    },
+    {
+      "buyer": "Arif",
+      "status": "clear",
+      "items": [{ "itemId": "bahulu", "qty": 2 }],
+      "deliveryDate": "2026-10-29",
+      "delivery": "pickup",
+      "total": "24.00",
+      "messages": [5, 6],
+      "note": "First message is only a question; pickup, not delivery."
+    },
+    {
+      "buyer": "Sarah",
+      "status": "clear",
+      "flag": "Conditional on the cheesecake being 6-inch, which matches the menu.",
+      "items": [{ "itemId": "burnt_cheesecake", "qty": 1 }],
+      "deliveryDate": "2026-10-31",
+      "total": "45.00",
+      "messages": [9]
+    },
+    {
+      "buyer": "Kak Ros",
+      "status": "clear",
+      "items": [{ "itemId": "bahulu", "qty": 5 }],
+      "deliveryDate": "2026-11-01",
+      "total": "60.00",
+      "messages": [12]
+    },
+    {
+      "buyer": "Jun Wei",
+      "status": "clear",
+      "items": [{ "itemId": "cheese_brownies", "qty": 2 }, { "itemId": "classic_brownies", "qty": 1 }],
+      "deliveryDate": "2026-10-31",
+      "total": "62.00",
+      "messages": [14]
+    },
+    {
+      "buyer": "Priya",
+      "status": "unclear",
+      "items": [],
+      "deliveryDate": null,
+      "total": null,
+      "messages": [7],
+      "reason": "\"Same order as last week\": the seller must fill in the items."
+    },
+    {
+      "buyer": "Danish",
+      "status": "cancelled",
+      "items": [],
+      "deliveryDate": null,
+      "total": null,
+      "messages": [8, 13],
+      "reason": "Cancelled in a later message. \"brwnies 1\" was also unclear: which brownies?"
+    }
+  ],
+  "notOrders": [
+    { "buyer": "Lina", "message": 15, "reason": "Payment link request, not an order." }
+  ],
+  "summary": { "clearOrders": 7, "clearTotal": "387.00" }
+}

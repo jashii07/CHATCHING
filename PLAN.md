@@ -65,16 +65,17 @@ Only one new package is planned: **express**.
 {
   "currency": "MYR",
   "items": [
-    { "id": "brownies", "name": "Brownies (box of 6)", "price": "15.00", "aliases": ["brownie", "brownies"] },
-    { "id": "kek-batik", "name": "Kek batik (1 slab)", "price": "25.00", "aliases": ["kek batik", "batik"] }
+    { "id": "classic_brownies", "name": "Classic brownies (box of 6)", "price": "18.00" },
+    { "id": "cheese_brownies", "name": "Cheese brownies (box of 6)", "price": "22.00" }
   ]
 }
 ```
+(Full fictional menu in `data/menu.json`. Aliases for the non-AI fallback parser, e.g. "brwnies", get added in build step 9.)
 
 **What the AI returns** (forced JSON format, no prices):
 ```json
 { "orders": [
-  { "msg": 3, "buyer": "Kak Lina", "itemId": "brownies", "qty": 2,
+  { "msg": 1, "buyer": "Lina", "itemId": "classic_brownies", "qty": 2,
     "deliveryDate": "2026-10-31", "unclear": false, "reason": "" }
 ] }
 ```
@@ -82,14 +83,16 @@ Our code checks every row: `itemId` must exist in the menu (otherwise the row is
 
 **Order row** (what the table shows):
 ```json
-{ "id": "r7", "buyer": "Kak Lina", "buyerEmail": null,
-  "itemId": "brownies", "itemName": "Brownies (box of 6)", "qty": 2,
-  "unitPrice": "15.00", "lineTotal": "30.00",
+{ "id": "r1", "buyer": "Lina", "buyerEmail": null,
+  "itemId": "classic_brownies", "itemName": "Classic brownies (box of 6)", "qty": 3,
+  "unitPrice": "18.00", "lineTotal": "54.00",
   "deliveryDate": "2026-10-31", "unclear": false, "reason": "",
-  "sourceMessage": "kak nak 2 brownies hantar sabtu",
+  "sourceMessage": "kak nak order 2 kotak brownies classic, hantar sabtu boleh?",
   "invoiceId": null, "payerLink": null, "status": "Draft" }
 ```
-Money is calculated in sen (whole numbers) to avoid rounding errors, then shown as "30.00".
+Money is calculated in sen (whole numbers) to avoid rounding errors, then shown as "54.00".
+
+**Accuracy check:** `data/expected-orders.json` holds the correct answers for the demo chats (7 clear orders, RM 387.00, 1 unclear, 1 cancelled, 1 non-order). A test compares the parser's output against it.
 
 **Invoice status**: PayPal's status → what the app shows:
 
