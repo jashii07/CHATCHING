@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem } from "../src/orders.js";
+import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem, checkMenu } from "../src/orders.js";
+import { formatMoney } from "../src/money.js";
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 const menu = readJson("../data/menu.json");
@@ -210,4 +211,23 @@ test("matchMenuItem: no menu word, empty text, or two different items -> unclear
 
 test("matchMenuItem: menu words match whole words only (\"cookiesss\" is not \"cookies\")", () => {
   assert.equal(matchMenuItem("cookiesss", menu).unclear, true);
+});
+
+test("currency is one setting: the same orders with USD show \"$\" and give the same totals", () => {
+  const usdMenu = { ...menu, currency: "USD" };
+  const myr = toRows(expected.orders, menu);
+  const usd = toRows(expected.orders, usdMenu);
+  assert.deepEqual(totals(usd), totals(myr));
+  assert.deepEqual(totals(usd), { orders: 7, total: "387.00" });
+  assert.equal(formatMoney(totals(usd).total, usdMenu.currency), "$387.00");
+  assert.equal(formatMoney(totals(myr).total, menu.currency).replace(/\u00a0/g, " "), "RM 387.00");
+  for (const row of usd.filter((r) => r.lineTotal)) assert.match(formatMoney(row.lineTotal, usdMenu.currency), /^\$\d/);
+});
+
+test("checkMenu: the currency must be a real code PayPal can bill in cents", () => {
+  assert.deepEqual(checkMenu({ ...menu, currency: "USD" }), []);
+  assert.match(checkMenu({ ...menu, currency: "ringgit" }).join(" "), /currency/i);
+  assert.match(checkMenu({ ...menu, currency: undefined }).join(" "), /currency/i);
+  // PayPal bills JPY, HUF and TWD in whole units only; our prices are "18.00", so refuse them clearly.
+  for (const code of ["JPY", "HUF", "TWD"]) assert.match(checkMenu({ ...menu, currency: code }).join(" "), /decimals/i, code);
 });

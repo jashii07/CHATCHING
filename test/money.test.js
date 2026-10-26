@@ -1,7 +1,9 @@
-// Tests for src/money.js: money is whole sen (1 RM = 100 sen), never floats.
+// Tests for src/money.js: money is whole cents ("sen" for MYR), never floats,
+// and every amount on screen is formatted from menu.json's currency.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toSen, fromSen } from "../src/money.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { toSen, fromSen, formatMoney } from "../src/money.js";
 
 test("toSen turns a price string into whole sen", () => {
   assert.equal(toSen("18.00"), 1800);
@@ -28,5 +30,33 @@ test("bad money input throws instead of guessing", () => {
   }
   for (const bad of [18.5, -1, NaN, "1800", null]) {
     assert.throws(() => fromSen(bad), /sen/i, `fromSen(${JSON.stringify(bad)})`);
+  }
+});
+
+// Intl puts a no-break space between "RM" and the number; compare with plain spaces.
+const plain = (text) => text.replace(/\u00a0/g, " ");
+
+test("formatMoney uses the currency's symbol: MYR -> RM 54.00, USD -> $54.00", () => {
+  assert.equal(plain(formatMoney("54.00", "MYR")), "RM 54.00");
+  assert.equal(formatMoney("54.00", "USD"), "$54.00");
+  assert.equal(formatMoney("387", "EUR"), "€387.00");
+  assert.equal(formatMoney("1234.5", "USD"), "$1,234.50");
+});
+
+test("formatMoney refuses a bad amount or currency instead of guessing", () => {
+  assert.throws(() => formatMoney("54.001", "USD"), /money/i);
+  assert.throws(() => formatMoney(54, "USD"), /money/i);
+  assert.throws(() => formatMoney("54.00", "ringgit"), /currency/i);
+  assert.throws(() => formatMoney("54.00", undefined), /currency/i);
+});
+
+test('no hard-coded "RM" in the app code (src/ and public/): money display comes from menu.json', () => {
+  for (const dir of ["../src/", "../public/"]) {
+    for (const file of readdirSync(new URL(dir, import.meta.url))) {
+      // Comment lines may show an example ("RM 54.00"); only code counts.
+      const code = readFileSync(new URL(dir + file, import.meta.url), "utf8")
+        .split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
+      assert.doesNotMatch(code, /\bRM\b/, `${dir}${file}`);
+    }
   }
 });

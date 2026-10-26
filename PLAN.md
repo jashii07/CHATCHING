@@ -108,6 +108,10 @@ Only one new package is planned: **express**.
 ```
 (Full fictional menu in `data/menu.json`.) A plain "brownies" or "brwnies" with no type must **not** map to one item. It becomes an unclear row with the reason "Which brownies: classic or cheese?".
 
+**Currency: one setting.** `"currency"` in `data/menu.json` decides every amount on screen, in messages and in PayPal invoices. Money is shown with `Intl.NumberFormat` (MYR → "RM 54.00", USD → "$54.00"). No code hard-codes "RM", and a test checks this.
+- For the README: "Works with any PayPal currency; the demo uses MYR because the real user is a Malaysian home seller."
+- Exception: PayPal bills JPY, HUF and TWD without decimals, but our prices use cents ("18.00"). The server refuses to start with these currencies and shows a clear message.
+
 **What the AI returns**: the **final** order per buyer (forced JSON format, no prices):
 ```json
 { "orders": [
@@ -146,7 +150,7 @@ Anything that fails a check becomes an unclear row. It is never dropped silently
   "unclear": false, "reason": "", "note": "Changed from 2 to 3 boxes in message 4.", "sourceMsgs": [1, 4],
   "invoiceId": null, "invoiceNumber": null, "payerLink": null, "invoiceStatus": "Draft" }
 ```
-- Money is calculated in sen (whole numbers) to avoid rounding errors, then shown as "54.00".
+- Money is calculated in cents (whole numbers; "sen" for MYR) to avoid rounding errors, stored as "54.00", and shown in the menu's currency ("RM 54.00").
 - Invoices group rows per buyer. A buyer is invoiced only when all their active rows are clear.
 
 **Accuracy check:** `data/expected-orders.json` holds the correct answers for the demo chats: 7 clear orders worth RM 387.00, 1 unclear, 1 cancelled and 1 non-order, plus the demo's fixed `chatDate` (2026-10-28). Its orders use the same field names as the AI output above, so `scripts/accuracy.mjs` compares the parser's output against it directly, with no name translation (see Section 7).

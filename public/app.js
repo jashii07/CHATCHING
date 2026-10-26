@@ -6,8 +6,8 @@ const COLUMNS = [
   { field: "buyer", headerName: "Buyer" },
   { field: "itemName", headerName: "Item", minWidth: 200 },
   { field: "qty", headerName: "Qty", minWidth: 80 },
-  { field: "unitPrice", headerName: "Unit price (RM)" },
-  { field: "lineTotal", headerName: "Total (RM)" },
+  { field: "unitPrice", headerName: "Unit price", valueFormatter: (p) => formatMoney(p.value) },
+  { field: "lineTotal", headerName: "Total", valueFormatter: (p) => formatMoney(p.value) },
   { field: "deliveryDate", headerName: "Delivery date" },
   { field: "fulfilment", headerName: "Pickup / delivery" },
   { field: "reason", headerName: "Check" },
@@ -24,6 +24,15 @@ const NEEDED_MODULES = {
 };
 
 const $ = (id) => document.getElementById(id);
+
+// The currency comes from data/menu.json (via /api/state), never from the code.
+let currency = null;
+
+// "54.00" -> "RM 54.00" (MYR) or "$54.00" (USD). Same Intl options as formatMoney in src/money.js.
+function formatMoney(amount) {
+  if (amount == null || !currency) return amount ?? "";
+  return new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol" }).format(Number(amount));
+}
 
 // Today in the seller's own time zone (toISOString() would give the UTC date).
 function todayLocal() {
@@ -55,8 +64,9 @@ async function showServerState() {
     const res = await fetch("/api/state");
     const state = await res.json();
     if (!res.ok) throw new Error(state.error ?? `HTTP ${res.status}`);
+    currency = state.menu.currency;
     $("status").textContent = [
-      `${state.menu.items.length} menu items`,
+      `${state.menu.items.length} menu items (${currency})`,
       `AI mode: ${state.aiMode}`,
       `PayPal keys: ${state.paypalConfigured ? "set" : "missing"}`,
       `Gemini key: ${state.geminiConfigured ? "set" : "missing"}`,

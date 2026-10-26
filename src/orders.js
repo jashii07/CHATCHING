@@ -3,6 +3,10 @@
 // Anything that fails a check becomes an unclear row with a reason. Nothing is dropped silently.
 import { toSen, fromSen } from "./money.js";
 
+// Currency codes the computer knows, and PayPal's currencies that take no decimals (PayPal docs, "Currency codes").
+const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
+const NO_DECIMALS = ["HUF", "JPY", "TWD"];
+
 const findItem = (menu, itemId) => menu.items.find((item) => item.id === itemId);
 const cleanName = (buyer) => (typeof buyer === "string" ? buyer.trim() : "");
 // "Mak's Choc-Chip!" -> "mak s choc chip": lowercase words only. Used for chat text AND aliases.
@@ -13,6 +17,11 @@ const cleanWords = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]
 export function checkMenu(menu) {
   if (!Array.isArray(menu?.items)) return ["The menu has no items list."];
   const problems = [];
+  if (!CURRENCIES.has(menu.currency)) {
+    problems.push(`Bad currency ${JSON.stringify(menu.currency)}: use a 3-letter code like "MYR" or "USD".`);
+  } else if (NO_DECIMALS.includes(menu.currency)) {
+    problems.push(`PayPal bills ${menu.currency} without decimals, but menu prices use cents ("18.00"). Use another currency.`);
+  }
   const seen = new Set();
   menu.items.forEach((item, i) => {
     const label = item?.id ? `"${item.id}"` : `item ${i + 1}`;
@@ -118,7 +127,7 @@ export function groupByBuyer(rows) {
   });
 }
 
-// For the pinned totals row: how many orders can be invoiced, and their RM total.
+// For the pinned totals row: how many orders can be invoiced, and their total.
 export function totals(rows) {
   const ready = groupByBuyer(rows).filter((group) => group.invoiceable);
   return { orders: ready.length, total: fromSen(ready.reduce((sum, group) => sum + toSen(group.total), 0)) };
