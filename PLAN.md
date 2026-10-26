@@ -212,7 +212,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 
 1. ✅ (done Sun 25 Oct) Express skeleton, menu, demo chats, empty page. Load AG Grid 36.2.0 from the CDN, and check that CSV export, cell flashing and the quick filter are in the bundle.
 2. AG Grid table showing orders; edit cells → `PUT /api/orders/:id`. Select editor (menu items) + date editor.
-3. `orders.js` + `dates.js` pure logic (prices, totals, grouping per buyer, status mapping, day words) + tests.
+3. ✅ (done Mon 26 Oct) `money.js` + `orders.js` + `dates.js` pure logic (prices, totals, grouping per buyer, status mapping, day words) + tests.
 
 **3b. AI reality check (spike), Wed 28 Oct.** Why: the AI is the least-proven part. We proved PayPal on day 1; now we prove the AI before building on it.
 - `scripts/spike-parse.mjs` makes ONE real `gemini-3.6-flash` call on `data/demo-chats.txt`, with the menu (ids, aliases, the "plain brownies = unclear" rule), chat date 2026-10-28 (each message gets its full date from `dates.js`) and the planned JSON schema (Section 5).
@@ -261,7 +261,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Date | Goal | Done when |
 |---|---|---|
 | Sun 25 Oct (extra) | ✅ **Step 1 DONE early**: Express skeleton, page, AG Grid from CDN, config, error handler, tests + `npm run check` | `npm start` shows a page with an empty grid; CSV/flash/quick filter present in the bundle; `npm run check` passes |
-| Mon 26 Oct (2 h) | Step 3: orders.js + dates.js + tests (moved up from Wed: pure logic, no UI, so it doesn't wait for the UI spec) | `npm test` passes, incl. "brwnies" → unclear, "cheese brownies" → cheese_brownies and the 8 date cases in Section 6 |
+| Mon 26 Oct (2 h) | ✅ **Step 3 DONE** (61 new tests): money.js + orders.js + dates.js + tests (moved up from Wed: pure logic, no UI, so it doesn't wait for the UI spec) | `npm test` passes, incl. "brwnies" → unclear, "cheese brownies" → cheese_brownies and the 8 date cases in Section 6 |
 | Tue 27 Oct (2 h) | Step 2: AG Grid table + edits, select + date editors, **following the UI spec (Section 12)**. **You: fill in Section 12 from your sketch before this session** | Edits survive a page reload; the page matches Section 12 |
 | Wed 28 Oct (2 h) | **Step 3b: AI reality check** (the day freed by finishing Step 1 early): one real gemini-3.6-flash call, **max 3 that day** | Call time + comparison with expected-orders.json printed and logged in DECISIONS.md; the real reply saved as the mock-AI data |
 | Thu 29 Oct (2 h) | Step 4: parse with mock AI (= Wednesday's real Gemini reply) + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
