@@ -285,15 +285,20 @@ Hard deadline: 13 Nov 2026, 4:00 AM MYT. Hosted demo and sandbox logins must kee
 
 ### After submission (12 Nov – 16 Dec)
 
-Judging runs until 16 Dec, and judges need free access the whole time. **Every 2–3 days:**
+Judging runs until 16 Dec, and judges need free access the whole time.
+
+**Frozen after the deadline** (official rules, Section 5: "Once the Submission Period has ended, you may not make any changes or alterations to your Submission."):
+- [ ] Right after submitting: tag the submitted commit and push the tag: `git tag submission`, then `git push origin submission`. From then on `main` is frozen.
+- Only maintenance: restarting Render, renewing keys in Render's settings, fixing judge logins. **No code or README changes.**
+- If the code ever needs a fix, ask Devpost in writing first, and wait for their answer.
+
+**Every 2–3 days:**
 - [ ] The hosted URL loads (a slow first load can be Render waking the free service up).
 - [ ] Both judge logins work at https://www.sandbox.paypal.com.
 - [ ] The PayPal sandbox app still works: `node --env-file=.env scripts/smoke-paypal.mjs` → "token OK: yes" (same keys as on Render).
 - [ ] The Gemini key still works and the model still exists (models get retired): `node --env-file=.env scripts/smoke-gemini.mjs` (1 call).
 - [ ] Render hasn't paused or suspended the service (the dashboard shows it live).
-- [ ] Write the date and results in the log below. Fix anything that fails the same day.
-
-Open question: RULES.md doesn't say whether code or README changes are allowed after the deadline. Check the official rules before fixing anything that needs a commit.
+- [ ] Write the date and results in the log below. Fix anything that fails the same day (maintenance only, see "Frozen after the deadline" above).
 
 | Date | URL loads | Judge login 1 | Judge login 2 | PayPal | Gemini | Render live | Notes |
 |---|---|---|---|---|---|---|---|

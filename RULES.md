@@ -31,6 +31,14 @@ Tick each box before submitting. Deadline: 13 Nov 2026, 4:00 AM MYT. Judging end
   5. [ ] Presentation
 - [ ] AI may be used in judging, so the README must be clear and well structured.
 
+## After the deadline (official rules, Section 5)
+
+The rules say: "Once the Submission Period has ended, you may not make any changes or alterations to your Submission."
+
+- [ ] After the deadline, `main` is frozen. Tag the submitted commit (`git tag submission`) and push the tag (`git push origin submission`).
+- [ ] Only maintenance is allowed: restarting Render, renewing keys in Render's settings, fixing judge logins. No code or README changes.
+- [ ] If the code ever needs a fix, ask Devpost in writing first, and wait for their answer.
+
 ## Prizes
 
 - A project can win at most one grand prize OR one honourable mention, plus one sponsor prize.
