@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { toSen, fromSen } from "../src/money.js";
-import { toRows, groupByBuyer, totals, mapPayPalStatus } from "../src/orders.js";
+import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem, checkMenu } from "../src/orders.js";
 import { parseTimestamp, resolveDayWord } from "../src/dates.js";
 
 const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8"));
@@ -36,6 +36,10 @@ describe("1a. paste formats", () => {
 
   test('Android style with no brackets: "28/10/26, 9:02 am - Lina: hi"', { todo: true }, () => {
     assert.equal(parseTimestamp("28/10/26, 9:02 am - Lina: hi", CHAT).date, "2026-10-28");
+  });
+
+  test('time first (web copy): "[9:02 am, 28/10/2026] Lina: hi"', { todo: true }, () => {
+    assert.equal(parseTimestamp("[9:02 am, 28/10/2026] Lina: hi", CHAT).date, "2026-10-28");
   });
 
   test("an invisible left-to-right mark before the [ (some phone exports add one)", { todo: true }, () => {
@@ -83,7 +87,7 @@ describe("1b. buyer names", () => {
     assert.deepEqual(groups("Lina", " Lina "), ["Lina"]);
   });
 
-  test('"Lina" and "lina" -> one buyer (today: 2 buyers, so 2 invoices)', { todo: true }, () => {
+  test('"Lina" and "lina" -> one buyer (fixed 26 Oct: same person, 1 invoice)', () => {
     assert.equal(groups("Lina", "lina").length, 1);
   });
 
@@ -123,7 +127,7 @@ describe("1c. broken AI output", () => {
     }
   });
 
-  test("a null or missing entry INSIDE items -> unclear row, no crash", { todo: true }, () => {
+  test("a null or missing entry INSIDE items -> unclear row, no crash", () => {
     for (const items of [[null], [undefined], [null, { itemId: "cookies", qty: 1 }]]) {
       const rows = toRows([order("Ali", { items })], menu);
       assert.equal(rows.length, items.length);
@@ -141,14 +145,14 @@ describe("1c. broken AI output", () => {
     assert.equal(toRows([order("Ali", { items: [{ itemId: "cookies", qty: -2 }] })], menu)[0].unclear, true);
   });
 
-  test("the qty reason shows the real bad value (NaN, Infinity), not \"null\"", { todo: true }, () => {
+  test("the qty reason shows the real bad value (NaN, Infinity), not \"null\"", () => {
     for (const qty of [NaN, Infinity]) {
       const [row] = toRows([order("Ali", { items: [{ itemId: "cookies", qty }] })], menu);
       assert.match(row.reason, new RegExp(String(qty)));
     }
   });
 
-  test("a note or reason that isn't text still gives a text note and reason", { todo: true }, () => {
+  test("a note or reason that isn't text still gives a text note and reason", () => {
     const [row] = toRows([order("Ali", { note: { x: 1 }, unclear: true, reason: { y: 2 } })], menu);
     assert.equal(typeof row.note, "string");
     assert.doesNotMatch(row.reason, /object Object/);
@@ -158,11 +162,11 @@ describe("1c. broken AI output", () => {
     assert.throws(() => toRows(null, menu), /aiOrders must be an array/);
   });
 
-  test('mapPayPalStatus("__proto__" / "constructor") still returns text', { todo: true }, () => {
+  test('mapPayPalStatus("__proto__" / "constructor") still returns text', () => {
     for (const s of ["__proto__", "constructor"]) assert.equal(typeof mapPayPalStatus(s), "string", s);
   });
 
-  test('resolveDayWord("__proto__" / "constructor") -> null, no crash', { todo: true }, () => {
+  test('resolveDayWord("__proto__" / "constructor") -> null, no crash', () => {
     for (const w of ["__proto__", "constructor"]) assert.equal(resolveDayWord(w, CHAT), null, w);
   });
 });
@@ -279,7 +283,7 @@ function checkBroken(orders) {
 }
 
 describe("3. fuzz check: 200 random broken AI outputs", () => {
-  test("toRows never throws, and every bad row is unclear with a reason (incl. null entries inside items)", { todo: true }, () => {
+  test("toRows never throws, and every bad row is unclear with a reason (incl. null entries inside items)", () => {
     const rand = seeded(42);
     const crashes = [];
     for (let run = 0; run < 200; run++) {
@@ -292,5 +296,53 @@ describe("3. fuzz check: 200 random broken AI outputs", () => {
   test("same check WITHOUT null entries inside items (guards everything else today)", () => {
     const rand = seeded(42);
     for (let run = 0; run < 200; run++) checkBroken(brokenOutput(rand, { nullItemEntries: false }));
+  });
+});
+
+describe("4. code-review findings (26 Oct)", () => {
+  test("#8 recalcRow: a buyer edited to spaces only -> unclear, not invoiceable", () => {
+    const [row] = toRows([order("Lina")], menu);
+    const edited = recalcRow({ ...row, buyer: "   " }, menu);
+    assert.equal(edited.unclear, true);
+    assert.match(edited.reason, /Buyer name missing/);
+    assert.equal(groupByBuyer([edited])[0].invoiceable, false);
+  });
+
+  test("#13 checkMenu: the real menu has no problems", () => {
+    assert.deepEqual(checkMenu(menu), []);
+  });
+
+  test("#13 checkMenu: a bad price, a missing id or name, or a repeated id are named", () => {
+    const bad = {
+      currency: "MYR",
+      items: [
+        { id: "a", name: "A", price: 18, aliases: [] },
+        { id: "", name: "B", price: "1.00", aliases: [] },
+        { id: "c", name: "", price: "1.00", aliases: "c" },
+        { id: "a", name: "A again", price: "2.00", aliases: [] },
+      ],
+    };
+    const problems = checkMenu(bad).join("\n");
+    assert.match(problems, /"a".*price/);
+    assert.match(problems, /item 2.*id/);
+    assert.match(problems, /"c".*name/);
+    assert.match(problems, /"c".*aliases/);
+    assert.match(problems, /"a".*more than once/);
+    assert.match(checkMenu(null).join(""), /items/);
+  });
+
+  test("#14 matchMenuItem: aliases with punctuation match (\"mak's kuih\", \"choc-chip\")", () => {
+    const m = { ...menu, items: [...menu.items,
+      { id: "mak_kuih", name: "Mak's kuih", price: "5.00", aliases: ["mak's kuih"] },
+      { id: "chip_bar", name: "Chip bar", price: "5.00", aliases: ["chip-bar"] }] };
+    assert.equal(matchMenuItem("2 mak's kuih", m).itemId, "mak_kuih");
+    assert.equal(matchMenuItem("nak chip-bar 1", m).itemId, "chip_bar");
+  });
+
+  test("#15 matchMenuItem: a repeated alias (\"x y x y\") is still one item", () => {
+    const m = { currency: "MYR", ambiguous: [], items: [
+      { id: "A", name: "A", price: "1.00", aliases: ["x y"] },
+      { id: "B", name: "B", price: "1.00", aliases: ["y"] }] };
+    assert.deepEqual(matchMenuItem("x y x y", m), { itemId: "A", unclear: false, reason: "" });
   });
 });

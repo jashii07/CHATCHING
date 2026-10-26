@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
+import { checkMenu } from "./orders.js";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
@@ -10,11 +11,15 @@ const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
 const pathOf = (req) => req.originalUrl.split("?")[0];
 
 function loadMenu() {
+  let menu;
   try {
-    return JSON.parse(readFileSync(MENU_FILE, "utf8"));
+    menu = JSON.parse(readFileSync(MENU_FILE, "utf8"));
   } catch (err) {
     throw new Error(`Could not read data/menu.json: ${err.message}`);
   }
+  const problems = checkMenu(menu);
+  if (problems.length) throw new Error(`data/menu.json has problems: ${problems.join(" ")}`);
+  return menu;
 }
 
 // ONE error handler: every error becomes JSON { error } with a fitting status code.

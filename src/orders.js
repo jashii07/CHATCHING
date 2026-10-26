@@ -4,6 +4,29 @@
 import { toSen, fromSen } from "./money.js";
 
 const findItem = (menu, itemId) => menu.items.find((item) => item.id === itemId);
+const cleanName = (buyer) => (typeof buyer === "string" ? buyer.trim() : "");
+// "Mak's Choc-Chip!" -> "mak s choc chip": lowercase words only. Used for chat text AND aliases.
+const cleanWords = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// Problems in menu.json, as plain sentences ([] = all good). The server checks this once at start,
+// so a bad price stops the server with a clear message instead of crashing on the first order.
+export function checkMenu(menu) {
+  if (!Array.isArray(menu?.items)) return ["The menu has no items list."];
+  const problems = [];
+  const seen = new Set();
+  menu.items.forEach((item, i) => {
+    const label = item?.id ? `"${item.id}"` : `item ${i + 1}`;
+    if (typeof item?.id !== "string" || !item.id) problems.push(`${label} has no id.`);
+    else if (seen.has(item.id)) problems.push(`${label} is used more than once.`);
+    else seen.add(item.id);
+    if (typeof item?.name !== "string" || !item.name.trim()) problems.push(`${label} has no name.`);
+    if (!/^\d+(\.\d{1,2})?$/.test(typeof item?.price === "string" ? item.price : "")) {
+      problems.push(`${label} has a bad price ${JSON.stringify(item?.price)}: use text like "18.00".`);
+    }
+    if (!Array.isArray(item?.aliases)) problems.push(`${label} needs an aliases list.`);
+  });
+  return problems;
+}
 
 // The checks for one item + qty. Returns the menu facts and the reasons it is unclear (if any).
 function checkItem(itemId, qty, menu) {
@@ -14,7 +37,10 @@ function checkItem(itemId, qty, menu) {
 
   const qtyOk = Number.isInteger(qty) && qty >= 1 && qty <= 99;
   if (qty == null) reasons.push("Quantity missing.");
-  else if (!qtyOk) reasons.push(`Quantity must be a whole number from 1 to 99 (got ${JSON.stringify(qty)}).`);
+  else if (!qtyOk) {
+    const shown = typeof qty === "number" ? String(qty) : JSON.stringify(qty); // NaN stays "NaN", not "null"
+    reasons.push(`Quantity must be a whole number from 1 to 99 (got ${shown}).`);
+  }
 
   return {
     itemName: item?.name ?? null,
@@ -31,15 +57,20 @@ export function toRows(aiOrders, menu) {
   if (!Array.isArray(aiOrders)) throw new TypeError("aiOrders must be an array");
   const rows = [];
   for (const order of aiOrders) {
-    const buyer = typeof order?.buyer === "string" ? order.buyer.trim() : "";
+    const buyer = cleanName(order?.buyer);
     const orderStatus = order?.status === "cancelled" ? "cancelled" : "active";
     const orderReasons = [];
-    if (order?.unclear) orderReasons.push(order.reason || "The AI marked this order unclear.");
+    if (order?.unclear) {
+      const aiReason = typeof order.reason === "string" && order.reason.trim();
+      orderReasons.push(aiReason || "The AI marked this order unclear.");
+    }
     if (!buyer) orderReasons.push("Buyer name missing.");
 
     // An order with no items still gets one row, so the seller sees it.
-    const items = Array.isArray(order?.items) && order.items.length ? order.items : [{ itemId: null, qty: null }];
-    for (const { itemId = null, qty = null } of items) {
+    // A null or broken entry inside items becomes an empty (unclear) row instead of a crash.
+    const items = Array.isArray(order?.items) && order.items.length ? order.items : [null];
+    for (const entry of items) {
+      const { itemId = null, qty = null } = entry && typeof entry === "object" ? entry : {};
       const check = checkItem(itemId, qty, menu);
       const reasons = orderStatus === "active" ? [...orderReasons, ...check.reasons] : [];
       rows.push({
@@ -48,7 +79,7 @@ export function toRows(aiOrders, menu) {
         unitPrice: check.unitPrice, lineTotal: check.lineTotal,
         deliveryDate: order?.deliveryDate ?? null, fulfilment: order?.fulfilment ?? null,
         unclear: reasons.length > 0, reason: reasons.join(" "),
-        note: order?.note ?? "", sourceMsgs: order?.sourceMsgs ?? [],
+        note: typeof order?.note === "string" ? order.note : "", sourceMsgs: order?.sourceMsgs ?? [],
         invoiceId: null, invoiceNumber: null, payerLink: null, invoiceStatus: "Draft",
       });
     }
@@ -60,7 +91,7 @@ export function toRows(aiOrders, menu) {
 // The edit counts as the seller's fix, so the AI's own "unclear" flag is dropped; only our checks remain.
 export function recalcRow(row, menu) {
   const check = checkItem(row.itemId, row.qty, menu);
-  if (!row.buyer) check.reasons.unshift("Buyer name missing.");
+  if (!cleanName(row.buyer)) check.reasons.unshift("Buyer name missing.");
   const reasons = row.orderStatus === "active" ? check.reasons : [];
   return {
     ...row,
@@ -70,13 +101,15 @@ export function recalcRow(row, menu) {
 }
 
 // One invoice group per buyer, in table order. Cancelled rows are skipped.
+// "Lina", "lina" and " Lina " are one buyer (one invoice), shown with the first spelling.
 // A buyer is invoiceable only when ALL their active rows are clear; total is null otherwise.
 export function groupByBuyer(rows) {
   const groups = new Map();
   for (const row of rows) {
     if (row.orderStatus !== "active") continue;
-    if (!groups.has(row.buyer)) groups.set(row.buyer, { buyer: row.buyer, rows: [] });
-    groups.get(row.buyer).rows.push(row);
+    const key = cleanName(row.buyer).toLowerCase();
+    if (!groups.has(key)) groups.set(key, { buyer: row.buyer, rows: [] });
+    groups.get(key).rows.push(row);
   }
   return [...groups.values()].map((group) => {
     const invoiceable = group.rows.every((row) => !row.unclear);
@@ -105,25 +138,28 @@ const PAYPAL_STATUS = {
 // No invoice yet -> "Draft". A status PayPal adds later is shown as-is, never hidden.
 export function mapPayPalStatus(status) {
   if (status == null) return "Draft";
-  return PAYPAL_STATUS[status] ?? status;
+  return Object.hasOwn(PAYPAL_STATUS, status) ? PAYPAL_STATUS[status] : String(status);
 }
 
 // Free text ("2 kotak brownies classic") -> one menu item, using the menu aliases.
 // Longest aliases are matched first and then blanked out, so "cheese brownies" is used up
-// before the ambiguous word "brownies" is checked. Whole words only.
+// before the ambiguous word "brownies" is checked. Whole words only; text and aliases are
+// cleaned the same way, so "choc-chip" in the menu matches "choc-chip" in a chat.
 export function matchMenuItem(text, menu) {
   const unclear = (reason) => ({ itemId: null, unclear: true, reason });
-  let words = ` ${String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  let words = ` ${cleanWords(text)} `;
   if (!words.trim()) return unclear("No item text.");
 
   const aliases = menu.items
-    .flatMap((item) => item.aliases.map((alias) => ({ id: item.id, alias: alias.toLowerCase() })))
+    .flatMap((item) => item.aliases.map((alias) => ({ id: item.id, alias: cleanWords(alias) })))
+    .filter(({ alias }) => alias)
     .sort((a, b) => b.alias.length - a.alias.length);
   const found = new Set();
   for (const { id, alias } of aliases) {
-    if (words.includes(` ${alias} `)) {
+    // One at a time, leaving one space behind, so back-to-back repeats ("x y x y") are all used up.
+    while (words.includes(` ${alias} `)) {
       found.add(id);
-      words = words.replaceAll(` ${alias} `, "  ");
+      words = words.replace(` ${alias} `, " ");
     }
   }
 
@@ -132,6 +168,6 @@ export function matchMenuItem(text, menu) {
     const names = [...found].map((id) => findItem(menu, id).name).join(", ");
     return unclear(`More than one menu item: ${names}.`);
   }
-  const ambiguous = (menu.ambiguous ?? []).find((a) => a.words.some((w) => words.includes(` ${w.toLowerCase()} `)));
+  const ambiguous = (menu.ambiguous ?? []).find((a) => a.words.some((w) => words.includes(` ${cleanWords(w)} `)));
   return unclear(ambiguous ? ambiguous.reason : `No menu item found in "${String(text).trim()}".`);
 }

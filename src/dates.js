@@ -90,8 +90,9 @@ export function resolveDayWord(word, messageDate) {
   if (start === null) throw new RangeError(`Not a valid message date: ${JSON.stringify(messageDate)}`);
 
   const key = typeof word === "string" ? word.trim().toLowerCase() : "";
-  if (key in OFFSETS) return toIso(start + OFFSETS[key]);
-  if (key in DAY_NAMES) {
+  // Object.hasOwn, not "in": "in" would also accept names every object has, like "constructor".
+  if (Object.hasOwn(OFFSETS, key)) return toIso(start + OFFSETS[key]);
+  if (Object.hasOwn(DAY_NAMES, key)) {
     const today = new Date(start * DAY_MS).getUTCDay();
     return toIso(start + ((DAY_NAMES[key] - today + 7) % 7 || 7));
   }
