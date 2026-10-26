@@ -443,8 +443,8 @@ Badge colours for "Part paid" and "Paid (cash/bank)" are Claude's choice (the sp
 - Quartz theme, tuned with `themeQuartz.withParams({...})` using the colours above: background white, text navy, accent blue, borders warm grey, header background cream, font = the system stack, font size 15 px, hover/selected rows a light warm tint (not blue, because blue means clickable).
 - Check the exact `withParams` names against the 36.2.0 docs in Step 2 before using them.
 
-### Open question (ask in Step 2)
-- **Errors** (for example "PayPal is not working right now"): the colour rule has no red. Option A: show errors with the amber tint + the word "Error:". Option B: keep a small red only for errors. Claude recommends A (it keeps the rule).
+### Errors (decided Mon 26 Oct)
+- Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in navy, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".
 
 ## 13. Video storyboard (placeholder: you draft it by Fri 30 Oct)
 
