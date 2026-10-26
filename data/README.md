@@ -5,10 +5,10 @@
 | File | What it is |
 |------|------------|
 | `menu.json` | The seller's fixed menu. Prices are in MYR. This is the ONLY source of prices: the AI never sets a price. |
-| `demo-chats.txt` | One day of chat orders (Wed 28 Oct 2026) in mixed English/Malay. One message per line. |
+| `demo-chats.txt` | One day of chat orders (Wed 28 Oct 2026) in English. One message per line. |
 | `expected-orders.json` | The correct answers for `demo-chats.txt`, used to measure AI accuracy. Orders use the same field names as the AI output (PLAN.md Section 5). `sourceMsgs` are 1-based line numbers in `demo-chats.txt`. `total`, `notOrders` and `summary` are extra fields for checking only; the AI never returns prices. |
 
-The demo's fixed chat date is `chatDate: "2026-10-28"` in `expected-orders.json`, so the dates are the same on any day. Date words in the chats, counted from Wed 28 Oct 2026: "esok" (tomorrow) = Thu 29 Oct, "Friday" = Fri 30 Oct, "sabtu" (Saturday) = Sat 31 Oct, "ahad" (Sunday) = Sun 1 Nov.
+The demo's fixed chat date is `chatDate: "2026-10-28"` in `expected-orders.json`, so the dates are the same on any day. Date words in the chats, counted from Wed 28 Oct 2026: "tomorrow" = Thu 29 Oct, "Friday" = Fri 30 Oct, "Saturday" = Sat 31 Oct, "this Sunday" = Sun 1 Nov.
 
 Expected result: 7 clear orders worth RM 387.00, 1 unclear (Priya), 1 cancelled (Danish), and 1 message that is not an order (Lina's payment-link request).
 
@@ -22,5 +22,5 @@ Expected result: 7 clear orders worth RM 387.00, 1 unclear (Priya), 1 cancelled 
 - [ ] Places changed (areas, landmarks, schools, offices).
 - [ ] Events changed (weddings, kenduri, birthdays with names or dates that point to someone).
 - [ ] Anything else that could identify a buyer changed or removed (emails, account numbers, social handles, photos).
-- [ ] The messy writing style is KEPT: typos, short forms, mixed English/Malay, emoji.
+- [ ] The messy writing style is KEPT: typos, short forms, emoji.
 - [ ] My friend's permission covers a **public GitHub repo** AND sending the chats to **Google's Gemini free tier** (where "human reviewers may read" inputs).

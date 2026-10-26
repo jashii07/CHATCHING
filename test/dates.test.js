@@ -3,6 +3,7 @@
 // to prove dates.js only uses the chat date and never reads the clock.
 import { describe, test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { parseTimestamp, resolveDayWord } from "../src/dates.js";
 
 const WARNING = "Check the Chat date";
@@ -18,17 +19,17 @@ for (const clock of CLOCKS) {
     });
 
     // PLAN.md Section 6 test table.
-    test('2026-10-28 · [28/10] "sabtu" -> 2026-10-31', () => {
+    test('2026-10-28 · [28/10] "Saturday" -> 2026-10-31', () => {
       const msg = parseTimestamp("[28/10 9:02 AM]", "2026-10-28");
       assert.equal(msg.date, "2026-10-28");
-      assert.equal(resolveDayWord("sabtu", msg.date), "2026-10-31");
+      assert.equal(resolveDayWord("Saturday", msg.date), "2026-10-31");
     });
 
-    test('2026-10-28 · [28/10] "esok" / "Friday" / "ahad" -> 29 Oct / 30 Oct / 1 Nov', () => {
+    test('2026-10-28 · [28/10] "tomorrow" / "Friday" / "Sunday" -> 29 Oct / 30 Oct / 1 Nov', () => {
       const { date } = parseTimestamp("[28/10]", "2026-10-28");
-      assert.equal(resolveDayWord("esok", date), "2026-10-29");
+      assert.equal(resolveDayWord("tomorrow", date), "2026-10-29");
       assert.equal(resolveDayWord("Friday", date), "2026-10-30");
-      assert.equal(resolveDayWord("ahad", date), "2026-11-01");
+      assert.equal(resolveDayWord("Sunday", date), "2026-11-01");
     });
 
     test("2027-01-02 · [31/12] -> 2026-12-31, no warning (2 days before)", () => {
@@ -156,4 +157,13 @@ describe("resolveDayWord: more cases", () => {
   test("a bad message date throws", () => {
     assert.throws(() => resolveDayWord("esok", "2026-13-01"), /message date/i);
   });
+});
+
+test("the demo chats' day words give the dates in expected-orders.json", () => {
+  const expected = JSON.parse(readFileSync(new URL("../data/expected-orders.json", import.meta.url), "utf8"));
+  const chats = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8").toLowerCase();
+  for (const [word, date] of Object.entries(expected.dateHints)) {
+    assert.ok(chats.includes(word), `"${word}" is in demo-chats.txt`);
+    assert.equal(resolveDayWord(word, expected.chatDate), date, word);
+  }
 });

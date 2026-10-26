@@ -4,7 +4,7 @@ Status: APPROVED 2026-10-25 (with changes). Standout features added 2026-10-25 (
 
 ## 1. Problem
 
-Small home sellers in Malaysia take orders as messy chat messages in mixed English/Malay ("kak nak 2 brownies hantar sabtu"). They copy orders into Excel by hand, work out totals, then chase each buyer for payment one by one. It is slow and things get missed.
+Small home sellers take orders as messy chat messages in English ("can i order 2 boxes of classic brownies, deliver on saturday?"). The demo seller is in Malaysia, so prices are in RM. They copy orders into Excel by hand, work out totals, then chase each buyer for payment one by one. It is slow and things get missed.
 
 ## 2. User
 
@@ -32,16 +32,16 @@ One Node 24 server (Express) serves the page and the API. The page is plain HTML
 server.js                 Express app: routes + serves public/
 src/paypal.js             token (cached in memory) + create/send/get invoice, record payment, QR code
 src/ai.js                 Gemini: one batched call, timeout, retry, backup model, cache, mock mode
-src/messages.js           placeholders {items} {total} {date} {link}, checks, English/Malay templates
+src/messages.js           placeholders {items} {total} {date} {link}, checks, English templates
 src/fallback.js           non-AI: alias-based parser
 src/orders.js             pure logic: prices from menu, totals, group rows by buyer, status mapping
-src/dates.js              message timestamps + day words ("esok", "sabtu", "Friday") -> dates
+src/dates.js              message timestamps + day words ("tomorrow", "Saturday", "Friday") -> dates
 src/store.js              saves orders + AI usage counter to data/*.json
 public/index.html         the page
 public/app.js             AG Grid table, buyer panel, buttons, polling
 public/styles.css
 data/menu.json            fixed menu (item -> price, aliases)
-data/demo-chats.txt       fictional mixed English/Malay chats
+data/demo-chats.txt       fictional English chats
 data/expected-orders.json correct answers for demo-chats.txt
 data/holdout-chats.txt    (by 1 Nov) real, anonymised chats from a seller, never used while tuning the prompt
 data/holdout-expected.json (by 1 Nov) correct answers for holdout-chats.txt, written by Jasper
@@ -122,12 +122,12 @@ Only one new package is planned: **express**.
     "note": "Asked for last week's order; no items given." }
 ] }
 ```
-- `status`: `"active"` or `"cancelled"`. The AI applies changes ("tukar jadi 3"), add-ons ("add 1 jar cookies") and cancellations ("cancel la") from later messages.
+- `status`: `"active"` or `"cancelled"`. The AI applies changes ("make it 3 boxes"), add-ons ("add 1 jar cookies") and cancellations ("actually cancel pls") from later messages.
 - `sourceMsgs`: the message numbers used, so the seller can see where each order came from.
 - `itemId` can be `null` when unclear.
 - `fulfilment`: `"delivery"`, `"pickup"` or `null`. It decides whether the pickup QR button shows (#3b).
 - `note`: one line, max 120 characters, saying what the AI did. It is shown as plain text only (#1).
-- Questions ("ada lagi tak bahulu?") and payment requests ("send link payment") are **not** orders. They appear only in `sourceMsgs` if they belong to a real order.
+- Questions ("do you still have bahulu?") and payment requests ("pls send me the payment link") are **not** orders. They appear only in `sourceMsgs` if they belong to a real order.
 
 Our code checks every order:
 - `itemId` must be `null` or exist in the menu.
@@ -177,15 +177,15 @@ Proven in the smoke tests on 2026-10-25:
   - **Year rule ("nearest date"):** each message gets the year (the chat date's year, or one before or after) that puts it **nearest** to the chat date. On a tie, the earlier year wins. So `[31/12]` with chat date 2 Jan 2027 is 31 Dec 2026, and `[28/10]` with chat date 28 Oct 2026 is 28 Oct 2026.
   - **Warning, never a silent move:** if the result is **after** the chat date, or **more than 60 days** away from it, the row gets a visible warning "Check the Chat date". The seller decides; the code never quietly moves a message to another year.
   - **Impossible dates** (for example `[29/2]` when the nearest year has no 29 Feb, or `[31/4]`) make the row unclear. No guessing.
-  - The code turns each timestamp into a full date with its weekday ("Wed 28 Oct 2026") before sending it to the AI. A day name means the next such day after the message date, so "esok" in a message from Wed 28 Oct is Thu 29 Oct, and "sabtu" is Sat 31 Oct.
+  - The code turns each timestamp into a full date with its weekday ("Wed 28 Oct 2026") before sending it to the AI. A day name means the next such day after the message date, so "tomorrow" in a message from Wed 28 Oct is Thu 29 Oct, and "Saturday" is Sat 31 Oct.
   - `src/dates.js` takes the chat date as an input and never reads the computer's clock. It does the same conversion without AI for the fallback parser. Our code then checks the AI's dates (Section 5).
   - The chat date is part of the AI cache key, so the same chats with a different chat date are not answered from the cache.
   - **Test cases** (`test/dates.test.js`):
 
     | Chat date | Message | Expected |
     |---|---|---|
-    | 2026-10-28 | `[28/10]` "sabtu" | 2026-10-31, the same whether the test runs on 26 Oct 2026 or in December (test runs with the clock faked to both days) |
-    | 2026-10-28 | `[28/10]` "esok" / "Friday" / "ahad" | 2026-10-29 / 2026-10-30 / 2026-11-01 |
+    | 2026-10-28 | `[28/10]` "Saturday" | 2026-10-31, the same whether the test runs on 26 Oct 2026 or in December (test runs with the clock faked to both days) |
+    | 2026-10-28 | `[28/10]` "tomorrow" / "Friday" / "Sunday" | 2026-10-29 / 2026-10-30 / 2026-11-01 |
     | 2027-01-02 | `[31/12]` | message date 2026-12-31, no warning (2 days before) |
     | 2027-01-02 | `[2/1]` | message date 2027-01-02, no warning |
     | 2026-10-28 | `[29/10]` (1 day after the chat date) | message date 2026-10-29 **+ warning "Check the Chat date"** |
@@ -200,7 +200,7 @@ Proven in the smoke tests on 2026-10-25:
   - It matches menu aliases and numbers in each message, and `dates.js` handles the dates.
   - Ambiguous words like "brownies" become unclear rows.
   - It doesn't try to apply changes or cancellations. It flags a buyer with several messages as "check later messages".
-  - Messages and reminders fall back to the English/Malay templates.
+  - Messages and reminders fall back to the English templates.
 - **Daily call counter:** the server counts real calls per model per day and shows "AI calls left today: X/20" on the page. When it hits 0 the server stops calling and uses the fallback. Assumption: Google's day resets at midnight Pacific time (to verify). The count is our own estimate and may differ from Google's.
 - **Input limits:** at most ~50 messages / 10,000 characters per paste, to keep the call small and cheap.
 - **Accuracy:** measured with `scripts/accuracy.mjs` against known answers, and once against holdout chats the prompt was never tuned on (Section 10, #5).
@@ -231,7 +231,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - Mock mode by default; a real call only with `--real`.
    - `--holdout` runs it on the holdout chats (only once, on 7 Nov).
 9. Timeout, retry, backup model, daily counter, "AI calls left".
-10. **Ready-to-send messages + reminders (#2)**: one batched call each, placeholders, checks, English/Malay templates, Copy.
+10. **Ready-to-send messages + reminders (#2)**: one batched call each, placeholders, checks, English templates, Copy.
 11. Deploy to Render; end-to-end test on the hosted URL.
 12. **User test with a real seller (#5)**; non-AI fallback parser.
 13. Edge-case tests, **holdout accuracy run (#5)**, README, video script, Devpost draft.
@@ -270,7 +270,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Sun 1 Nov (5 h) | Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR | Real call once, cached after; clicking Arif shows his 2 messages + a QR. **You: holdout chats + expected answers saved** |
 | Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give 7 orders / RM 387.00 |
 | Tue 3 Nov (2 h) | Step 9: timeout, retry, backup, counter | "AI calls left" shown; quota 0 → friendly "AI busy" message |
-| Wed 4 Nov (2 h) | Step 10: ready-to-send messages + reminders | Every invoiced buyer has a copyable message with the real total + link, in their language |
+| Wed 4 Nov (2 h) | Step 10: ready-to-send messages + reminders | Every invoiced buyer has a copyable message with the real total + link |
 | Thu 5 Nov (2 h) | Step 11: deploy to Render | **Full flow works on the hosted URL** |
 | Fri 6 Nov (2 h) | 7 PM: **user test with your friend (10 min)** → LEARNING.md; then Step 12: non-AI fallback parser | Test notes saved; app works with `AI_MODE=off` |
 | Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins = the 2 judge accounts); **video script draft** (from the Section 13 storyboard); **save a Devpost draft**. **You: create 2 sandbox buyer accounts just for judges**, in English so judges can read the payment page (if one gets locked or its password changed, judges use the other) | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved; both judge logins work |
@@ -313,12 +313,12 @@ Chosen 2026-10-25. If time runs short, keep in this order: **5, 4, 1, 2, 3** (cu
 - The panel is our own HTML, because AG Grid's Side Bar is Enterprise. Features 2 and 3 reuse it for the message, the QR code and the record-cash button.
 
 ### 2. Ready-to-send message per buyer
-- **One batched AI call** for all invoiced buyers. For each buyer the AI returns `lang` (`"ms"`, `"en"` or `"mixed"`, matching how they wrote) and friendly wording with placeholders only: `{items}`, `{total}`, `{date}`, `{link}`.
+- **One batched AI call** for all invoiced buyers. For each buyer the AI returns friendly English wording with placeholders only: `{items}`, `{total}`, `{date}`, `{link}`.
 - **Our code fills in the placeholders** from the table and PayPal, so the AI can never write a price or a link.
-  - Example from the AI: `Hi Lina! Order {items} siap untuk {date} ye. Jumlah {total}, boleh bayar sini: {link}`
-  - Filled in by our code: `... Order 3 × Classic brownies (box of 6) siap untuk Sat 31 Oct ye. Jumlah RM 54.00, boleh bayar sini: https://www.sandbox.paypal.com/invoice/p/#INV2-...`
+  - Example from the AI: `Hi Lina! Your order of {items} is ready for {date}. The total is {total}, you can pay here: {link}`
+  - Filled in by our code: `... Your order of 3 × Classic brownies (box of 6) is ready for Sat 31 Oct. The total is RM 54.00, you can pay here: https://www.sandbox.paypal.com/invoice/p/#INV2-...`
 - **Checks:** the wording must contain `{total}` and `{link}`. It must not contain money ("RM", "$", numbers like 18.00) or web addresses. If it fails, that buyer gets the template instead.
-- **Template fallback:** one English and one Malay template. Without AI, the code picks Malay when the buyer's messages contain common Malay words (kak, nak, boleh, tak, ye, la).
+- **Template fallback:** one English message template (and one reminder template), used when there is no AI.
 - **Reminders use the same design:** same call shape, same checks, reminder templates.
 - Shown in the buyer panel and in a "Messages" list, each with a Copy button.
 - Cost: one call per batch of invoices and one per reminder round. With "Reset demo", judges get saved results (0 calls).
@@ -343,7 +343,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 ### 4. AG Grid extras (both Community, checked in AG Grid's module list)
 - **"Export CSV (opens in Excel)"** → `api.exportDataAsCsv()` (CsvExportModule, Community).
   - Real `.xlsx` export (`ExcelExportModule`) is **Enterprise**, so we don't use it.
-  - Risk: Excel can garble Malay text and emoji in a CSV. If it does, add a byte-order mark (BOM), a hidden marker that tells Excel the file is UTF-8.
+  - Risk: Excel can garble emoji and accented names in a CSV. If it does, add a byte-order mark (BOM), a hidden marker that tells Excel the file is UTF-8.
 - **The status cell flashes green when it turns Paid.** Polling notices the change, then calls `api.flashCells({ rowNodes, columns: ["invoiceStatus"] })` (HighlightChangesModule, Community).
   - The colour comes from the CSS variable `--ag-value-change-value-highlight-background-color`.
   - Only the change to Paid flashes, not every change.

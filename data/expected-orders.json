@@ -1,6 +1,6 @@
 {
   "chatDate": "2026-10-28",
-  "dateHints": { "esok": "2026-10-29", "sabtu": "2026-10-31", "ahad": "2026-11-01" },
+  "dateHints": { "tomorrow": "2026-10-29", "saturday": "2026-10-31", "sunday": "2026-11-01" },
   "orders": [
     {
       "buyer": "Lina", "status": "active", "sourceMsgs": [1, 4],
