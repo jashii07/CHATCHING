@@ -64,6 +64,7 @@ A step is done only when ALL of these are true:
 - TEST HONESTLY. Add simple checks for core logic and edge cases (empty input, bad input, API failure). Report failures plainly. Never say something works unless you ran it.
 - NO MAKING THINGS UP. If unsure about a library, API, or flag, say so and check the docs (especially the PayPal developer docs). Flag every assumption.
 - If the same error repeats 3 times, stop, summarize what we tried, and suggest a different approach.
+- Never call `python` on this machine (it can hang on Windows). Use Node for all scripts.
 - Don't overbuild. If something breaks the plan or time budget, say so and suggest the cheaper option.
 - If something I say seems wrong or unclear, tell me kindly before acting.
 - Give me at most ONE manual task at a time, with a clear "done when" check. Warn me in plain words before anything risky.

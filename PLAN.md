@@ -371,19 +371,80 @@ In suggested order:
    - Webhooks.
    - Finding the existing invoice after `DUPLICATE_INVOICE_NUMBER`, via invoice search.
 
-## 12. UI spec (placeholder: you fill it from your sketch before the grid step, Tue 27 Oct)
+## 12. UI spec (filled in Mon 26 Oct)
 
-**Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10). If a step needs something the spec doesn't cover, Claude asks before inventing it.
+**Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10), **and must be checked at laptop, iPad and phone widths** (1280 px, 820 px and 375 px). If a step needs something the spec doesn't cover, Claude asks before inventing it.
 
-| Topic | Your spec (to fill in) | Now (Step 1 page, for reference) |
+Goal (Jasper): clean but informative, warm, and working on every type of device.
+
+### Colours: few, each with one job
+
+| Colour | Hex | Job (only this) |
 |---|---|---|
-| Layout | _TODO_ | One column, max 1200 px wide: title + status line, chat card, orders card. The buyer panel (Step 7) opens on the right. |
-| Colours | _TODO_ | Light grey page `#f6f7f9`, white cards, blue button `#0b6bcb`, red errors `#b42318` |
-| AG Grid theme | _TODO_ | Quartz (the default). Free themes in 36.2.0: Quartz, Alpine, Balham, Material; colours, fonts and spacing can be tuned with `withParams` |
-| Spacing | _TODO_ | 16 px side gutters and card padding, 8 px rounded corners, grid 420 px tall |
-| Small screens | _TODO_ | The date + button row wraps; the grid scrolls sideways (11 columns) |
+| Cream | `#FBF7F0` | page background |
+| White | `#FFFFFF` | cards and the table |
+| Dark navy | `#1F2A44` | all text |
+| Muted grey | `#5B6270` | secondary text, cancelled rows *(Claude's addition: a grey, not a colour; 6.1:1 on white)* |
+| PayPal-ish blue | `#1D4E9E` | **clickable only**: main buttons (white text), links, Copy buttons, focus ring |
+| Warm amber | `#E0A030` | **"check this" only**: unclear rows and warnings |
+| Warm grey | `#E8E1D5` | card and table borders (decorative) |
+| Darker warm grey | `#8C8270` | borders of text boxes and inputs *(Claude's addition, see contrast below)* |
 
-Add rows if your sketch covers more (for example fonts or the buyer panel).
+**Colour rule:** blue = clickable, amber = check this, green = money arrived. Nothing else gets colour.
+
+**Status badges** (soft tints, navy text, rounded pill):
+
+| Badge | Background | Text |
+|---|---|---|
+| Draft | light grey `#EEF0F3` | navy |
+| Sent | light blue `#DCE8F7` | navy |
+| Part paid | light blue `#DCE8F7` | navy |
+| Paid / Paid (cash/bank) | light green `#DCF2E3` | navy |
+| Cancelled/Refunded | grey `#ECEDEF` | muted grey `#5B6270`, strikethrough |
+
+Badge colours for "Part paid" and "Paid (cash/bank)" are Claude's choice (the spec named 4 badges; the app has 6 states). The "Paid" cell flash uses the same light green.
+
+**Unclear rows and warnings:** a light amber tint `#FCEFD6` behind the row, plus a 4 px amber `#E0A030` stripe on its left edge, **plus the words "Check: \<reason\>"** in navy. The words matter because the amber stripe alone is too faint to rely on (see contrast).
+
+**Contrast check (WCAG AA: 4.5:1 for normal text, 3:1 for large text and input borders), measured 2026-10-26:**
+
+| Pair | Ratio | Result |
+|---|---|---|
+| navy on cream / on white | 13.35 / 14.26 | ✅ |
+| white on the blue button; blue link on white / on cream | 7.97; 7.97 / 7.46 | ✅ |
+| navy on the badge tints (Draft, Sent, Paid) | 12.49, 11.49, 12.12 | ✅ |
+| muted grey on the Cancelled tint / on white | 5.23 / 6.13 | ✅ |
+| navy on the amber tint `#FCEFD6` | 12.53 | ✅ |
+| **amber `#E0A030` as text** on white | 2.27 | ❌ so amber is **never used for text**, only tints and stripes |
+| **warm grey `#E8E1D5` border** on white | 1.30 | ❌ for inputs, so inputs use `#8C8270` (3.79 on white, 3.55 on cream). OK for decorative card borders |
+
+### Type
+- System font stack: `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
+- Body 16 px; table 15 px.
+- Money is right-aligned with tabular numbers (`font-variant-numeric: tabular-nums`), so the digits line up.
+
+### Layout
+
+| Width | Layout |
+|---|---|
+| **Laptop** (≥ 1024 px) | Chats on the left, table on the right. Clicking a row slides the buyer panel in from the right. |
+| **iPad** (641–1023 px) | The chat box sits at the top and can be collapsed. The table is full width. The buyer panel slides in from the right. |
+| **Phone** (≤ 640 px) | Everything stacked. The table shows only **Buyer, Item, Total, Status**. Tapping a row opens the buyer panel **full screen**. A sticky bottom bar shows the total and a "Send invoices" button (it replaces the pinned totals row on phones). |
+
+- Tap targets are at least 44 × 44 px on every device (buttons, Copy, row taps, the panel's close button).
+- The breakpoints (640 / 1024 px) are Claude's choice. A landscape iPad (1180 px wide) gets the laptop layout.
+- Spacing is kept from Step 1: 16 px side gutters and card padding, 8 px rounded corners.
+
+### 3-step guide
+- At the top of the page: **1 Paste → 2 Review → 3 Get paid**. The current step is highlighted: a filled navy circle and bold text. The other steps are muted grey. Not blue, because the steps aren't buttons.
+- The current step is worked out by Claude's suggested rule: no rows yet → 1; rows but no invoices → 2; any invoice sent → 3.
+
+### AG Grid
+- Quartz theme, tuned with `themeQuartz.withParams({...})` using the colours above: background white, text navy, accent blue, borders warm grey, header background cream, font = the system stack, font size 15 px, hover/selected rows a light warm tint (not blue, because blue means clickable).
+- Check the exact `withParams` names against the 36.2.0 docs in Step 2 before using them.
+
+### Open question (ask in Step 2)
+- **Errors** (for example "PayPal is not working right now"): the colour rule has no red. Option A: show errors with the amber tint + the word "Error:". Option B: keep a small red only for errors. Claude recommends A (it keeps the rule).
 
 ## 13. Video storyboard (placeholder: you draft it by Fri 30 Oct)
 
