@@ -67,6 +67,20 @@ function statusBadge(p) {
   return badge;
 }
 
+// The words for an unclear row: "Check: <reason>", or "" when the row is fine.
+const checkText = (data) => (data?.unclear && data.orderStatus === "active" ? `Check: ${data.reason}` : "");
+
+// Phones hide the Check column, so the item cell carries the words under the item name:
+// an amber row with no words only says "something's wrong", not what.
+function itemWithCheck(p) {
+  const words = p.node.rowPinned ? "" : checkText(p.data);
+  if (!words) return p.valueFormatted;
+  const cell = document.createElement("span");
+  const check = Object.assign(document.createElement("span"), { className: "check-text check-under", textContent: words });
+  cell.append(p.valueFormatted, check);
+  return cell;
+}
+
 // The columns. Phones get narrower minimum widths and only Buyer, Item, Total, Status.
 function columns(isPhone) {
   const narrow = (wide, small) => (isPhone ? small : wide);
@@ -79,6 +93,7 @@ function columns(isPhone) {
       cellEditorParams: () => ({ values: menuItems.map((item) => item.id) }),
       // The select editor shows its options through this formatter too, so the seller sees names.
       valueFormatter: (p) => (p.node?.rowPinned ? ordersText(totals.orders) : itemName(p.value)),
+      cellRenderer: isPhone ? itemWithCheck : undefined,
     },
     {
       field: "qty", headerName: "Qty", cellDataType: "number", type: "rightAligned", minWidth: 64, maxWidth: 96, hide: isPhone,
@@ -98,7 +113,7 @@ function columns(isPhone) {
     { field: "invoiceStatus", headerName: "Status", cellDataType: "text", minWidth: 92, cellRenderer: statusBadge },
     {
       colId: "check", headerName: "Check", cellDataType: "text", flex: 3, minWidth: 130, wrapText: true, autoHeight: true, hide: isPhone,
-      valueGetter: (p) => (p.data?.unclear && p.data.orderStatus === "active" ? `Check: ${p.data.reason}` : ""),
+      valueGetter: (p) => checkText(p.data),
       cellClass: "check-text",
     },
   ];

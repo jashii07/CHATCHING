@@ -215,6 +215,12 @@ button:hover {
   font-weight: 600;
 }
 
+/* Phones: the "Check: <reason>" words on their own line under the item name. */
+.check-under {
+  display: block;
+  margin-top: 4px;
+}
+
 /* Status badges: soft tints, navy text, rounded pill. */
 .badge {
   display: inline-block;

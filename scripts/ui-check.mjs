@@ -61,6 +61,12 @@ try {
       check(cols.join() === "Buyer,Item,Total,Status", "phone shows only Buyer, Item, Total, Status");
       const bar = plain(await page.$eval("#phone-total", (el) => el.innerText));
       check(bar === "Total: 7 orders ready RM 387.00", `sticky bar: "${bar}"`);
+      // The Check column is hidden on phones, so the words must sit under the item name.
+      const priyaRow = page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Priya" }) });
+      const item = plain(await priyaRow.locator('[col-id="itemId"]').innerText());
+      check(item.includes("Check:") && item.includes("Same order as last week"), `Priya's item cell shows the Check words: "${item}"`);
+      const lina = plain(await page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Lina" }) }).locator('[col-id="itemId"]').innerText());
+      check(!lina.includes("Check:"), `a clear row has no Check words: "${lina}"`);
     } else {
       check(cols.join() === "Buyer,Item,Qty,Date,Total,Status,Check", "all 7 columns shown");
       const pinned = plain(await pinnedText(page));
