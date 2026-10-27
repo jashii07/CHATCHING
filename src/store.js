@@ -5,13 +5,15 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { toRows } from "./orders.js";
 import { splitMessages } from "./dates.js";
+import { mockParse } from "./ai.js";
 
 const DEMO_FILE = new URL("../data/expected-orders.json", import.meta.url);
 const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
 
-// The demo's rows: data/expected-orders.json -> toRows(). Used on first start and if the file is broken.
+// The demo's rows: Gemini's real saved reply (mock mode, src/ai.js) -> toRows(). Used on first start and
+// if the saved orders file is broken. (expected-orders.json stays the answer key the reply is scored against.)
 export function demoRows(menu) {
-  return toRows(JSON.parse(readFileSync(DEMO_FILE, "utf8")).orders, menu);
+  return toRows(mockParse(), menu);
 }
 
 // The chats the current rows came from, so the page can say "15 messages read" and refill the chat box.

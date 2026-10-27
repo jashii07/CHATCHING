@@ -73,6 +73,15 @@ async function exportedCsv(page) {
   return { name: download.suggestedFilename(), text: readFileSync(await download.path(), "utf8") };
 }
 
+// The page a buyer is on (the AI decides the order of buyers, so never assume it): go there.
+async function goToBuyer(page, buyer) {
+  for (const n of [1, 2]) {
+    await goToPage(page, n);
+    if (await page.locator(ROWS, { hasText: buyer }).count()) return n;
+  }
+  throw new Error(`${buyer} is on neither page`);
+}
+
 async function goToPage(page, n) {
   const target = `Page ${n} of 2`;
   for (let i = 0; i < 3 && plain(await page.$eval("#page-text", (el) => el.textContent)) !== target; i++) {
@@ -192,11 +201,13 @@ try {
     await goToPage(page, 2);
     const page2 = await bodyRows(page);
     check(page2.length === 3 && plain(await page.$eval("#page-text", (el) => el.textContent)) === "Page 2 of 2", `page 2 shows the other 3 buyers (${page2.length})`);
-    const priya = rowOf(page, "Priya");
-    check(await isUnclear(priya), "Priya's row is amber (unclear)");
-    const priyaText = plain(await priya.innerText());
-    check(priyaText.includes("Check:") && priyaText.includes("Same order as last week"), `Priya's row says why: "${priyaText}"`);
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-page2.png`, fullPage: true });
+    const priyaPage = await goToBuyer(page, "Priya");
+    const priya = rowOf(page, "Priya");
+    check(await isUnclear(priya), `Priya's row is amber (unclear), on page ${priyaPage}`);
+    const priyaText = plain(await priya.innerText());
+    // The demo is Gemini's real reply (Step 3b), so the reason is in the AI's own words.
+    check(priyaText.includes("Check:") && priyaText.includes("Cannot determine items"), `Priya's row says why: "${priyaText}"`);
 
     if (viewport.name === "phone") {
       await priya.click();
@@ -253,7 +264,7 @@ try {
   await page.keyboard.press("Escape");
 
   const afterFix = async (label) => {
-    await goToPage(page, 2);
+    await goToBuyer(page, "Priya");
     const row = rowOf(page, "Priya");
     const text = plain(await row.innerText());
     const cards = plain(await page.$eval(".summary", (el) => el.innerText));
@@ -270,7 +281,7 @@ try {
   await afterFix("after the fix");
   await page.evaluate(() => scrollTo(0, 0));
   await page.waitForTimeout(200);
-  await page.screenshot({ path: `${OUT}1280-laptop-after-fix-page2.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}1280-laptop-after-fix.png`, fullPage: true });
 
   await page.reload();
   await page.waitForSelector(ROWS);
