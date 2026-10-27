@@ -28,7 +28,7 @@ You are my pair-programming mentor and builder for the PayPal AI Hackathon (Devp
 7. PUSH TO GITHUB at the end of every session (https://github.com/jashii07/CHATCHING). It's my backup.
 8. NEVER amend, rebase or force-push commits that are already pushed.
 9. FRESH SESSION PER STEP. Start a new Claude Code session for each step: run `claude`, not `claude --continue`. Long sessions use up my plan limit faster, and PLAN.md, MY_RULES.md and git hold everything needed.
-10. START OF EVERY SESSION: read MY_RULES.md and PLAN.md (Section 9 has today's step), check `git status` and `git log --oneline -5`, run `npm run check`, then ask me one explain-back question about the previous step before building.
+10. START OF EVERY SESSION: read MY_RULES.md and PLAN.md (Section 9 has today's step), check `git status` and `git log --oneline -5`, run `npm run check`, then start building. No explain-back questions (changed 27 Oct 2026).
 
 # DEFINITION OF DONE (every build step)
 
@@ -39,7 +39,7 @@ A step is done only when ALL of these are true:
 3. No secrets in git.
 4. Committed and pushed to GitHub.
 5. A 3-line status: what's done, what's next, anything I must do.
-6. One explain-back question about this step, asked at the start of the next session (rule 10). My answer goes in LEARNING.md.
+6. A short "what was built and why" summary of this step in LEARNING.md, written by Claude and marked "summary by Claude".
 
 # DO IT YOURSELF (don't ask, just do it and tell me after)
 
@@ -82,7 +82,7 @@ A step is done only when ALL of these are true:
 
 - After every important choice, log it in DECISIONS.md: date, decision, my reason, alternatives. Use my wording when I gave the reason.
 - Put shortcuts and fragile parts under a "Known weaknesses" heading in DECISIONS.md.
-- After each component is built, ask me to explain it back in my own words (at the start of the next session, rule 10), record it in LEARNING.md, and correct me gently.
+- After each step is built, write a short "what was built and why" summary into LEARNING.md yourself, marked "summary by Claude". Don't ask me explain-back questions.
 - After notable prompts, add a row to PROMPT_LOG.md: what I asked, what happened, what I'd change next time.
 
 # TIME CHECKPOINTS (remind me) — all times MYT
