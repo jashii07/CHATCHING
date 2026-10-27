@@ -52,7 +52,8 @@ test("formatMoney refuses a bad amount or currency instead of guessing", () => {
 
 test('no hard-coded "RM" in the app code (src/ and public/): money display comes from menu.json', () => {
   for (const dir of ["../src/", "../public/"]) {
-    for (const file of readdirSync(new URL(dir, import.meta.url))) {
+    // Code files only: public/fonts/ holds a font file and its licence, not code.
+    for (const file of readdirSync(new URL(dir, import.meta.url)).filter((name) => /\.(js|html|css)$/.test(name))) {
       // Comment lines may show an example ("RM 54.00"); only code counts.
       const code = readFileSync(new URL(dir + file, import.meta.url), "utf8")
         .split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");

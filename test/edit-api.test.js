@@ -135,3 +135,11 @@ test("a broken store file never stops the server: it logs a warning and loads th
     assert.match(logs.join("\n"), /could not read the saved orders/);
   }
 });
+
+test("the store remembers which chats the rows came from (demo: 15 messages, Chat date 28 Oct)", async () => {
+  const { body } = await call("/api/state");
+  assert.equal(body.source.messages, 15);
+  assert.equal(body.source.chatDate, "2026-10-28");
+  assert.match(body.source.text, /^\[28\/10 9:02 AM\] Lina:/);
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).source.messages, 15);
+});

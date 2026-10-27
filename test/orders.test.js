@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem, checkMenu, summary } from "../src/orders.js";
+import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem, checkMenu, summary, buyerGroups } from "../src/orders.js";
 import { formatMoney } from "../src/money.js";
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
@@ -248,4 +248,21 @@ test("summary: per buyer; paid only when every row is Paid; cancelled buyers don
   rows[2].unclear = true;
   assert.equal(summary(rows).paidOrders, 1);
   assert.deepEqual(summary([]), { orders: 0, ready: 0, expected: "0.00", paidOrders: 0, paid: "0.00", needsCheck: 0 });
+});
+
+test("buyerGroups: one group per buyer in first-seen order, cancelled rows join their buyer, totals only when clear", () => {
+  const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8"));
+  const rows = toRows([
+    { buyer: "Lina", status: "active", items: [{ itemId: "classic_brownies", qty: 3 }] },
+    { buyer: "Danish", status: "cancelled", items: [{ itemId: "cookies", qty: 1 }] },
+    { buyer: " lina ", status: "active", items: [{ itemId: "cookies", qty: 1 }] },
+    { buyer: "Lina", status: "cancelled", items: [{ itemId: "bahulu", qty: 1 }] },
+    { buyer: "Priya", status: "active", items: [{ itemId: null, qty: null }] },
+  ], menu);
+  assert.deepEqual(buyerGroups(rows), [
+    { buyer: "Lina", rowIds: ["r1", "r3", "r4"], items: 2, total: "79.00", cancelled: false },
+    { buyer: "Danish", rowIds: ["r2"], items: 0, total: null, cancelled: true },
+    { buyer: "Priya", rowIds: ["r5"], items: 1, total: null, cancelled: false },
+  ]);
+  assert.deepEqual(buyerGroups([]), []);
 });

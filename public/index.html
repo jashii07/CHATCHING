@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChatChing</title>
   <link rel="icon" href="data:,">
+  <!-- Inter is served from our own server (public/fonts, SIL Open Font License): no font CDN. -->
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <!-- AG Grid Community and Lucide icons, each pinned to an exact version (DECISIONS.md). The integrity
        hash makes the browser refuse a file if the CDN ever serves different bytes. -->
@@ -17,10 +19,19 @@
   <script defer src="app.js"></script>
 </head>
 <body>
-  <!-- Sticky frosted-glass bar: the wordmark and today's AI allowance. -->
+  <!-- Sticky frosted-glass bar: the logo and today's AI allowance. -->
   <header class="topbar">
     <div class="topbar-inner">
-      <span class="wordmark"><i data-lucide="hand-coins" aria-hidden="true"></i>ChatChing</span>
+      <span class="wordmark">
+        <!-- Logo mark: a chat bubble with a coin, drawn inline so it never fails to load. -->
+        <svg class="logo" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+          <path d="M7 4h15a5 5 0 0 1 5 5v6.5a5 5 0 0 1-5 5H13.5L8 25.2V20.5H7a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5z"
+                fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+          <circle cx="23.5" cy="22.5" r="7.5" fill="currentColor" stroke="#fff" stroke-width="2"/>
+          <circle cx="23.5" cy="22.5" r="3.6" fill="none" stroke="#fff" stroke-width="1.6"/>
+        </svg>
+        ChatChing
+      </span>
       <span class="ai-calls" id="ai-calls" title="Free AI reads left today, shared by everyone using the demo">
         <i data-lucide="bot" aria-hidden="true"></i><span id="ai-calls-text">AI calls left today: …</span>
       </span>
@@ -30,8 +41,6 @@
   <div class="page">
     <section class="intro">
       <h1>Today's orders</h1>
-      <ul class="meta" id="meta" aria-label="Setup"><li>Connecting to the server…</li></ul>
-
       <!-- The 3-step guide (PLAN.md Section 12). A real sequence, so it is numbered. Not buttons, so no blue. -->
       <ol class="steps" aria-label="Progress">
         <li data-step="1"><span class="dot"><i data-lucide="clipboard-paste" aria-hidden="true"></i></span><span><small>Step 1</small>Paste chats</span></li>
@@ -41,18 +50,18 @@
       <p id="error" class="error-box" role="alert" hidden></p>
     </section>
 
-    <!-- The day at a glance. Amber = needs your check, green = money arrived. -->
+    <!-- The day at a glance. Expected is the hero; amber = needs your check, green = money arrived. -->
     <section class="summary" aria-label="Today at a glance">
+      <article class="stat stat-hero" id="stat-expected">
+        <i data-lucide="wallet" aria-hidden="true"></i>
+        <h2>Expected</h2>
+        <p class="figure money" data-figure>—</p>
+        <p class="caption" data-caption></p>
+      </article>
       <article class="stat" id="stat-orders">
         <i data-lucide="shopping-bag" aria-hidden="true"></i>
         <h2>Orders</h2>
         <p class="figure" data-figure>—</p>
-        <p class="caption" data-caption></p>
-      </article>
-      <article class="stat" id="stat-expected">
-        <i data-lucide="wallet" aria-hidden="true"></i>
-        <h2>Expected</h2>
-        <p class="figure money" data-figure>—</p>
         <p class="caption" data-caption></p>
       </article>
       <article class="stat" id="stat-paid">
@@ -69,7 +78,14 @@
       </article>
     </section>
 
-    <main class="layout">
+    <!-- After orders are read, the chat box folds into this slim bar so the table gets the full width. -->
+    <div class="chat-bar" id="chat-bar" hidden>
+      <i data-lucide="messages-square" aria-hidden="true"></i>
+      <span id="chat-bar-text"></span>
+      <button type="button" class="ghost" id="chat-edit" aria-controls="chats">Edit</button>
+    </div>
+
+    <main class="layout" id="layout">
       <details class="panel chats" id="chats" open>
         <summary><i data-lucide="messages-square" aria-hidden="true"></i>Chat messages</summary>
         <label for="chat" class="visually-hidden">Chat messages</label>
@@ -79,7 +95,10 @@
           <label for="chat-date">Chat date</label>
           <input type="date" id="chat-date">
         </div>
-        <button type="button" id="read-orders"><i data-lucide="scan-text" aria-hidden="true"></i>Read orders</button>
+        <div class="actions">
+          <button type="button" id="read-orders"><i data-lucide="scan-text" aria-hidden="true"></i>Read orders</button>
+          <button type="button" class="ghost" id="chat-hide" hidden>Hide chats</button>
+        </div>
         <p id="read-message" class="hint" role="status"></p>
       </details>
 
@@ -92,6 +111,11 @@
       </section>
     </main>
   </div>
+
+  <!-- Setup details for the developer and judges: quiet, out of the seller's way. -->
+  <footer class="footer">
+    <ul id="setup" aria-label="Setup"></ul>
+  </footer>
 
   <!-- Phones only: replaces the pinned totals row (PLAN.md Section 12). -->
   <div class="phone-total" id="phone-total" aria-live="polite"></div>

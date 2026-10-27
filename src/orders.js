@@ -164,6 +164,24 @@ export function totals(rows) {
   return { orders: ready.length, total: fromSen(ready.reduce((sum, group) => sum + toSen(group.total), 0)) };
 }
 
+// The table's buyer groups, in first-seen order: every row of one buyer (cancelled ones too) sits
+// together under one name. items + total come from groupByBuyer (active rows only); total is null
+// while the buyer needs a check, and a buyer with only cancelled rows is marked cancelled.
+export function buyerGroups(rows) {
+  const key = (buyer) => cleanName(buyer).toLowerCase();
+  const invoice = new Map(groupByBuyer(rows).map((group) => [key(group.buyer), group]));
+  const groups = new Map();
+  for (const row of rows) {
+    const k = key(row.buyer);
+    if (!groups.has(k)) groups.set(k, { buyer: row.buyer, rowIds: [] });
+    groups.get(k).rowIds.push(row.id);
+  }
+  return [...groups].map(([k, group]) => {
+    const active = invoice.get(k);
+    return { ...group, items: active?.rows.length ?? 0, total: active?.total ?? null, cancelled: !active };
+  });
+}
+
 // The four summary cards at the top of the page, counted per buyer (one buyer = one order):
 // orders = active buyers; ready + expected = what can be invoiced now (same as totals);
 // paid = buyers whose rows are all Paid or Paid (cash/bank); needsCheck = buyers with an unclear row.

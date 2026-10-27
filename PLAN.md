@@ -378,94 +378,95 @@ In suggested order:
 
 ## 12. UI spec (filled in Mon 26 Oct)
 
-**Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10), **and must be checked at laptop, iPad and phone widths** (1280 px, 820 px and 375 px). If a step needs something the spec doesn't cover, Claude asks before inventing it.
+**Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10), **and must be checked at laptop, iPad and phone widths** (1280 px, 820 px and 390 px, with `npm run ui-check` AND by looking at the screenshots). If a step needs something the spec doesn't cover, Claude asks before inventing it.
 
 Goal (Jasper): clean but informative, warm, and working on every type of device.
 
-### Colours: few, each with one job
+### Colours: few, each with one job (design round 2, Tue 27 Oct; replaces the cream/navy palette of 26 Oct)
 
 | Colour | Hex | Job (only this) |
 |---|---|---|
-| Cream | `#FBF7F0` | page background |
+| Warm ultra-light grey | `#F7F5F2` | page background *(replaces cream `#FBF7F0`)* |
 | White | `#FFFFFF` | cards and the table |
-| Dark navy | `#1F2A44` | all text |
-| Muted grey | `#5B6270` | secondary text, cancelled rows *(Claude's addition: a grey, not a colour; 6.1:1 on white)* |
-| PayPal-ish blue | `#1D4E9E` | **clickable only**: main buttons (white text), links, Copy buttons, focus ring |
-| Warm amber | `#E0A030` | **"check this" only**: unclear rows and warnings |
-| Warm grey | `#E8E1D5` | card and table borders (decorative) |
-| Darker warm grey | `#8C8270` | borders of text boxes and inputs *(Claude's addition, see contrast below)* |
+| Rich charcoal | `#1D1D1F` | headings and primary text *(replaces navy `#1F2A44`)* |
+| Secondary grey | `#6E6E73` | secondary text, table headers, subtext *(replaces `#5B6270`; `#86868B` is too faint: 3.62:1)* |
+| Warmer blue | `#3A5BC7` (hover `#3150B4`) | **clickable only**: buttons (white text), links, the quiet "Edit" button's text, focus ring *(replaces `#1D4E9E`)* |
+| Warm amber | `#E0A030` + tint `#FCEFD6` | **"check this" only**: unclear rows, the Needs check card, warnings, errors |
+| Green tint | `#DCF2E3` + text `#1E5B35` | **money arrived only**: Paid tags, the Paid card once something is paid |
+| Hairline | `#EFEBE5` | the line between buyers in the table (decorative) |
+| Input border | `#8C8270` | the ONLY visible borders: text boxes and the date picker, so people can see where to type |
 
-**Colour rule:** blue = clickable, amber = check this, green = money arrived. Nothing else gets colour.
+**Colour rule (unchanged):** blue = clickable, amber = check this, green = money arrived. Nothing else gets colour. The logo and avatars are charcoal on neutral, never a colour.
 
-**Status badges** (soft tints, navy text, rounded pill):
+**Status tags:** borderless pills, a soft muted tint with matching darker text, plus a Lucide icon (laptop and iPad; phones show the words only).
 
-| Badge | Background | Text |
+| Tag | Background | Text |
 |---|---|---|
-| Draft | light grey `#EEF0F3` | navy |
-| Sent | light blue `#DCE8F7` | navy |
-| Part paid | light blue `#DCE8F7` | navy |
-| Paid / Paid (cash/bank) | light green `#DCF2E3` | navy |
-| Cancelled/Refunded | grey `#ECEDEF` | muted grey `#5B6270`, strikethrough |
+| Draft | warm beige `#F3ECE1` | `#5C4A30` |
+| Sent / Part paid | light blue `#E3EBF8` | dark slate `#2B3A55` (not blue: tags aren't clickable) |
+| Paid / Paid (cash/bank) | green tint `#DCF2E3` | `#1E5B35` |
+| Cancelled/Refunded | grey `#EEEEF0` | `#636368`, strikethrough |
 
-Badge colours for "Part paid" and "Paid (cash/bank)" are Claude's choice (the spec named 4 badges; the app has 6 states). The "Paid" cell flash uses the same light green.
+**Unclear rows and warnings:** amber tint `#FCEFD6` behind the row, a 4 px amber stripe on its left edge, **plus the words "Check: \<reason\>"** in charcoal. Secondary grey is never used on amber (4.46:1, just under AA); text there is charcoal.
 
-**Unclear rows and warnings:** a light amber tint `#FCEFD6` behind the row, plus a 4 px amber `#E0A030` stripe on its left edge, **plus the words "Check: \<reason\>"** in navy. The words matter because the amber stripe alone is too faint to rely on (see contrast).
-
-**Contrast check (WCAG AA: 4.5:1 for normal text, 3:1 for large text and input borders), measured 2026-10-26:**
+**Contrast check (WCAG AA: 4.5:1 text, 3:1 input borders), measured 2026-10-27:**
 
 | Pair | Ratio | Result |
 |---|---|---|
-| navy on cream / on white | 13.35 / 14.26 | ✅ |
-| white on the blue button; blue link on white / on cream | 7.97; 7.97 / 7.46 | ✅ |
-| navy on the badge tints (Draft, Sent, Paid) | 12.49, 11.49, 12.12 | ✅ |
-| muted grey on the Cancelled tint / on white | 5.23 / 6.13 | ✅ |
-| navy on the amber tint `#FCEFD6` | 12.53 | ✅ |
-| **amber `#E0A030` as text** on white | 2.27 | ❌ so amber is **never used for text**, only tints and stripes |
-| **warm grey `#E8E1D5` border** on white | 1.30 | ❌ for inputs, so inputs use `#8C8270` (3.79 on white, 3.55 on cream). OK for decorative card borders |
+| charcoal on the page / on the amber tint | 15.47 / 14.79 | ✅ |
+| secondary grey on white / on the page | 5.07 / 4.66 | ✅ |
+| secondary grey on the amber tint | 4.46 | ❌ so charcoal is used there |
+| white on the blue button / on its hover | 6.00 / 7.15 | ✅ |
+| blue text on white / on the page / on the Edit button tint (hover) | 6.00 / 5.51 / 5.31 (4.90) | ✅ |
+| Draft, Sent, Paid, Cancelled tag text on its tint | 7.22, 9.52, 6.86, 5.16 | ✅ |
+| input border `#8C8270` on white | 3.79 | ✅ (3:1 needed) |
+| amber `#E0A030` as text | 2.27 | ❌ so amber is never text |
 
 ### Type
-- System font stack: `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
-- Body 16 px; table 15 px.
-- Money is right-aligned with tabular numbers (`font-variant-numeric: tabular-nums`), so the digits line up.
+- Font stack: `-apple-system, BlinkMacSystemFont, "Inter", sans-serif` (Jasper's choice). Apple devices get San Francisco. **Inter is served from our own server** (`public/fonts/`, Latin subset, 48 KB, SIL Open Font License) because Windows and Android don't have it, and without it `sans-serif` would be Arial.
+- Page title "Today's orders" 44 px bold (34 px phone); section headings 22 px; body 16 px; table 15 px (14 px phone); table headers 13 px secondary grey; quiet details 13-15 px secondary grey. Sentence case everywhere; no all-caps labels.
+- **Summary numbers:** Expected is the hero, 60 px bold (44 px phone); the other three 36 px semibold (22 px phone).
+- Money is right-aligned with tabular numbers, so the digits line up.
 
 ### Layout
 
 | Width | Layout |
 |---|---|
-| **Laptop** (≥ 1024 px) | Chats on the left, table on the right. Clicking a row slides the buyer panel in from the right. |
-| **iPad** (641–1023 px) | The chat box sits at the top and can be collapsed. The table is full width. The buyer panel slides in from the right. |
-| **Phone** (≤ 640 px) | Everything stacked. The table shows only **Buyer, Item, Total, Status**. Tapping a row opens the buyer panel **full screen**. A sticky bottom bar shows the total and a "Send invoices" button (it replaces the pinned totals row on phones). |
+| **Laptop** (≥ 1024 px) | Summary row: Expected (wide hero) + Orders, Paid, Needs check. Chats on the left, table on the right; once orders are read, the chats fold into a slim bar and the table takes the full width. 7 columns (Check only while a row needs checking). Clicking a row slides the buyer panel in from the right (Step 7). |
+| **iPad** (641–1023 px) | Expected full width on top, the other three cards below. The chat box sits at the top (folds into the slim bar). Table full width with 6 columns: the "Check:" words sit under the item name (no room for a Check column). |
+| **Phone** (≤ 640 px) | Everything stacked. Table shows only **Buyer, Item, Total, Status**; the "Check:" words sit under the item name. Tapping a row opens the buyer panel **full screen** (Step 7). A sticky frosted bottom bar shows the total (and "Send invoices" from Step 5); it replaces the pinned totals row. |
 
-- Tap targets are at least 44 × 44 px on every device (buttons, Copy, row taps, the panel's close button).
-- The breakpoints (640 / 1024 px) are Claude's choice. A landscape iPad (1180 px wide) gets the laptop layout.
-- Side gutters stay 16 px. Card padding, corners and row heights: see "Design upgrade" below (replaces the Step 1 values of 16 px padding and 8 px corners).
+- Tap targets are at least 44 × 44 px on every device.
+- Breakpoints 640 / 1024 px (Claude's choice). A landscape iPad (1180 px) gets the laptop layout. Side gutters 16 px.
+- **Slim chat bar:** after "Read orders" the chat box folds into a bar "15 messages read from 28 Oct" + an "Edit" button (blue text = clickable) that opens the chats again, filled with the messages that were read; "Hide chats" folds it back. The server remembers the chats with the rows (`source` in the store).
+- **Footer:** setup details (menu, AI mode, PayPal/Gemini keys) sit in a small quiet footer, not in the seller's way. A friendly warning appears only when it matters, next to the action it blocks (Step 5: "Send invoices" while the PayPal keys are missing).
 
 ### 3-step guide
-- At the top of the page: **1 Paste → 2 Review → 3 Get paid**. The current step is highlighted: a filled navy circle and bold text. The other steps are muted grey. Not blue, because the steps aren't buttons.
-- The current step is worked out by Claude's suggested rule: no rows yet → 1; rows but no invoices → 2; any invoice sent → 3.
+- At the top: **1 Paste → 2 Review → 3 Get paid**, each with a Lucide icon in a white circle. The current step is a filled charcoal circle and bold text; the others are secondary grey. Not blue, because the steps aren't buttons.
+- Current step rule: no rows yet → 1; rows but no invoices → 2; any invoice sent → 3.
+
+### Design principles (rounds 1 + 2, Tue 27 Oct)
+
+Jasper's reasons: round 1 "the original design is too simple"; round 2 "no personality and no focus".
+
+- **One focus:** the Expected figure is the hero (the largest number on the page). Everything else is quieter.
+- **Depth without borders:** no outer borders on cards, the chat container or the table; one soft diffused shadow `0 4px 24px rgba(0,0,0,0.04)` on every card. Only inputs have visible borders.
+- **Radii:** at least 16 px on all main containers and inputs: work cards 24 px, summary cards 20 px (18 px phone), the table 16 px, textarea and date picker 16 px, buttons and tags fully rounded.
+- **Whitespace:** page top 48 px; 28-36 px between sections; work cards 32 px padding (28/20 iPad, 24/16 phone); table rows 72 px with 24 px top and bottom padding (about double round 1); header 48 px.
+- **No vertical lines in the table:** no column borders, no header dividers, no resize handles. Rows have no lines between them; one hairline separates buyers.
+- **Buyer groups (our own code; AG Grid's row grouping is Enterprise):** rows are ordered by buyer (the server's `buyerGroups()`). The buyer's FIRST row shows a soft initials avatar, the name and the buyer's subtotal ("2 items, RM 70.00"; "Needs a check" while unclear; "Cancelled"); the buyer's other rows leave the Buyer cell empty, so the items read as one block.
+- **Sticky frosted-glass top bar** with the logo mark (an inline SVG: chat bubble + coin, charcoal), the ChatChing wordmark and "AI calls left today: X".
+- **Pill buttons:** "Read orders" is a fully rounded warmer-blue pill with a soft hover transition (colour + glow); secondary actions ("Edit", "Hide chats") are quiet pills with blue text on a pale blue tint.
+- **Hover lift (scale 1.02) on the summary cards only,** only with a mouse and when reduced motion is off; scaling the big table would blur its text and shift its editors.
+- **Icons: Lucide 1.55.0** (jsDelivr, pinned, integrity hash, ISC licence) for the steps, cards, panel headings, buttons and tags. Always next to words; never amber; no emoji. The page works without them.
+  - Status icons: Draft = pencil-line, Sent = send, Part paid = hourglass, Paid = circle-check, Paid (cash/bank) = banknote, Cancelled = circle-x.
+- **Summary cards: Expected (hero), Orders, Paid, Needs check,** counted per buyer by the server (`summary()`; the page does no money maths). They change colour with the facts: Needs check turns amber (tint + stripe) above 0; Paid turns green once money arrives.
 
 ### AG Grid
-- Quartz theme, tuned with `themeQuartz.withParams({...})` using the colours above: background white, text navy, accent blue, borders warm grey, header background cream, font = the system stack, font size 15 px, hover/selected rows a light warm tint (not blue, because blue means clickable).
-- Check the exact `withParams` names against the 36.2.0 docs in Step 2 before using them.
-
-### Design upgrade (decided Tue 27 Oct): Apple-store style, same palette and colour rules
-
-Jasper's reason: "the original design is too simple" (compact, information squeezed together, hard to find).
-
-- **Whitespace:** page top padding 40 px; 32 px between sections; work cards 28 px padding (24 px iPad, 20 px phone); table rows 60 px, header 52 px; wrapped cells 16 px top and bottom.
-- **Type hierarchy** (system font, which is San Francisco on Apple devices): page title "Today's orders" 40 px bold (32 px on phones); section headings 22 px; body 16 px; quiet details 14 px muted; summary figures 28 px bold with lined-up digits. Sentence case everywhere; no all-caps labels.
-- **Cards:** two corner sizes show hierarchy: 24 px for the big work cards (chats, orders), 18 px for the summary cards. Shadows are soft and layered, tinted navy (not grey) so they sit warmly on the cream. The table has 16 px corners and no outer border (the white card is its frame).
-- **Sticky frosted-glass top bar:** cream at 72% opacity + backdrop blur, with the ChatChing wordmark on the left and "AI calls left today: X" on the right. The phone total bar uses the same glass.
-- **Buttons are pills** (fully rounded), at least 48 px tall, blue = clickable as before.
-- **Hover lift (scale 1.02, 220 ms) on the summary cards only,** and only on devices with a mouse and when reduced motion is off. The big work cards do not lift: scaling a 900 px table blurs its text and shifts its cell editors.
-- **Icons: Lucide 1.55.0** from jsDelivr, pinned with an integrity hash (open-source, ISC licence). One consistent set for the wordmark, steps, summary cards, panel headings, the Read orders button and every status badge. Icons use the text colour (navy), never amber, and are always next to words: the words carry the meaning. No emoji as icons. If the icon file can't load, the page still works without icons.
-  - Status icons: Draft = pencil-line, Sent = send, Part paid = hourglass, Paid = circle-check, Paid (cash/bank) = banknote, Cancelled = circle-x.
-- **Summary cards at the top: Orders, Expected, Paid, Needs check,** counted per buyer by the server (`summary()` in src/orders.js; the page does no money maths). Orders = active buyers; Expected = the total of orders ready to invoice; Paid = buyers whose rows are all Paid; Needs check = buyers with an unclear row. 4 across on laptop, 2 × 2 on iPad and phone.
-  - **They change colour with the facts** (the one bold element): "Needs check" gets the amber tint + stripe when it is above 0; "Paid" turns light green when money has arrived. Otherwise they are white.
-- **Setup details** (menu, AI mode, PayPal, Gemini) sit under the title as small separate chips, not one joined line.
+- Quartz theme via `themeQuartz.withParams({...})` (names checked in the 36.2.0 file): white background and header, charcoal text, secondary-grey 13 px headers, accent = the warmer blue; `wrapperBorder`, `rowBorder`, `columnBorder` and `headerColumnBorder` off; resize handles transparent; row hover `#FAF8F5` and selected `#F5F1EB` (warm, not blue); font = the stack above.
 
 ### Errors (decided Mon 26 Oct)
-- Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in navy, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".
+- Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in charcoal, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".
 
 ## 13. Video storyboard (placeholder: you draft it by Fri 30 Oct)
 

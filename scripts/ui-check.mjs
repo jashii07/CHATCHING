@@ -68,6 +68,14 @@ try {
     const headerTop = await page.evaluate(() => { scrollTo(0, 600); return document.querySelector(".topbar").getBoundingClientRect().top; });
     check(headerTop === 0, "header stays at the top when scrolling (sticky)");
     await page.evaluate(() => scrollTo(0, 0));
+    const bar = plain(await page.$eval("#chat-bar", (el) => (el.hidden ? "" : el.innerText)));
+    check(bar.startsWith("15 messages read") && bar.endsWith("Edit"), `chats folded into a slim bar: "${bar}"`);
+    check(await page.$eval("#chats", (el) => el.hidden), "chat box hidden while folded");
+    const hafiz1 = plain(await page.locator('[row-id="r2"] [col-id="buyer"]').innerText());
+    const hafiz2 = plain(await page.locator('[row-id="r3"] [col-id="buyer"]').innerText());
+    check(hafiz1 === "H Hafiz 2 items, RM 70.00" && hafiz2 === "", `buyer group: first row "${hafiz1}", second row "${hafiz2}"`);
+    const setup = plain(await page.$eval("footer", (el) => el.innerText));
+    check(setup.includes("PayPal keys: missing") && !(await page.$("#meta")), `setup details only in the footer: "${setup}"`);
     if (viewport.name === "phone") {
       check(cols.join() === "Buyer,Item,Total,Status", "phone shows only Buyer, Item, Total, Status");
       const bar = plain(await page.$eval("#phone-total", (el) => el.innerText));
@@ -78,8 +86,14 @@ try {
       check(item.includes("Check:") && item.includes("Same order as last week"), `Priya's item cell shows the Check words: "${item}"`);
       const lina = plain(await page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Lina" }) }).locator('[col-id="itemId"]').innerText());
       check(!lina.includes("Check:"), `a clear row has no Check words: "${lina}"`);
+    } else if (viewport.name === "ipad") {
+      check(cols.join() === "Buyer,Item,Qty,Date,Total,Status", "iPad: 6 columns, the Check words sit under the item");
+      const priyaItem = plain(await page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Priya" }) }).locator('[col-id="itemId"]').innerText());
+      check(priyaItem.includes("Check:"), `iPad: Priya's item cell shows the Check words: "${priyaItem}"`);
+      const pinned = plain(await pinnedText(page));
+      check(pinned.includes("7 orders ready") && pinned.includes("RM 387.00"), `pinned totals row: "${pinned}"`);
     } else {
-      check(cols.join() === "Buyer,Item,Qty,Date,Total,Status,Check", "all 7 columns shown");
+      check(cols.join() === "Buyer,Item,Qty,Date,Total,Status,Check", "laptop: all 7 columns shown");
       const pinned = plain(await pinnedText(page));
       check(pinned.includes("7 orders ready") && pinned.includes("RM 387.00"), `pinned totals row: "${pinned}"`);
     }
@@ -91,6 +105,11 @@ try {
   const { page, errors } = await open(WIDTHS[0]);
   const priya = page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Priya" }) });
   check(await priya.evaluate((el) => el.classList.contains("row-unclear")), "before: Priya's row is amber (unclear)");
+  await page.click("#chat-edit");
+  check(!(await page.$eval("#chats", (el) => el.hidden)) && (await page.$eval("#chat", (el) => el.value.startsWith("[28/10 9:02 AM] Lina:"))),
+    "Edit opens the chat box with the 15 messages that were read");
+  await page.click("#chat-hide");
+  check(await page.$eval("#chats", (el) => el.hidden), "Hide chats folds it again");
   console.log(`      before: Check = "${plain(await priya.locator('[col-id="check"]').innerText())}"`);
 
   await priya.locator('[col-id="itemId"]').click();
@@ -111,7 +130,9 @@ try {
     const item = plain(await priya.locator('[col-id="itemId"]').innerText());
     const qty = plain(await priya.locator('[col-id="qty"]').innerText());
     const total = plain(await priya.locator('[col-id="lineTotal"]').innerText());
-    const checkText = plain(await priya.locator('[col-id="check"]').innerText());
+    // The Check column disappears once nothing needs checking; no cell means no Check text.
+    const checkCell = priya.locator('[col-id="check"]');
+    const checkText = (await checkCell.count()) ? plain(await checkCell.innerText()) : "";
     const pinned = plain(await pinnedText(page));
     console.log(`      ${label}: item "${item}", qty ${qty}, total ${total}, Check "${checkText}"; totals "${pinned}"`);
     check(!unclear && checkText === "", `${label}: Priya's row is clear (no amber, no Check text)`);
@@ -120,6 +141,10 @@ try {
     const cards = plain(await page.$eval(".summary", (el) => el.innerText));
     check(cards.includes("Expected RM 405.00") && cards.includes("Needs check 0 All clear"), `${label}: summary cards updated: "${cards}"`);
     check(!(await page.$eval("#stat-check", (el) => el.classList.contains("is-check"))), `${label}: Needs check card is no longer amber`);
+    const cols = (await headers(page)).join();
+    check(cols === "Buyer,Item,Qty,Date,Total,Status", `${label}: Check column hidden once nothing needs checking (${cols})`);
+    const priyaBuyer = plain(await priya.locator('[col-id="buyer"]').innerText());
+    check(priyaBuyer === "P Priya 1 item, RM 18.00", `${label}: Priya's subtotal: "${priyaBuyer}"`);
   };
   await afterEdit("after edit");
   await page.evaluate(() => scrollTo(0, 0)); // the edit scrolled the page; the sticky header would sit mid-shot
