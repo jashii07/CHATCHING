@@ -17,25 +17,37 @@
   <header>
     <h1>ChatChing</h1>
     <p id="status" class="status" role="status">Connecting to the server…</p>
+    <!-- The 3-step guide (PLAN.md Section 12). Not buttons, so no blue. -->
+    <ol class="steps" aria-label="Progress">
+      <li data-step="1"><span class="dot">1</span> Paste</li>
+      <li data-step="2"><span class="dot">2</span> Review</li>
+      <li data-step="3"><span class="dot">3</span> Get paid</li>
+    </ol>
+    <p id="error" class="error-box" role="alert" hidden></p>
   </header>
 
-  <main>
-    <section class="card">
-      <label for="chat">Chat messages</label>
-      <textarea id="chat" rows="8"
+  <main class="layout">
+    <details class="card chats" id="chats" open>
+      <summary>Chat messages</summary>
+      <label for="chat" class="visually-hidden">Chat messages</label>
+      <textarea id="chat" rows="10"
                 placeholder="Paste a day of chat messages here, e.g.&#10;[28/10 9:02 AM] Lina: hi! can i order 2 boxes of classic brownies, deliver on saturday?"></textarea>
       <div class="controls">
         <label for="chat-date">Chat date</label>
         <input type="date" id="chat-date">
         <button type="button" id="read-orders">Read orders</button>
-        <span id="read-message" class="hint" role="status"></span>
       </div>
-    </section>
+      <p id="read-message" class="hint" role="status"></p>
+    </details>
 
-    <section class="card">
+    <section class="card orders">
       <h2>Orders</h2>
-      <div id="grid" class="grid"></div>
+      <p class="hint">Click a cell in Item, Qty or Date to fix it. Prices and totals come from the menu.</p>
+      <div id="grid"></div>
     </section>
   </main>
+
+  <!-- Phones only: replaces the pinned totals row (PLAN.md Section 12). -->
+  <div class="phone-total" id="phone-total" aria-live="polite"></div>
 </body>
 </html>

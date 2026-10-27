@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "check": "node scripts/check.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "ui-check": "node scripts/ui-check.mjs"
   },
   "repository": {
     "type": "git",
@@ -25,5 +26,8 @@
   },
   "dependencies": {
     "express": "5.3.0"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.0"
   }
 }
