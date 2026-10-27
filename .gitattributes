@@ -1,0 +1,2 @@
+# Saved AI replies are kept byte for byte (Step 3b): git must never change their line endings.
+data/ai-cache/*.json -text
