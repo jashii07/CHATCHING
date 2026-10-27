@@ -111,6 +111,7 @@ Only one new package is planned: **express**.
 **Currency: one setting.** `"currency"` in `data/menu.json` decides every amount on screen, in messages and in PayPal invoices. Money is shown with `Intl.NumberFormat` (MYR → "RM 54.00", USD → "$54.00"). No code hard-codes "RM", and a test checks this.
 - For the README: "Works with any PayPal currency; the demo uses MYR because the real user is a Malaysian home seller."
 - Exception: PayPal bills JPY, HUF and TWD without decimals, but our prices use cents ("18.00"). The server refuses to start with these currencies and shows a clear message.
+- **README warning (trap):** changing `"currency"` does NOT convert any prices: there is no exchange rate, so RM 54.00 just becomes $54.00. A seller who switches currency must also update every `"price"` in `data/menu.json`.
 
 **What the AI returns**: the **final** order per buyer (forced JSON format, no prices):
 ```json

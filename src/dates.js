@@ -98,3 +98,27 @@ export function resolveDayWord(word, messageDate) {
   }
   return null;
 }
+
+// A pasted chat -> messages, numbered from 1, each with its full date (for the AI prompt in Step 4).
+// A line that starts with a timestamp ("[28/10 9:02 AM] ...") starts a new message; every other
+// line belongs to the message above it. Text before the first timestamp (or a whole paste with no
+// timestamps, like one copied message) is one message dated on the Chat date. Blank lines are skipped;
+// no other text is ever dropped.
+export function splitMessages(paste, chatDate) {
+  const chat = parseIso(chatDate);
+  if (chat === null) throw new RangeError(`Not a valid chat date: ${JSON.stringify(chatDate)}`);
+
+  const messages = [];
+  for (const line of String(paste ?? "").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    if (/^\s*\[\s*\d{1,2}\/\d{1,2}/.test(line)) {
+      const stamp = parseTimestamp(line, chatDate);
+      messages.push({ n: messages.length + 1, ...stamp, text: line.replace(/^\s*\[[^\]]*\]\s*/, "") });
+    } else if (messages.length) {
+      messages.at(-1).text += `\n${line.trimEnd()}`;
+    } else {
+      messages.push({ n: 1, date: chatDate, time: null, label: toLabel(chat), warning: "", reason: "", text: line.trimEnd() });
+    }
+  }
+  return messages;
+}
