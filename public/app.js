@@ -152,13 +152,11 @@ function showStep(rows) {
   }
 }
 
-// Phone <-> wider: switch theme and columns, then measure the wrapped rows again,
-// because their heights depend on the column widths and the padding.
+// Phone <-> wider: switch theme and columns. Wrapped rows (autoHeight) measure themselves again.
 function fitToWidth() {
   if (!grid) return;
   grid.updateGridOptions({ theme: phone.matches ? themes.phone : themes.wide, columnDefs: columns(phone.matches) });
   showTotals();
-  grid.resetRowHeights();
 }
 
 // One edited cell -> PUT /api/orders/:id. The server's reply (price, total, unclear flag) replaces
@@ -178,7 +176,6 @@ async function saveEdit(p) {
     saved.set(id, structuredClone(reply.row));
     totals = reply.totals;
     grid.applyTransaction({ update: [reply.row] });
-    grid.resetRowHeights(); // the Check text may have shrunk or gone
     showTotals();
     hideError();
   } catch (err) {

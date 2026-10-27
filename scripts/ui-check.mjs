@@ -34,7 +34,8 @@ const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-brea
 async function open(viewport) {
   const page = await browser.newPage({ viewport });
   const errors = [];
-  page.on("console", (msg) => msg.type() === "error" && errors.push(msg.text()));
+  // Warnings count too: AG Grid reports misuse (e.g. warning #3) as a warning, not an error.
+  page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto(base);
   await page.waitForSelector(".ag-grid-scrolling-container > .ag-row");
@@ -52,7 +53,7 @@ try {
     const cols = await headers(page);
     const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     console.log(`\n${viewport.width} px (${viewport.name}): columns = ${cols.join(", ")}`);
-    check(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+    check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     check(pageWidth <= viewport.width, `no sideways page scroll (page is ${pageWidth} px wide)`);
     const step = await page.$eval(".steps li.current", (el) => el.textContent.trim());
     check(step === "2 Review", `guide shows the current step: "${step}"`);
@@ -106,7 +107,7 @@ try {
   await page.reload();
   await page.waitForSelector(".ag-grid-scrolling-container > .ag-row");
   await afterEdit("after reload");
-  check(errors.length === 0, `no console errors during the edit${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+  check(errors.length === 0, `no console errors or warnings during the edit${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } finally {
   await browser.close();
   server.closeAllConnections();

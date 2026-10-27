@@ -1,6 +1,6 @@
 # Learning
 
-**Next question (ask at the start of the next session, about the English-only + currency change):** You change `"currency"` in `data/menu.json` from MYR to USD and restart the server. What does Lina's order total look like now, does any number change, and why? Then: what happens if you set it to JPY?
+**Next question (ask at the start of the next session, about Step 2):** You type 0 into Lina's Qty cell and press Enter. What do you see, and does anything reach the server? Then: someone skips the page and sends `{ "qty": 0 }` straight to `PUT /api/orders/r1`. Which file stops it, and what comes back? Why do we check in both places? *(Claude's note, verified 27 Oct: the number editor's min 1 refuses it, the cell goes back to 3 and no request is sent; the server's checkEdit in src/orders.js replies 400 "Quantity must be a whole number from 1 to 99 (got 0).")*
 
 | Date | What was built | My explain-back (in my own words) | Claude's gentle corrections |
 |------|----------------|-----------------------------------|-----------------------------|
