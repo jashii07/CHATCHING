@@ -1,6 +1,7 @@
 // The page: the orders table (AG Grid) with editing (Step 2). Every edit goes to the server, which
 // recalculates the price, total and unclear flag; the page never does money maths.
 // Layout and colours follow the UI spec (PLAN.md Section 12). Reading orders comes in Step 4.
+// Icons: Lucide (pinned in index.html). Static icons are <i data-lucide="..."> tags; badges build theirs in code.
 
 // The AG Grid features later steps rely on (all Community, none Enterprise).
 const NEEDED_MODULES = {
@@ -19,6 +20,7 @@ let currency = null;
 let menuItems = [];
 let grid = null;
 let totals = { orders: 0, total: "0.00" };
+let summary = null;
 // The last rows the server confirmed, by id. AG Grid changes its own copy while editing,
 // so a refused edit is undone from here.
 const saved = new Map();
@@ -52,18 +54,34 @@ function hideError() {
   $("error").hidden = true;
 }
 
+// A Lucide icon as an <svg>, or nothing if the icon library didn't load (the words still show).
+function icon(name) {
+  const node = window.lucide?.icons?.[name];
+  if (!node) return document.createTextNode("");
+  const svg = window.lucide.createElement(node);
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("lucide");
+  return svg;
+}
+
 // Only active order rows can be edited; the pinned totals row and cancelled rows can't.
 const canEdit = (p) => !p.node.rowPinned && p.data.orderStatus === "active";
 const itemName = (id) => menuItems.find((item) => item.id === id)?.name ?? "—";
 const ordersText = (n) => `${n} ${n === 1 ? "order" : "orders"} ready`;
 
-// Status badge: soft tint, navy text. A cancelled order shows "Cancelled".
+// One icon per status, so the badge reads at a glance (the words carry the meaning, not the icon).
+const STATUS_ICONS = {
+  Draft: "PencilLine", Sent: "Send", "Part paid": "Hourglass", Paid: "CircleCheck",
+  "Paid (cash/bank)": "Banknote", "Cancelled/Refunded": "CircleX", Cancelled: "CircleX",
+};
+
+// Status badge: soft tint, navy text, an icon. A cancelled order shows "Cancelled".
 function statusBadge(p) {
   if (p.node.rowPinned) return "";
   const label = p.data.orderStatus === "cancelled" ? "Cancelled" : p.value;
   const badge = document.createElement("span");
   badge.className = `badge badge-${String(label).toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "")}`;
-  badge.textContent = label;
+  badge.append(icon(STATUS_ICONS[label] ?? "Circle"), label);
   return badge;
 }
 
@@ -85,9 +103,9 @@ function itemWithCheck(p) {
 function columns(isPhone) {
   const narrow = (wide, small) => (isPhone ? small : wide);
   return [
-    { field: "buyer", headerName: "Buyer", cellDataType: "text", minWidth: narrow(90, 72), wrapText: true, autoHeight: true },
+    { field: "buyer", headerName: "Buyer", cellDataType: "text", minWidth: narrow(84, 72), wrapText: true, autoHeight: true },
     {
-      field: "itemId", headerName: "Item", cellDataType: "text", flex: 2, minWidth: narrow(120, 100),
+      field: "itemId", headerName: "Item", cellDataType: "text", flex: 2, minWidth: narrow(128, 100),
       wrapText: true, autoHeight: true, editable: canEdit,
       cellEditor: "agSelectCellEditor",
       cellEditorParams: () => ({ values: menuItems.map((item) => item.id) }),
@@ -96,23 +114,23 @@ function columns(isPhone) {
       cellRenderer: isPhone ? itemWithCheck : undefined,
     },
     {
-      field: "qty", headerName: "Qty", cellDataType: "number", type: "rightAligned", minWidth: 64, maxWidth: 96, hide: isPhone,
+      field: "qty", headerName: "Qty", cellDataType: "number", type: "rightAligned", minWidth: 60, maxWidth: 88, hide: isPhone,
       editable: canEdit, cellEditor: "agNumberCellEditor", cellEditorParams: { min: 1, max: 99, precision: 0 },
       valueFormatter: (p) => (p.value == null ? (p.node?.rowPinned ? "" : "—") : String(p.value)),
     },
     {
-      field: "deliveryDate", headerName: "Date", cellDataType: "dateString", minWidth: 116, hide: isPhone,
+      field: "deliveryDate", headerName: "Date", cellDataType: "dateString", minWidth: 112, hide: isPhone,
       editable: canEdit, cellEditor: "agDateStringCellEditor",
       valueFormatter: (p) => (p.node?.rowPinned ? "" : formatDate(p.value)),
     },
     {
       // "rightAligned" gives the cell the class ag-right-aligned-cell; listed again here because cellClass replaces it.
-      field: "lineTotal", headerName: "Total", cellDataType: "text", type: "rightAligned", minWidth: narrow(116, 92),
+      field: "lineTotal", headerName: "Total", cellDataType: "text", type: "rightAligned", minWidth: narrow(108, 92),
       cellClass: ["money", "ag-right-aligned-cell"], valueFormatter: (p) => (p.value == null ? "—" : formatMoney(p.value)),
     },
-    { field: "invoiceStatus", headerName: "Status", cellDataType: "text", minWidth: 92, cellRenderer: statusBadge },
+    { field: "invoiceStatus", headerName: "Status", cellDataType: "text", minWidth: narrow(136, 104), cellRenderer: statusBadge },
     {
-      colId: "check", headerName: "Check", cellDataType: "text", flex: 3, minWidth: 130, wrapText: true, autoHeight: true, hide: isPhone,
+      colId: "check", headerName: "Check", cellDataType: "text", flex: 2, minWidth: 120, wrapText: true, autoHeight: true, hide: isPhone,
       valueGetter: (p) => checkText(p.data),
       cellClass: "check-text",
     },
@@ -134,9 +152,12 @@ function makeTheme(isPhone) {
     rowHoverColor: "#F7F1E6", // light warm tint, not blue: blue means clickable
     selectedRowBackgroundColor: "#F1E8D8",
     pinnedRowBackgroundColor: "#FBF7F0",
-    rowHeight: 48, // at least 44 px to tap
-    headerHeight: 44,
-    wrapperBorderRadius: 8,
+    rowHeight: 60, // roomy, and well over the 44 px tap minimum
+    headerHeight: 52,
+    headerFontWeight: 600,
+    wrapperBorderRadius: 16,
+    wrapperBorder: false, // the white panel is already the frame
+    columnBorder: false,
     cellHorizontalPaddingScale: isPhone ? 0.5 : 1, // phones are narrow: less padding
   });
 }
@@ -154,6 +175,35 @@ function showTotals() {
     Object.assign(document.createElement("span"), { textContent: `Total: ${ordersText(totals.orders)}` }),
     Object.assign(document.createElement("span"), { className: "money", textContent: formatMoney(totals.total) }),
   );
+}
+
+// The four summary cards. Figures come from the server (no money maths here); the cards turn
+// amber when an order needs checking and green when money has arrived.
+function showSummary() {
+  if (!summary) return;
+  const set = (id, figure, caption, state) => {
+    const card = $(id);
+    card.querySelector("[data-figure]").textContent = figure;
+    card.querySelector("[data-caption]").textContent = caption;
+    card.classList.remove("is-check", "is-paid");
+    if (state) card.classList.add(state);
+  };
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  set("stat-orders", String(summary.orders), summary.orders ? "One per buyer, cancelled ones left out" : "Paste chats to start");
+  set("stat-expected", formatMoney(summary.expected), `From ${plural(summary.ready, "order")} ready to invoice`);
+  set("stat-paid", formatMoney(summary.paid), summary.paidOrders ? `From ${plural(summary.paidOrders, "order")}` : "Nothing paid yet", summary.paidOrders ? "is-paid" : "");
+  set("stat-check", String(summary.needsCheck), summary.needsCheck ? `${plural(summary.needsCheck, "order")} to fix below` : "All clear", summary.needsCheck ? "is-check" : "");
+}
+
+// Quiet setup details under the title, one chip each.
+function showMeta(state) {
+  const items = [
+    `Menu: ${state.menu.items.length} items in ${currency}`,
+    `AI: ${state.aiMode} mode`,
+    `PayPal: ${state.paypalConfigured ? "connected" : "keys missing"}`,
+    `Gemini: ${state.geminiConfigured ? "connected" : "key missing"}`,
+  ];
+  $("meta").replaceChildren(...items.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
 }
 
 // No rows yet -> 1 Paste; rows but no invoices -> 2 Review; any invoice sent -> 3 Get paid.
@@ -190,8 +240,10 @@ async function saveEdit(p) {
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
     saved.set(id, structuredClone(reply.row));
     totals = reply.totals;
+    summary = reply.summary;
     grid.applyTransaction({ update: [reply.row] });
     showTotals();
+    showSummary();
     hideError();
   } catch (err) {
     grid.applyTransaction({ update: [structuredClone(saved.get(id))] });
@@ -235,12 +287,10 @@ async function loadState() {
     currency = state.menu.currency;
     menuItems = state.menu.items;
     totals = state.totals;
-    $("status").textContent = [
-      `${menuItems.length} menu items (${currency})`,
-      `AI mode: ${state.aiMode}`,
-      `PayPal keys: ${state.paypalConfigured ? "set" : "missing"}`,
-      `Gemini key: ${state.geminiConfigured ? "set" : "missing"}`,
-    ].join(" - ");
+    summary = state.summary;
+    showMeta(state);
+    showSummary();
+    $("ai-calls-text").textContent = `AI calls left today: ${state.aiCallsLeft}`;
     for (const row of state.orders) saved.set(row.id, structuredClone(row));
     showStep(state.orders);
     if (grid) {
@@ -248,7 +298,7 @@ async function loadState() {
       fitToWidth();
     }
   } catch (err) {
-    $("status").textContent = "";
+    $("meta").replaceChildren();
     showError(`Can't reach the server (${err.message}). Is npm start running?`);
   }
 }
@@ -263,6 +313,9 @@ laptop.addEventListener("change", () => {
 });
 phone.addEventListener("change", fitToWidth);
 
+// Draw the static icons (<i data-lucide>). Without the library the page still works, just without icons.
+if (window.lucide) window.lucide.createIcons({ icons: window.lucide.icons });
+else console.info("Lucide icons did not load; the page works without them.");
 showStep([]);
 grid = createOrdersGrid();
 loadState();

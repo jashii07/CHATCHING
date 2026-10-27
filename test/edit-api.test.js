@@ -57,6 +57,7 @@ test("PUT item then qty: Priya's row becomes clear, price and totals come from t
   assert.equal(res.body.row.unclear, false);
   assert.equal(res.body.row.reason, "");
   assert.deepEqual(res.body.totals, { orders: 8, total: "405.00" });
+  assert.deepEqual(res.body.summary, { orders: 8, ready: 8, expected: "405.00", paidOrders: 0, paid: "0.00", needsCheck: 0 });
 });
 
 test("PUT a date: saved as-is; null clears it", async () => {

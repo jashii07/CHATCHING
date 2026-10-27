@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem, checkMenu } from "../src/orders.js";
+import { toRows, recalcRow, groupByBuyer, totals, mapPayPalStatus, matchMenuItem, checkMenu, summary } from "../src/orders.js";
 import { formatMoney } from "../src/money.js";
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
@@ -230,4 +230,22 @@ test("checkMenu: the currency must be a real code PayPal can bill in cents", () 
   assert.match(checkMenu({ ...menu, currency: undefined }).join(" "), /currency/i);
   // PayPal bills JPY, HUF and TWD in whole units only; our prices are "18.00", so refuse them clearly.
   for (const code of ["JPY", "HUF", "TWD"]) assert.match(checkMenu({ ...menu, currency: code }).join(" "), /decimals/i, code);
+});
+
+test("summary: per buyer; paid only when every row is Paid; cancelled buyers don't count", () => {
+  const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8"));
+  const rows = toRows([
+    { buyer: "Lina", status: "active", items: [{ itemId: "classic_brownies", qty: 3 }] },
+    { buyer: "Hafiz", status: "active", items: [{ itemId: "cookies", qty: 1 }, { itemId: "bahulu", qty: 1 }] },
+    { buyer: "Priya", status: "active", items: [{ itemId: null, qty: null }] },
+    { buyer: "Danish", status: "cancelled", items: [{ itemId: "cookies", qty: 1 }] },
+  ], menu);
+  assert.deepEqual(summary(rows), { orders: 3, ready: 2, expected: "91.00", paidOrders: 0, paid: "0.00", needsCheck: 1 });
+  rows[0].invoiceStatus = "Paid";
+  rows[1].invoiceStatus = "Paid (cash/bank)"; // Hafiz: only one of two rows paid
+  assert.deepEqual(summary(rows), { orders: 3, ready: 2, expected: "91.00", paidOrders: 1, paid: "54.00", needsCheck: 1 });
+  rows[2].invoiceStatus = "Paid"; // an unclear row can't count as paid
+  rows[2].unclear = true;
+  assert.equal(summary(rows).paidOrders, 1);
+  assert.deepEqual(summary([]), { orders: 0, ready: 0, expected: "0.00", paidOrders: 0, paid: "0.00", needsCheck: 0 });
 });

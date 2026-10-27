@@ -48,10 +48,11 @@ test("GET /api/state -> menu, demo orders + totals, AI mode, placeholder counter
   const res = await call("/api/state");
   assert.equal(res.status, 200);
   const state = JSON.parse(res.text);
-  assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "geminiConfigured", "menu", "orders", "paypalConfigured", "totals"]);
+  assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "geminiConfigured", "menu", "orders", "paypalConfigured", "summary", "totals"]);
   assert.deepEqual(state.menu, MENU);
   assert.equal(state.orders.length, 12); // the demo: one row per item
   assert.deepEqual(state.totals, { orders: 7, total: "387.00" });
+  assert.deepEqual(state.summary, { orders: 8, ready: 7, expected: "387.00", paidOrders: 0, paid: "0.00", needsCheck: 1 });
   assert.equal(state.aiMode, "mock");
   assert.equal(typeof state.aiCallsLeft, "number");
   assert.equal(state.paypalConfigured, true);
@@ -65,12 +66,13 @@ test("no secret value appears in any reply", async () => {
   }
 });
 
-test("GET / serves the page with AG Grid pinned to 36.2.0", async () => {
+test("GET / serves the page with AG Grid 36.2.0 and Lucide 1.55.0 pinned", async () => {
   const res = await call("/");
   assert.equal(res.status, 200);
   assert.match(res.type, /text\/html/);
   assert.match(res.text, /ag-grid-community@36\.2\.0\/dist\/ag-grid-community\.min\.js/);
   assert.match(res.text, /integrity="sha384-/);
+  assert.match(res.text, /lucide@1\.55\.0\/dist\/umd\/lucide\.min\.js"\s+integrity="sha384-/); // icons pinned + hash
 });
 
 test("unknown route -> 404 JSON", async () => {

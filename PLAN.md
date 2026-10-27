@@ -438,7 +438,7 @@ Badge colours for "Part paid" and "Paid (cash/bank)" are Claude's choice (the sp
 
 - Tap targets are at least 44 × 44 px on every device (buttons, Copy, row taps, the panel's close button).
 - The breakpoints (640 / 1024 px) are Claude's choice. A landscape iPad (1180 px wide) gets the laptop layout.
-- Spacing is kept from Step 1: 16 px side gutters and card padding, 8 px rounded corners.
+- Side gutters stay 16 px. Card padding, corners and row heights: see "Design upgrade" below (replaces the Step 1 values of 16 px padding and 8 px corners).
 
 ### 3-step guide
 - At the top of the page: **1 Paste → 2 Review → 3 Get paid**. The current step is highlighted: a filled navy circle and bold text. The other steps are muted grey. Not blue, because the steps aren't buttons.
@@ -447,6 +447,22 @@ Badge colours for "Part paid" and "Paid (cash/bank)" are Claude's choice (the sp
 ### AG Grid
 - Quartz theme, tuned with `themeQuartz.withParams({...})` using the colours above: background white, text navy, accent blue, borders warm grey, header background cream, font = the system stack, font size 15 px, hover/selected rows a light warm tint (not blue, because blue means clickable).
 - Check the exact `withParams` names against the 36.2.0 docs in Step 2 before using them.
+
+### Design upgrade (decided Tue 27 Oct): Apple-store style, same palette and colour rules
+
+Jasper's reason: "the original design is too simple" (compact, information squeezed together, hard to find).
+
+- **Whitespace:** page top padding 40 px; 32 px between sections; work cards 28 px padding (24 px iPad, 20 px phone); table rows 60 px, header 52 px; wrapped cells 16 px top and bottom.
+- **Type hierarchy** (system font, which is San Francisco on Apple devices): page title "Today's orders" 40 px bold (32 px on phones); section headings 22 px; body 16 px; quiet details 14 px muted; summary figures 28 px bold with lined-up digits. Sentence case everywhere; no all-caps labels.
+- **Cards:** two corner sizes show hierarchy: 24 px for the big work cards (chats, orders), 18 px for the summary cards. Shadows are soft and layered, tinted navy (not grey) so they sit warmly on the cream. The table has 16 px corners and no outer border (the white card is its frame).
+- **Sticky frosted-glass top bar:** cream at 72% opacity + backdrop blur, with the ChatChing wordmark on the left and "AI calls left today: X" on the right. The phone total bar uses the same glass.
+- **Buttons are pills** (fully rounded), at least 48 px tall, blue = clickable as before.
+- **Hover lift (scale 1.02, 220 ms) on the summary cards only,** and only on devices with a mouse and when reduced motion is off. The big work cards do not lift: scaling a 900 px table blurs its text and shifts its cell editors.
+- **Icons: Lucide 1.55.0** from jsDelivr, pinned with an integrity hash (open-source, ISC licence). One consistent set for the wordmark, steps, summary cards, panel headings, the Read orders button and every status badge. Icons use the text colour (navy), never amber, and are always next to words: the words carry the meaning. No emoji as icons. If the icon file can't load, the page still works without icons.
+  - Status icons: Draft = pencil-line, Sent = send, Part paid = hourglass, Paid = circle-check, Paid (cash/bank) = banknote, Cancelled = circle-x.
+- **Summary cards at the top: Orders, Expected, Paid, Needs check,** counted per buyer by the server (`summary()` in src/orders.js; the page does no money maths). Orders = active buyers; Expected = the total of orders ready to invoice; Paid = buyers whose rows are all Paid; Needs check = buyers with an unclear row. 4 across on laptop, 2 × 2 on iPad and phone.
+  - **They change colour with the facts** (the one bold element): "Needs check" gets the amber tint + stripe when it is above 0; "Paid" turns light green when money has arrived. Otherwise they are white.
+- **Setup details** (menu, AI mode, PayPal, Gemini) sit under the title as small separate chips, not one joined line.
 
 ### Errors (decided Mon 26 Oct)
 - Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in navy, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".

@@ -164,6 +164,23 @@ export function totals(rows) {
   return { orders: ready.length, total: fromSen(ready.reduce((sum, group) => sum + toSen(group.total), 0)) };
 }
 
+// The four summary cards at the top of the page, counted per buyer (one buyer = one order):
+// orders = active buyers; ready + expected = what can be invoiced now (same as totals);
+// paid = buyers whose rows are all Paid or Paid (cash/bank); needsCheck = buyers with an unclear row.
+export function summary(rows) {
+  const groups = groupByBuyer(rows);
+  const ready = totals(rows);
+  const paidGroups = groups.filter((group) => group.invoiceable && group.rows.every((row) => String(row.invoiceStatus).startsWith("Paid")));
+  return {
+    orders: groups.length,
+    ready: ready.orders,
+    expected: ready.total,
+    paidOrders: paidGroups.length,
+    paid: fromSen(paidGroups.reduce((sum, group) => sum + toSen(group.total), 0)),
+    needsCheck: groups.filter((group) => !group.invoiceable).length,
+  };
+}
+
 // PayPal invoice status -> what the app shows (PLAN.md Section 5).
 const PAYPAL_STATUS = {
   DRAFT: "Draft",

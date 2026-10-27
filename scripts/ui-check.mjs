@@ -55,8 +55,19 @@ try {
     console.log(`\n${viewport.width} px (${viewport.name}): columns = ${cols.join(", ")}`);
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     check(pageWidth <= viewport.width, `no sideways page scroll (page is ${pageWidth} px wide)`);
-    const step = await page.$eval(".steps li.current", (el) => el.textContent.trim());
-    check(step === "2 Review", `guide shows the current step: "${step}"`);
+    const step = await page.$eval(".steps li.current", (el) => el.innerText.replace(/\s+/g, " ").trim());
+    check(step.endsWith("Review orders"), `guide shows the current step: "${step}"`);
+    const cards = plain(await page.$eval(".summary", (el) => el.innerText));
+    check(cards.includes("Orders 8") && cards.includes("Expected RM 387.00") && cards.includes("Paid RM 0.00") && cards.includes("Needs check 1"),
+      `summary cards: "${cards}"`);
+    check(await page.$eval("#stat-check", (el) => el.classList.contains("is-check")), "Needs check card is amber");
+    const icons = await page.$$eval("svg.lucide", (els) => els.length);
+    check(icons >= 15, `Lucide icons drawn (${icons})`);
+    const ai = plain(await page.$eval("#ai-calls", (el) => el.innerText));
+    check(ai.startsWith("AI calls left today:"), `header shows "${ai}"`);
+    const headerTop = await page.evaluate(() => { scrollTo(0, 600); return document.querySelector(".topbar").getBoundingClientRect().top; });
+    check(headerTop === 0, "header stays at the top when scrolling (sticky)");
+    await page.evaluate(() => scrollTo(0, 0));
     if (viewport.name === "phone") {
       check(cols.join() === "Buyer,Item,Total,Status", "phone shows only Buyer, Item, Total, Status");
       const bar = plain(await page.$eval("#phone-total", (el) => el.innerText));
@@ -106,8 +117,13 @@ try {
     check(!unclear && checkText === "", `${label}: Priya's row is clear (no amber, no Check text)`);
     check(item === "Classic brownies (box of 6)" && qty === "1" && total === "RM 18.00", `${label}: price from the server: RM 18.00`);
     check(pinned.includes("8 orders ready") && pinned.includes("RM 405.00"), `${label}: totals updated to 8 orders, RM 405.00`);
+    const cards = plain(await page.$eval(".summary", (el) => el.innerText));
+    check(cards.includes("Expected RM 405.00") && cards.includes("Needs check 0 All clear"), `${label}: summary cards updated: "${cards}"`);
+    check(!(await page.$eval("#stat-check", (el) => el.classList.contains("is-check"))), `${label}: Needs check card is no longer amber`);
   };
   await afterEdit("after edit");
+  await page.evaluate(() => scrollTo(0, 0)); // the edit scrolled the page; the sticky header would sit mid-shot
+  await page.waitForTimeout(200);
   await page.screenshot({ path: `${OUT}1280-laptop-after-edit.png`, fullPage: true });
 
   await page.reload();

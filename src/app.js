@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { checkEdit, checkMenu, recalcRow, totals } from "./orders.js";
+import { checkEdit, checkMenu, recalcRow, summary, totals } from "./orders.js";
 import { createStore } from "./store.js";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
@@ -71,6 +71,7 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE } 
       menu,
       orders: store.rows(),
       totals: totals(store.rows()),
+      summary: summary(store.rows()),
       aiMode: config.aiMode,
       aiCallsLeft: 20, // placeholder until the daily counter (PLAN.md Step 9)
       paypalConfigured: config.paypalConfigured,
@@ -89,7 +90,7 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE } 
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
     const updated = store.replace(recalcRow({ ...row, ...changes }, menu));
-    res.json({ row: updated, totals: totals(store.rows()) });
+    res.json({ row: updated, totals: totals(store.rows()), summary: summary(store.rows()) });
   });
 
   app.use(express.static(PUBLIC_DIR));

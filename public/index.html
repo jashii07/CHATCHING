@@ -6,46 +6,92 @@
   <title>ChatChing</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
-  <!-- AG Grid Community, pinned to an exact version (DECISIONS.md). The integrity hash makes the
-       browser refuse the file if the CDN ever serves different bytes. -->
+  <!-- AG Grid Community and Lucide icons, each pinned to an exact version (DECISIONS.md). The integrity
+       hash makes the browser refuse a file if the CDN ever serves different bytes. -->
   <script defer src="https://cdn.jsdelivr.net/npm/ag-grid-community@36.2.0/dist/ag-grid-community.min.js"
           integrity="sha384-icvtRKM0YJJgeDhXnWY8UlF1PVBFd4K8Pj61la+vG+EU+awBeoP0xGPZhCD2SQOV"
+          crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/lucide@1.55.0/dist/umd/lucide.min.js"
+          integrity="sha384-SZUFq9Dx112fyzY/iIBEjyd2gu3jY4XVhp+LUNXSpEMB2IEm/TOoMTNH4BHtQ6Hz"
           crossorigin="anonymous"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
-  <header>
-    <h1>ChatChing</h1>
-    <p id="status" class="status" role="status">Connecting to the server…</p>
-    <!-- The 3-step guide (PLAN.md Section 12). Not buttons, so no blue. -->
-    <ol class="steps" aria-label="Progress">
-      <li data-step="1"><span class="dot">1</span> Paste</li>
-      <li data-step="2"><span class="dot">2</span> Review</li>
-      <li data-step="3"><span class="dot">3</span> Get paid</li>
-    </ol>
-    <p id="error" class="error-box" role="alert" hidden></p>
+  <!-- Sticky frosted-glass bar: the wordmark and today's AI allowance. -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="wordmark"><i data-lucide="hand-coins" aria-hidden="true"></i>ChatChing</span>
+      <span class="ai-calls" id="ai-calls" title="Free AI reads left today, shared by everyone using the demo">
+        <i data-lucide="bot" aria-hidden="true"></i><span id="ai-calls-text">AI calls left today: …</span>
+      </span>
+    </div>
   </header>
 
-  <main class="layout">
-    <details class="card chats" id="chats" open>
-      <summary>Chat messages</summary>
-      <label for="chat" class="visually-hidden">Chat messages</label>
-      <textarea id="chat" rows="10"
-                placeholder="Paste a day of chat messages here, e.g.&#10;[28/10 9:02 AM] Lina: hi! can i order 2 boxes of classic brownies, deliver on saturday?"></textarea>
-      <div class="controls">
-        <label for="chat-date">Chat date</label>
-        <input type="date" id="chat-date">
-        <button type="button" id="read-orders">Read orders</button>
-      </div>
-      <p id="read-message" class="hint" role="status"></p>
-    </details>
+  <div class="page">
+    <section class="intro">
+      <h1>Today's orders</h1>
+      <ul class="meta" id="meta" aria-label="Setup"><li>Connecting to the server…</li></ul>
 
-    <section class="card orders">
-      <h2>Orders</h2>
-      <p class="hint">Click a cell in Item, Qty or Date to fix it. Prices and totals come from the menu.</p>
-      <div id="grid"></div>
+      <!-- The 3-step guide (PLAN.md Section 12). A real sequence, so it is numbered. Not buttons, so no blue. -->
+      <ol class="steps" aria-label="Progress">
+        <li data-step="1"><span class="dot"><i data-lucide="clipboard-paste" aria-hidden="true"></i></span><span><small>Step 1</small>Paste chats</span></li>
+        <li data-step="2"><span class="dot"><i data-lucide="list-checks" aria-hidden="true"></i></span><span><small>Step 2</small>Review orders</span></li>
+        <li data-step="3"><span class="dot"><i data-lucide="hand-coins" aria-hidden="true"></i></span><span><small>Step 3</small>Get paid</span></li>
+      </ol>
+      <p id="error" class="error-box" role="alert" hidden></p>
     </section>
-  </main>
+
+    <!-- The day at a glance. Amber = needs your check, green = money arrived. -->
+    <section class="summary" aria-label="Today at a glance">
+      <article class="stat" id="stat-orders">
+        <i data-lucide="shopping-bag" aria-hidden="true"></i>
+        <h2>Orders</h2>
+        <p class="figure" data-figure>—</p>
+        <p class="caption" data-caption></p>
+      </article>
+      <article class="stat" id="stat-expected">
+        <i data-lucide="wallet" aria-hidden="true"></i>
+        <h2>Expected</h2>
+        <p class="figure money" data-figure>—</p>
+        <p class="caption" data-caption></p>
+      </article>
+      <article class="stat" id="stat-paid">
+        <i data-lucide="circle-check" aria-hidden="true"></i>
+        <h2>Paid</h2>
+        <p class="figure money" data-figure>—</p>
+        <p class="caption" data-caption></p>
+      </article>
+      <article class="stat" id="stat-check">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <h2>Needs check</h2>
+        <p class="figure" data-figure>—</p>
+        <p class="caption" data-caption></p>
+      </article>
+    </section>
+
+    <main class="layout">
+      <details class="panel chats" id="chats" open>
+        <summary><i data-lucide="messages-square" aria-hidden="true"></i>Chat messages</summary>
+        <label for="chat" class="visually-hidden">Chat messages</label>
+        <textarea id="chat" rows="10"
+                  placeholder="Paste a day of chat messages here, e.g.&#10;[28/10 9:02 AM] Lina: hi! can i order 2 boxes of classic brownies, deliver on saturday?"></textarea>
+        <div class="controls">
+          <label for="chat-date">Chat date</label>
+          <input type="date" id="chat-date">
+        </div>
+        <button type="button" id="read-orders"><i data-lucide="scan-text" aria-hidden="true"></i>Read orders</button>
+        <p id="read-message" class="hint" role="status"></p>
+      </details>
+
+      <section class="panel orders">
+        <div class="panel-head">
+          <h2><i data-lucide="receipt-text" aria-hidden="true"></i>Orders</h2>
+          <p class="hint">Tap Item, Qty or Date to fix a row. Prices and totals come from your menu.</p>
+        </div>
+        <div id="grid"></div>
+      </section>
+    </main>
+  </div>
 
   <!-- Phones only: replaces the pinned totals row (PLAN.md Section 12). -->
   <div class="phone-total" id="phone-total" aria-live="polite"></div>
