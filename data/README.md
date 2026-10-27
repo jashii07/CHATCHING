@@ -4,7 +4,7 @@
 
 | File | What it is |
 |------|------------|
-| `menu.json` | The seller's fixed menu. Prices are in MYR. This is the ONLY source of prices: the AI never sets a price. |
+| `menu.json` | The seller's fixed menu. Prices are in MYR. This is the ONLY source of prices: the AI never sets a price. Each item may have an `icon` (a Lucide icon name such as `cookie` or `cake-slice`) shown on its item chip. |
 | `demo-chats.txt` | One day of chat orders (Wed 28 Oct 2026) in English. One message per line. |
 | `expected-orders.json` | The correct answers for `demo-chats.txt`, used to measure AI accuracy. Orders use the same field names as the AI output (PLAN.md Section 5). `sourceMsgs` are 1-based line numbers in `demo-chats.txt`. `total`, `notOrders` and `summary` are extra fields for checking only; the AI never returns prices. |
 

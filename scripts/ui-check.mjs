@@ -1,9 +1,11 @@
-// The Step 2 browser check: opens the page at laptop, iPad and phone widths, takes screenshots,
-// and fails on any console error. Then it edits Priya's row in the real table (item -> Classic
-// brownies, qty -> 1), checks her row turns clear and the totals update, reloads, and checks the
-// edit survived. Run: node scripts/ui-check.mjs (uses the installed Google Chrome, no download).
+// The browser check (design round 3): opens the page at laptop, iPad and phone widths, takes screenshots,
+// and fails on any console error or warning. It checks one row per buyer, 6 buyers per page, the hero
+// card and the icon circles, then fixes Priya IN THE DRAWER (item -> Classic brownies, qty -> 1), checks
+// a refused change (qty 0) shows an error and is undone, reloads, and checks the fix survived.
+// Run: npm run ui-check (uses the installed Google Chrome, no download).
 // It starts its own server on a free port with its own store file in tmp/, so your saved orders
-// in data/runtime/ are never touched. (AG Grid 36 class names: body rows sit in .ag-grid-scrolling-container.) Screenshots go to tmp/screenshots/ (git-ignored).
+// in data/runtime/ are never touched. Screenshots go to tmp/screenshots/ (git-ignored).
+// (AG Grid 36 class names: body rows sit in .ag-grid-scrolling-container.)
 import { mkdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -16,6 +18,7 @@ const WIDTHS = [
   { name: "ipad", width: 820, height: 1180 },
   { name: "phone", width: 390, height: 844 },
 ];
+const ROWS = ".ag-grid-scrolling-container > .ag-row";
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -31,20 +34,36 @@ const check = (ok, label) => {
 };
 const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-break space after "RM"
 
+// Priya's order row id, from the server (her buyer row in the table uses the same id).
+const state = await (await fetch(`${base}/api/state`)).json();
+const PRIYA = state.groups.find((group) => group.buyer === "Priya").rowIds[0];
+
 async function open(viewport) {
   const page = await browser.newPage({ viewport });
   const errors = [];
-  // Warnings count too: AG Grid reports misuse (e.g. warning #3) as a warning, not an error.
+  // Warnings count too: AG Grid reports misuse as a warning, not an error.
   page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto(base);
-  await page.waitForSelector(".ag-grid-scrolling-container > .ag-row");
-  await page.waitForTimeout(500); // let the grid finish measuring the wrapped rows
+  await page.waitForSelector(ROWS);
+  await page.waitForTimeout(500); // let the grid finish measuring the rows
   return { page, errors };
 }
 
-const headers = (page) => page.$$eval(".ag-header-cell-text", (els) => els.map((el) => el.textContent.trim()));
+const headers = (page) => page.$$eval(".ag-header-cell-text", (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
+const bodyRows = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerText.replace(/\s+/g, " ").trim()));
 const pinnedText = (page) => page.$eval(".ag-grid-pinned-bottom-rows", (el) => el.innerText).catch(() => "");
+const rowOf = (page, buyer) => page.locator(ROWS, { hasText: buyer });
+const isUnclear = (locator) => locator.evaluate((el) => el.classList.contains("row-unclear"));
+const putReply = (page) => page.waitForResponse((res) => res.url().includes("/api/orders/") && res.request().method() === "PUT");
+
+async function goToPage(page, n) {
+  const target = `Page ${n} of 2`;
+  for (let i = 0; i < 3 && plain(await page.$eval("#page-text", (el) => el.textContent)) !== target; i++) {
+    await page.click(n === 2 ? "#page-next" : "#page-prev");
+    await page.waitForTimeout(300);
+  }
+}
 
 try {
   for (const viewport of WIDTHS) {
@@ -52,17 +71,20 @@ try {
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}.png`, fullPage: true });
     const cols = await headers(page);
     const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    console.log(`\n${viewport.width} px (${viewport.name}): columns = ${cols.join(", ")}`);
+    console.log(`\n${viewport.width} px (${viewport.name}): columns = ${cols.join(", ") || "(phone cards, no header)"}`);
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     check(pageWidth <= viewport.width, `no sideways page scroll (page is ${pageWidth} px wide)`);
+
     const step = await page.$eval(".steps li.current", (el) => el.innerText.replace(/\s+/g, " ").trim());
     check(step.endsWith("Review orders"), `guide shows the current step: "${step}"`);
     const cards = plain(await page.$eval(".summary", (el) => el.innerText));
-    check(cards.includes("Orders 8") && cards.includes("Expected RM 387.00") && cards.includes("Paid RM 0.00") && cards.includes("Needs check 1"),
+    check(cards.includes("Expected RM 387.00") && cards.includes("Orders 8") && cards.includes("Paid RM 0.00") && cards.includes("Needs check 1"),
       `summary cards: "${cards}"`);
+    const hero = await page.$eval("#stat-expected", (el) => getComputedStyle(el).backgroundImage);
+    check(hero.includes("gradient") && hero.includes("38, 48, 122"), "Expected is the deep indigo hero card (gradient)");
     check(await page.$eval("#stat-check", (el) => el.classList.contains("is-check")), "Needs check card is amber");
-    const icons = await page.$$eval("svg.lucide", (els) => els.length);
-    check(icons >= 15, `Lucide icons drawn (${icons})`);
+    const circles = await page.$$eval(".stat .icon-circle svg.lucide, .steps .icon-circle svg.lucide", (els) => els.length);
+    check(circles === 7, `icons in soft circles on the 4 cards and 3 steps (${circles})`);
     const ai = plain(await page.$eval("#ai-calls", (el) => el.innerText));
     check(ai.startsWith("AI calls left today:"), `header shows "${ai}"`);
     const headerTop = await page.evaluate(() => { scrollTo(0, 600); return document.querySelector(".topbar").getBoundingClientRect().top; });
@@ -70,91 +92,120 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     const bar = plain(await page.$eval("#chat-bar", (el) => (el.hidden ? "" : el.innerText)));
     check(bar.startsWith("15 messages read") && bar.endsWith("Edit"), `chats folded into a slim bar: "${bar}"`);
-    check(await page.$eval("#chats", (el) => el.hidden), "chat box hidden while folded");
-    const hafiz1 = plain(await page.locator('[row-id="r2"] [col-id="buyer"]').innerText());
-    const hafiz2 = plain(await page.locator('[row-id="r3"] [col-id="buyer"]').innerText());
-    check(hafiz1 === "H Hafiz 2 items, RM 70.00" && hafiz2 === "", `buyer group: first row "${hafiz1}", second row "${hafiz2}"`);
     const setup = plain(await page.$eval("footer", (el) => el.innerText));
-    check(setup.includes("PayPal keys: missing") && !(await page.$("#meta")), `setup details only in the footer: "${setup}"`);
+    check(setup.includes("PayPal keys: missing"), `setup details in the quiet footer: "${setup}"`);
+
+    // One row per buyer, 6 per page; a buyer is never split.
+    const page1 = await bodyRows(page);
+    check(page1.length === 6, `page 1 shows 6 buyers (${page1.length})`);
+    check(plain(await page.$eval("#page-text", (el) => el.textContent)) === "Page 1 of 2", "page arrows say Page 1 of 2");
+    const hafiz = page1.filter((text) => text.includes("Hafiz"));
+    check(hafiz.length === 1 && hafiz[0].includes("1 × Burnt cheesecake 6-inch") && hafiz[0].includes("1 × Choc chip cookies") && hafiz[0].includes("RM 70.00"),
+      `Hafiz is ONE row with both item chips and his total: "${hafiz[0]}"`);
+    const chipIcons = await rowOf(page, "Hafiz").locator(".chip svg.lucide").count();
+    check(chipIcons === 2, `food icons on Hafiz's item chips (${chipIcons})`);
+
     if (viewport.name === "phone") {
-      check(cols.join() === "Buyer,Item,Total,Status", "phone shows only Buyer, Item, Total, Status");
-      const bar = plain(await page.$eval("#phone-total", (el) => el.innerText));
-      check(bar === "Total: 7 orders ready RM 387.00", `sticky bar: "${bar}"`);
-      // The Check column is hidden on phones, so the words must sit under the item name.
-      const priyaRow = page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Priya" }) });
-      const item = plain(await priyaRow.locator('[col-id="itemId"]').innerText());
-      check(item.includes("Check:") && item.includes("Same order as last week"), `Priya's item cell shows the Check words: "${item}"`);
-      const lina = plain(await page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Lina" }) }).locator('[col-id="itemId"]').innerText());
-      check(!lina.includes("Check:"), `a clear row has no Check words: "${lina}"`);
-    } else if (viewport.name === "ipad") {
-      check(cols.join() === "Buyer,Item,Qty,Date,Total,Status", "iPad: 6 columns, the Check words sit under the item");
-      const priyaItem = plain(await page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Priya" }) }).locator('[col-id="itemId"]').innerText());
-      check(priyaItem.includes("Check:"), `iPad: Priya's item cell shows the Check words: "${priyaItem}"`);
-      const pinned = plain(await pinnedText(page));
-      check(pinned.includes("7 orders ready") && pinned.includes("RM 387.00"), `pinned totals row: "${pinned}"`);
+      const headerHeight = await page.$eval(".ag-header", (el) => el.getBoundingClientRect().height);
+      check(headerHeight <= 1 && (await page.$$(".card-row")).length === 6, `phone: buyers are stacked cards, no table header (header ${headerHeight} px)`);
+      const sticky = plain(await page.$eval("#phone-total", (el) => el.innerText));
+      check(sticky === "Total: 7 orders ready RM 387.00", `sticky bar: "${sticky}"`);
     } else {
-      check(cols.join() === "Buyer,Item,Qty,Date,Total,Status,Check", "laptop: all 7 columns shown");
+      const expected = viewport.name === "ipad" ? "Buyer,Items,Total,Status" : "Buyer,Items,Date,Total,Status";
+      check(cols.join() === expected, `columns: ${cols.join(", ")}`);
+      if (viewport.name === "ipad") {
+        const lina = plain(await rowOf(page, "Lina").locator('[col-id="buyer"]').innerText());
+        check(lina === "L Lina 1 item, Sat 31 Oct", `iPad: the date sits under the name: "${lina}"`);
+      }
       const pinned = plain(await pinnedText(page));
       check(pinned.includes("7 orders ready") && pinned.includes("RM 387.00"), `pinned totals row: "${pinned}"`);
+    }
+
+    await goToPage(page, 2);
+    const page2 = await bodyRows(page);
+    check(page2.length === 3 && plain(await page.$eval("#page-text", (el) => el.textContent)) === "Page 2 of 2", `page 2 shows the other 3 buyers (${page2.length})`);
+    const priya = rowOf(page, "Priya");
+    check(await isUnclear(priya), "Priya's row is amber (unclear)");
+    const priyaText = plain(await priya.innerText());
+    check(priyaText.includes("Check:") && priyaText.includes("Same order as last week"), `Priya's row says why: "${priyaText}"`);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-page2.png`, fullPage: true });
+
+    if (viewport.name === "phone") {
+      await priya.click();
+      await page.waitForSelector("#drawer.is-open");
+      await page.waitForTimeout(400); // let the drawer finish sliding in before the screenshot
+      const drawerWidth = await page.$eval("#drawer", (el) => Math.round(el.getBoundingClientRect().width));
+      check(drawerWidth === viewport.width, `phone: the drawer is full screen (${drawerWidth} px)`);
+      await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-drawer.png` });
+      await page.keyboard.press("Escape");
+      check(await page.$eval("#drawer", (el) => el.hidden), "Escape closes the drawer");
     }
     await page.close();
   }
 
-  // The edit: Priya's row in the real table, at laptop width.
-  console.log("\nEdit Priya: item -> Classic brownies, qty -> 1");
+  // The fix, in the drawer, at laptop width.
+  console.log("\nFix Priya in the drawer: item -> Classic brownies, qty -> 1");
   const { page, errors } = await open(WIDTHS[0]);
-  const priya = page.locator(".ag-grid-scrolling-container > .ag-row", { has: page.locator('[col-id="buyer"]', { hasText: "Priya" }) });
-  check(await priya.evaluate((el) => el.classList.contains("row-unclear")), "before: Priya's row is amber (unclear)");
-  await page.click("#chat-edit");
-  check(!(await page.$eval("#chats", (el) => el.hidden)) && (await page.$eval("#chat", (el) => el.value.startsWith("[28/10 9:02 AM] Lina:"))),
-    "Edit opens the chat box with the 15 messages that were read");
-  await page.click("#chat-hide");
-  check(await page.$eval("#chats", (el) => el.hidden), "Hide chats folds it again");
-  console.log(`      before: Check = "${plain(await priya.locator('[col-id="check"]').innerText())}"`);
+  await goToPage(page, 2);
+  const priya = rowOf(page, "Priya");
+  await priya.click();
+  await page.waitForSelector("#drawer.is-open");
+  await page.waitForTimeout(400);
+  check(plain(await page.$eval("#drawer-title", (el) => el.textContent)) === "Priya", "tapping Priya's row opens her drawer");
+  await page.screenshot({ path: `${OUT}1280-laptop-drawer.png` });
 
-  await priya.locator('[col-id="itemId"]').click();
-  await page.locator(".ag-cell-editor .ag-picker-field-wrapper").click(); // open the dropdown list
-  const saveItem = page.waitForResponse((res) => res.url().includes("/api/orders/") && res.request().method() === "PUT");
-  await page.locator(".ag-list-item", { hasText: "Classic brownies (box of 6)" }).click();
-  console.log(`      PUT itemId -> ${(await saveItem).status()}`);
-
-  await priya.locator('[col-id="qty"]').click();
-  const saveQty = page.waitForResponse((res) => res.url().includes("/api/orders/") && res.request().method() === "PUT");
-  await page.keyboard.type("1");
-  await page.keyboard.press("Enter");
-  console.log(`      PUT qty -> ${(await saveQty).status()}`);
-  await page.waitForTimeout(300); // let the grid redraw the row
-
-  const afterEdit = async (label) => {
-    const unclear = await priya.evaluate((el) => el.classList.contains("row-unclear"));
-    const item = plain(await priya.locator('[col-id="itemId"]').innerText());
-    const qty = plain(await priya.locator('[col-id="qty"]').innerText());
-    const total = plain(await priya.locator('[col-id="lineTotal"]').innerText());
-    // The Check column disappears once nothing needs checking; no cell means no Check text.
-    const checkCell = priya.locator('[col-id="check"]');
-    const checkText = (await checkCell.count()) ? plain(await checkCell.innerText()) : "";
-    const pinned = plain(await pinnedText(page));
-    console.log(`      ${label}: item "${item}", qty ${qty}, total ${total}, Check "${checkText}"; totals "${pinned}"`);
-    check(!unclear && checkText === "", `${label}: Priya's row is clear (no amber, no Check text)`);
-    check(item === "Classic brownies (box of 6)" && qty === "1" && total === "RM 18.00", `${label}: price from the server: RM 18.00`);
-    check(pinned.includes("8 orders ready") && pinned.includes("RM 405.00"), `${label}: totals updated to 8 orders, RM 405.00`);
-    const cards = plain(await page.$eval(".summary", (el) => el.innerText));
-    check(cards.includes("Expected RM 405.00") && cards.includes("Needs check 0 All clear"), `${label}: summary cards updated: "${cards}"`);
-    check(!(await page.$eval("#stat-check", (el) => el.classList.contains("is-check"))), `${label}: Needs check card is no longer amber`);
-    const cols = (await headers(page)).join();
-    check(cols === "Buyer,Item,Qty,Date,Total,Status", `${label}: Check column hidden once nothing needs checking (${cols})`);
-    const priyaBuyer = plain(await priya.locator('[col-id="buyer"]').innerText());
-    check(priyaBuyer === "P Priya 1 item, RM 18.00", `${label}: Priya's subtotal: "${priyaBuyer}"`);
-  };
-  await afterEdit("after edit");
-  await page.evaluate(() => scrollTo(0, 0)); // the edit scrolled the page; the sticky header would sit mid-shot
+  let reply = putReply(page);
+  await page.selectOption(`#edit-${PRIYA}-itemId`, "classic_brownies");
+  console.log(`      PUT itemId -> ${(await reply).status()}`);
   await page.waitForTimeout(200);
-  await page.screenshot({ path: `${OUT}1280-laptop-after-edit.png`, fullPage: true });
+  const midCheck = plain(await page.$eval("#drawer-body", (el) => el.innerText));
+  check(midCheck.includes("Check: Quantity missing."), "after the item: the drawer still says the quantity is missing");
+
+  reply = putReply(page);
+  await page.fill(`#edit-${PRIYA}-qty`, "1");
+  await page.keyboard.press("Tab"); // a number box saves when you leave it
+  console.log(`      PUT qty -> ${(await reply).status()}`);
+  await page.waitForTimeout(200);
+  const sub = plain(await page.$eval("#drawer-sub", (el) => el.textContent));
+  check(sub === "1 item, RM 18.00 in total" && !(await page.$("#drawer-body .check-text")), `drawer: Priya is clear: "${sub}"`);
+
+  // A refused change: qty 0 -> the drawer says why, sends nothing, and the box goes back to 1.
+  let puts = 0;
+  const countPuts = (req) => req.method() === "PUT" && puts++;
+  page.on("request", countPuts);
+  await page.fill(`#edit-${PRIYA}-qty`, "0");
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(300);
+  page.off("request", countPuts);
+  check(puts === 0, "qty 0 is stopped in the drawer: no request sent");
+  const refused = plain(await page.$eval("#drawer-error", (el) => (el.hidden ? "" : el.textContent)));
+  check(refused.startsWith("Error: That change was not saved") && refused.includes("1 to 99"), `a refused change is explained: "${refused}"`);
+  check((await page.inputValue(`#edit-${PRIYA}-qty`)) === "1", "and the quantity goes back to 1");
+  await page.keyboard.press("Escape");
+
+  const afterFix = async (label) => {
+    const row = rowOf(page, "Priya");
+    const text = plain(await row.innerText());
+    const cards = plain(await page.$eval(".summary", (el) => el.innerText));
+    const pinned = plain(await pinnedText(page));
+    console.log(`      ${label}: row "${text}"; totals "${pinned}"`);
+    check(!(await isUnclear(row)) && !text.includes("Check:"), `${label}: Priya's row is clear (no amber, no Check words)`);
+    check(text.includes("1 × Classic brownies") && text.includes("RM 18.00"), `${label}: her chip and total come from the server (RM 18.00)`);
+    check(pinned.includes("8 orders ready") && pinned.includes("RM 405.00"), `${label}: totals updated to 8 orders, RM 405.00`);
+    check(cards.includes("Expected RM 405.00") && cards.includes("Needs check 0"), `${label}: summary cards updated`);
+    check(!(await page.$eval("#stat-check", (el) => el.classList.contains("is-check"))), `${label}: Needs check card is no longer amber`);
+  };
+  await afterFix("after the fix");
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${OUT}1280-laptop-after-fix-page2.png`, fullPage: true });
 
   await page.reload();
-  await page.waitForSelector(".ag-grid-scrolling-container > .ag-row");
-  await afterEdit("after reload");
-  check(errors.length === 0, `no console errors or warnings during the edit${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+  await page.waitForSelector(ROWS);
+  await page.waitForTimeout(400);
+  await goToPage(page, 2);
+  await afterFix("after reload");
+  check(errors.length === 0, `no console errors or warnings during the fix${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } finally {
   await browser.close();
   server.closeAllConnections();

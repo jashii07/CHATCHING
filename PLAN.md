@@ -70,10 +70,12 @@ Only one new package is planned: **express**.
 
 ### AG Grid showcase (Community features only, no Enterprise)
 
+*Design round 3 (27 Oct): editing moved from the cell editors (select + date) into the buyer drawer's simple form fields (Jasper's choice), so those two editors left this list; pagination joined it.*
+
 | Feature | Used for |
 |---|---|
-| Select cell editor (`agSelectCellEditor`) | pick a menu item; the price updates from the menu |
-| Date cell editor | fix a delivery date |
+| Pagination (`pagination`, 6 rows per page, our own arrows via `paginationGoToNextPage`) | one buyer per row, 6 buyers per page (design round 3) |
+| Auto row height + custom cell renderers | buyer avatar, item chips with food icons, phone cards |
 | Custom cell renderer: status badge | Draft / Sent / Paid / Paid (cash) / Cancelled in colours |
 | `rowClassRules` | highlight unclear rows (and grey out cancelled ones) |
 | Custom cell renderer: Copy-link button | copy the payer link for the chat |
@@ -81,7 +83,7 @@ Only one new package is planned: **express**.
 | Quick filter search box | find a buyer or item fast |
 | CSV export (`exportDataAsCsv`) | "Export CSV (opens in Excel)" button (#4) |
 | Cell flashing (`flashCells`) | the status cell flashes green when it turns Paid (#4) |
-| Row click event | opens the buyer panel (#1) |
+| Row click event (`onRowClicked`, Enter key via `onCellKeyDown`) | opens the buyer drawer: edit items, qty and dates (round 3); the buyer panel (#1) joins it in Step 7 |
 
 **Not used (Enterprise):** row grouping, Excel `.xlsx` export, the Side Bar and the clipboard module.
 - Rows are grouped per buyer in our own code.
@@ -378,6 +380,8 @@ In suggested order:
 
 ## 12. UI spec (filled in Mon 26 Oct)
 
+> **DESIGN FROZEN (Tue 27 Oct) until Sun 8 Nov** (the planned polish day). Round 3 was the last design round: no visual changes before 8 Nov except bug fixes and what new features need (e.g. the Send invoices button in Step 5), following these rules.
+
 **Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10), **and must be checked at laptop, iPad and phone widths** (1280 px, 820 px and 390 px, with `npm run ui-check` AND by looking at the screenshots). If a step needs something the spec doesn't cover, Claude asks before inventing it.
 
 Goal (Jasper): clean but informative, warm, and working on every type of device.
@@ -388,6 +392,7 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 |---|---|---|
 | Warm ultra-light grey | `#F7F5F2` | page background *(replaces cream `#FBF7F0`)* |
 | White | `#FFFFFF` | cards and the table |
+| Deep brand indigo | `#26307A` → `#33409A` | **the Expected hero card only** (white on it: 11.76 / 8.97; its pale text `#D4D7F0`: 6.31) |
 | Rich charcoal | `#1D1D1F` | headings and primary text *(replaces navy `#1F2A44`)* |
 | Secondary grey | `#6E6E73` | secondary text, table headers, subtext *(replaces `#5B6270`; `#86868B` is too faint: 3.62:1)* |
 | Warmer blue | `#3A5BC7` (hover `#3150B4`) | **clickable only**: buttons (white text), links, the quiet "Edit" button's text, focus ring *(replaces `#1D4E9E`)* |
@@ -396,7 +401,7 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 | Hairline | `#EFEBE5` | the line between buyers in the table (decorative) |
 | Input border | `#8C8270` | the ONLY visible borders: text boxes and the date picker, so people can see where to type |
 
-**Colour rule (unchanged):** blue = clickable, amber = check this, green = money arrived. Nothing else gets colour. The logo and avatars are charcoal on neutral, never a colour.
+**Colour rule (reworded 27 Oct, round 3):** **bright blue `#3A5BC7` = clickable**, amber = check this, green = money arrived. The **deep brand indigo `#26307A`/`#33409A` is used only for the Expected hero card** (it is clearly darker than the button blue and never on anything clickable). Nothing else gets colour. The logo, avatars, chips and icon circles are charcoal on neutral.
 
 **Status tags:** borderless pills, a soft muted tint with matching darker text, plus a Lucide icon (laptop and iPad; phones show the words only).
 
@@ -432,9 +437,9 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 
 | Width | Layout |
 |---|---|
-| **Laptop** (≥ 1024 px) | Summary row: Expected (wide hero) + Orders, Paid, Needs check. Chats on the left, table on the right; once orders are read, the chats fold into a slim bar and the table takes the full width. 7 columns (Check only while a row needs checking). Clicking a row slides the buyer panel in from the right (Step 7). |
-| **iPad** (641–1023 px) | Expected full width on top, the other three cards below. The chat box sits at the top (folds into the slim bar). Table full width with 6 columns: the "Check:" words sit under the item name (no room for a Check column). |
-| **Phone** (≤ 640 px) | Everything stacked. Table shows only **Buyer, Item, Total, Status**; the "Check:" words sit under the item name. Tapping a row opens the buyer panel **full screen** (Step 7). A sticky frosted bottom bar shows the total (and "Send invoices" from Step 5); it replaces the pinned totals row. |
+| **Laptop** (≥ 1024 px) | Summary row: Expected (indigo hero) + Orders, Paid, Needs check. Chats on the left, table on the right; once orders are read, the chats fold into a slim bar and the table takes the full width. **One row per buyer**, columns Buyer, Items, Date, Total, Status + a blue chevron. Tapping a row opens the **buyer drawer** from the right. |
+| **iPad** (641–1023 px) | Expected full width on top, the other three cards below. Same table without the Date column: the date sits under the buyer's name ("2 items, Fri 30 Oct"). The drawer slides in from the right. |
+| **Phone** (≤ 640 px) | Everything stacked. **Each buyer is a stacked card** (avatar, name, items and date, total + status on the right, item chips below, "Check:" words if needed); no table header. The drawer is **full screen**. A sticky frosted bottom bar shows the total (and "Send invoices" from Step 5); it replaces the pinned totals row. |
 
 - Tap targets are at least 44 × 44 px on every device.
 - Breakpoints 640 / 1024 px (Claude's choice). A landscape iPad (1180 px) gets the laptop layout. Side gutters 16 px.
@@ -445,25 +450,27 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 - At the top: **1 Paste → 2 Review → 3 Get paid**, each with a Lucide icon in a white circle. The current step is a filled charcoal circle and bold text; the others are secondary grey. Not blue, because the steps aren't buttons.
 - Current step rule: no rows yet → 1; rows but no invoices → 2; any invoice sent → 3.
 
-### Design principles (rounds 1 + 2, Tue 27 Oct)
+### Design principles (rounds 1-3, Tue 27 Oct; round 3 is final until 8 Nov)
 
-Jasper's reasons: round 1 "the original design is too simple"; round 2 "no personality and no focus".
+Jasper's reasons: round 1 "the original design is too simple"; round 2 "no personality and no focus"; round 3 "the page is too compact, has no real icons, and the list is too long". Round 3 matched the QUALITY cues of a banking-app reference (colour confidence, big numbers, generous space, icons in soft circles, short card-like lists), not its branding or layout.
 
-- **One focus:** the Expected figure is the hero (the largest number on the page). Everything else is quieter.
+- **One focus:** the Expected figure is the hero: a **solid deep indigo card** (`#26307A` → `#33409A` subtle gradient, 24 px corners, a soft lighter sweep in one corner) with **large white numbers** (68 px; 48 px phone), like a bank card. Everything else stays white and quieter.
 - **Depth without borders:** no outer borders on cards, the chat container or the table; one soft diffused shadow `0 4px 24px rgba(0,0,0,0.04)` on every card. Only inputs have visible borders.
 - **Radii:** at least 16 px on all main containers and inputs: work cards 24 px, summary cards 20 px (18 px phone), the table 16 px, textarea and date picker 16 px, buttons and tags fully rounded.
-- **Whitespace:** page top 48 px; 28-36 px between sections; work cards 32 px padding (28/20 iPad, 24/16 phone); table rows 72 px with 24 px top and bottom padding (about double round 1); header 48 px.
+- **Whitespace:** page top 48 px; 24-32 px between sections; summary cards 28 px padding, work cards 32 px (28/20 iPad, 24/16 phone); buyer rows at least 92 px tall with 24 px top and bottom padding; header 52 px. Body text 17 px (16 px phone), table 16 px, page title 48 px (36 px phone).
 - **No vertical lines in the table:** no column borders, no header dividers, no resize handles. Rows have no lines between them; one hairline separates buyers.
-- **Buyer groups (our own code; AG Grid's row grouping is Enterprise):** rows are ordered by buyer (the server's `buyerGroups()`). The buyer's FIRST row shows a soft initials avatar, the name and the buyer's subtotal ("2 items, RM 70.00"; "Needs a check" while unclear; "Cancelled"); the buyer's other rows leave the Buyer cell empty, so the items read as one block.
+- **One row per buyer (our own grouping; AG Grid's row grouping is Enterprise):** the server's `buyerGroups()` gives each buyer's rows and subtotal; the page builds one table row per buyer: a soft initials avatar + name (+ "2 items", "Needs a check" or "Cancelled"), the items as **compact chips** ("3 × Classic brownies" with a food icon from `menu.json`), the delivery date, the buyer's total and ONE status tag. Unclear buyers get the amber tint + stripe and the "Check: <reason>" words under the chips. A blue chevron in a soft blue circle says "this row opens" (blue = clickable).
+- **Pagination:** AG Grid Community pagination, **6 buyers per page**, with our own round arrow buttons and "Page 1 of 2" under the table (AG Grid's own panel is hidden). One row = one buyer, so a buyer is never split across pages. Disabled arrows are grey, not blue.
+- **The buyer drawer (editing):** tapping a buyer opens a drawer (480 px from the right on laptop/iPad, full screen on phones) with one white card per item: the item's food icon, name and line total, then simple form fields: **Item** (dropdown with names and prices), **Qty** (1-99) and **Date**. Each change saves at once with the same `PUT /api/orders/:id`; the drawer, table and cards update from the server's reply. Unclear items are amber cards with the "Check:" words; cancelled items are read-only. A quantity outside 1-99 is stopped in the drawer with the server's own wording (no request is sent, so the browser logs no red 400 error); the server still checks everything. Escape, the close button or the dimmed page closes it; Tab stays inside it while open.
 - **Sticky frosted-glass top bar** with the logo mark (an inline SVG: chat bubble + coin, charcoal), the ChatChing wordmark and "AI calls left today: X".
 - **Pill buttons:** "Read orders" is a fully rounded warmer-blue pill with a soft hover transition (colour + glow); secondary actions ("Edit", "Hide chats") are quiet pills with blue text on a pale blue tint.
 - **Hover lift (scale 1.02) on the summary cards only,** only with a mouse and when reduced motion is off; scaling the big table would blur its text and shift its editors.
-- **Icons: Lucide 1.55.0** (jsDelivr, pinned, integrity hash, ISC licence) for the steps, cards, panel headings, buttons and tags. Always next to words; never amber; no emoji. The page works without them.
+- **Icons: Lucide 1.55.0** (jsDelivr, pinned, integrity hash, ISC licence), 20-24 px, **inside soft tinted circles (40-44 px)** on the summary cards and steps (neutral tint; the Paid card's circle is green; on the hero it is white at 14%). **Food icons on the item chips** come from an optional `"icon"` field per item in `data/menu.json` (Lucide names, e.g. "cookie", "cake-slice"), so a seller can change them. Always next to words; never amber; no emoji. The page works without them.
   - Status icons: Draft = pencil-line, Sent = send, Part paid = hourglass, Paid = circle-check, Paid (cash/bank) = banknote, Cancelled = circle-x.
 - **Summary cards: Expected (hero), Orders, Paid, Needs check,** counted per buyer by the server (`summary()`; the page does no money maths). They change colour with the facts: Needs check turns amber (tint + stripe) above 0; Paid turns green once money arrives.
 
 ### AG Grid
-- Quartz theme via `themeQuartz.withParams({...})` (names checked in the 36.2.0 file): white background and header, charcoal text, secondary-grey 13 px headers, accent = the warmer blue; `wrapperBorder`, `rowBorder`, `columnBorder` and `headerColumnBorder` off; resize handles transparent; row hover `#FAF8F5` and selected `#F5F1EB` (warm, not blue); font = the stack above.
+- Quartz theme via `themeQuartz.withParams({...})` (names checked in the 36.2.0 file): white background and header, charcoal text, secondary-grey 14 px headers, rows at least 92 px, a hairline between buyers (`rowBorder`), pagination with `suppressPaginationPanel`, accent = the warmer blue; `wrapperBorder`, `columnBorder` and `headerColumnBorder` off; resize handles transparent; row hover `#FAF8F5` and selected `#F5F1EB` (warm, not blue); font = the stack above.
 
 ### Errors (decided Mon 26 Oct)
 - Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in charcoal, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".

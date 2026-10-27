@@ -43,35 +43,35 @@
       <h1>Today's orders</h1>
       <!-- The 3-step guide (PLAN.md Section 12). A real sequence, so it is numbered. Not buttons, so no blue. -->
       <ol class="steps" aria-label="Progress">
-        <li data-step="1"><span class="dot"><i data-lucide="clipboard-paste" aria-hidden="true"></i></span><span><small>Step 1</small>Paste chats</span></li>
-        <li data-step="2"><span class="dot"><i data-lucide="list-checks" aria-hidden="true"></i></span><span><small>Step 2</small>Review orders</span></li>
-        <li data-step="3"><span class="dot"><i data-lucide="hand-coins" aria-hidden="true"></i></span><span><small>Step 3</small>Get paid</span></li>
+        <li data-step="1"><span class="icon-circle"><i data-lucide="clipboard-paste" aria-hidden="true"></i></span><span><small>Step 1</small>Paste chats</span></li>
+        <li data-step="2"><span class="icon-circle"><i data-lucide="list-checks" aria-hidden="true"></i></span><span><small>Step 2</small>Review orders</span></li>
+        <li data-step="3"><span class="icon-circle"><i data-lucide="hand-coins" aria-hidden="true"></i></span><span><small>Step 3</small>Get paid</span></li>
       </ol>
       <p id="error" class="error-box" role="alert" hidden></p>
     </section>
 
-    <!-- The day at a glance. Expected is the hero; amber = needs your check, green = money arrived. -->
+    <!-- The day at a glance. Expected is the hero: a deep indigo card, like a bank card. -->
     <section class="summary" aria-label="Today at a glance">
       <article class="stat stat-hero" id="stat-expected">
-        <i data-lucide="wallet" aria-hidden="true"></i>
+        <span class="icon-circle"><i data-lucide="wallet" aria-hidden="true"></i></span>
         <h2>Expected</h2>
         <p class="figure money" data-figure>—</p>
         <p class="caption" data-caption></p>
       </article>
       <article class="stat" id="stat-orders">
-        <i data-lucide="shopping-bag" aria-hidden="true"></i>
+        <span class="icon-circle"><i data-lucide="shopping-bag" aria-hidden="true"></i></span>
         <h2>Orders</h2>
         <p class="figure" data-figure>—</p>
         <p class="caption" data-caption></p>
       </article>
       <article class="stat" id="stat-paid">
-        <i data-lucide="circle-check" aria-hidden="true"></i>
+        <span class="icon-circle"><i data-lucide="circle-check" aria-hidden="true"></i></span>
         <h2>Paid</h2>
         <p class="figure money" data-figure>—</p>
         <p class="caption" data-caption></p>
       </article>
       <article class="stat" id="stat-check">
-        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <span class="icon-circle"><i data-lucide="triangle-alert" aria-hidden="true"></i></span>
         <h2>Needs check</h2>
         <p class="figure" data-figure>—</p>
         <p class="caption" data-caption></p>
@@ -80,7 +80,7 @@
 
     <!-- After orders are read, the chat box folds into this slim bar so the table gets the full width. -->
     <div class="chat-bar" id="chat-bar" hidden>
-      <i data-lucide="messages-square" aria-hidden="true"></i>
+      <span class="icon-circle small"><i data-lucide="messages-square" aria-hidden="true"></i></span>
       <span id="chat-bar-text"></span>
       <button type="button" class="ghost" id="chat-edit" aria-controls="chats">Edit</button>
     </div>
@@ -105,9 +105,15 @@
       <section class="panel orders">
         <div class="panel-head">
           <h2><i data-lucide="receipt-text" aria-hidden="true"></i>Orders</h2>
-          <p class="hint">Tap Item, Qty or Date to fix a row. Prices and totals come from your menu.</p>
+          <p class="hint">One row per buyer. Tap a buyer to fix their items, quantities or date.</p>
         </div>
         <div id="grid"></div>
+        <!-- Our own page arrows; they drive AG Grid's pagination (6 buyers per page). -->
+        <nav class="pager" id="pager" aria-label="Pages" hidden>
+          <button type="button" class="round" id="page-prev" aria-label="Previous page"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+          <span id="page-text" aria-live="polite"></span>
+          <button type="button" class="round" id="page-next" aria-label="Next page"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+        </nav>
       </section>
     </main>
   </div>
@@ -116,6 +122,22 @@
   <footer class="footer">
     <ul id="setup" aria-label="Setup"></ul>
   </footer>
+
+  <!-- The buyer drawer: edit one buyer's items, quantities and date. Full screen on phones. -->
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+    <div class="drawer-head">
+      <span class="avatar large" id="drawer-avatar"></span>
+      <div>
+        <h2 id="drawer-title"></h2>
+        <p class="hint" id="drawer-sub"></p>
+      </div>
+      <button type="button" class="round ghost" id="drawer-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <p class="drawer-error error-box" id="drawer-error" role="alert" hidden></p>
+    <div class="drawer-body" id="drawer-body"></div>
+    <p class="hint drawer-foot">Changes save as you make them. Prices and totals come from your menu.</p>
+  </aside>
 
   <!-- Phones only: replaces the pinned totals row (PLAN.md Section 12). -->
   <div class="phone-total" id="phone-total" aria-live="polite"></div>

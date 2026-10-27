@@ -1,19 +1,20 @@
-// The page: the orders table (AG Grid) with editing (Step 2). Every edit goes to the server, which
-// recalculates the price, total and unclear flag; the page never does money maths.
+// The page: one row per buyer in an AG Grid table (6 buyers per page), and a drawer to fix a buyer's
+// items, quantities and dates. Every change goes to the server (PUT /api/orders/:id), which recalculates
+// the price, totals and unclear flag; the page never does money maths.
 // Layout and colours follow the UI spec (PLAN.md Section 12). Reading orders comes in Step 4.
-// Icons: Lucide (pinned in index.html). Static icons are <i data-lucide="..."> tags; badges build theirs in code.
+// Icons: Lucide (pinned in index.html). Static icons are <i data-lucide="..."> tags; the rest are built in code.
 
 // The AG Grid features later steps rely on (all Community, none Enterprise).
 const NEEDED_MODULES = {
   CsvExportModule: "CSV export",
   HighlightChangesModule: "cell flashing",
   QuickFilterModule: "quick filter",
+  PaginationModule: "pagination",
 };
+const BUYERS_PER_PAGE = 6;
 
 const phone = window.matchMedia("(max-width: 640px)");
 const laptop = window.matchMedia("(min-width: 1024px)");
-// "laptop" (>= 1024 px), "ipad" (641-1023 px) or "phone" (<= 640 px): each gets its own column widths.
-const screenSize = () => (phone.matches ? "phone" : laptop.matches ? "laptop" : "ipad");
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,12 +25,10 @@ let grid = null;
 let totals = { orders: 0, total: "0.00" };
 let summary = null;
 let source = null; // the chats the rows came from: { text, chatDate, messages }
-let rowsById = new Map();
-// Buyer groups from the server, and for each row: is it the first of its buyer, and which group.
-let groupOf = new Map();
-// The last rows the server confirmed, by id. AG Grid changes its own copy while editing,
-// so a refused edit is undone from here.
-const saved = new Map();
+let rowsById = new Map(); // the order rows (one per item), as the server last confirmed them
+let groups = []; // buyer groups from the server: { buyer, rowIds, items, total, cancelled }
+let openGroupId = null; // the buyer shown in the drawer (its first row id)
+let returnFocus = null;
 
 // "54.00" -> "RM 54.00" (MYR) or "$54.00" (USD). Same Intl options as formatMoney in src/money.js.
 function formatMoney(amount) {
@@ -51,18 +50,20 @@ function todayLocal() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function showError(message) {
-  $("error").textContent = `Error: ${message}`;
-  $("error").hidden = false;
+function showError(message, box = "error") {
+  $(box).textContent = `Error: ${message}`;
+  $(box).hidden = false;
 }
 
-function hideError() {
-  $("error").hidden = true;
+function hideError(box = "error") {
+  $(box).hidden = true;
 }
 
-// A Lucide icon as an <svg>, or nothing if the icon library didn't load (the words still show).
+// "cake-slice" or "CakeSlice" -> a Lucide icon as an <svg>, or nothing if it doesn't exist or the
+// icon library didn't load (the words always show anyway).
 function icon(name) {
-  const node = window.lucide?.icons?.[name];
+  const pascal = String(name ?? "").replace(/(^|-)([a-z])/g, (m, dash, ch) => ch.toUpperCase());
+  const node = window.lucide?.icons?.[pascal];
   if (!node) return document.createTextNode("");
   const svg = window.lucide.createElement(node);
   svg.setAttribute("aria-hidden", "true");
@@ -72,12 +73,10 @@ function icon(name) {
 
 const el = (tag, className, text) => Object.assign(document.createElement(tag), { className, textContent: text ?? "" });
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-// Only active order rows can be edited; the pinned totals row and cancelled rows can't.
-const canEdit = (p) => !p.node.rowPinned && p.data.orderStatus === "active";
-const itemName = (id) => menuItems.find((item) => item.id === id)?.name ?? "—";
 const ordersText = (n) => `${plural(n, "order")} ready`;
-const needsCheck = (data) => data?.unclear && data.orderStatus === "active";
+const menuItem = (id) => menuItems.find((item) => item.id === id) ?? null;
+// "Classic brownies (box of 6)" -> "Classic brownies": short enough for a chip.
+const shortName = (name) => String(name).replace(/\s*\(.*\)\s*$/, "");
 
 // "Kak Ros" -> "KR", "Lina" -> "L". Only letters and digits, so emoji in a name can't break it.
 function initials(name) {
@@ -85,91 +84,130 @@ function initials(name) {
   return words.slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
 }
 
-// The buyer cell: an initials avatar, the name and the buyer's subtotal, on the buyer's FIRST row only.
-// The rows under it stay empty here, so one buyer's items read as one block (our own grouping:
-// AG Grid's row grouping is Enterprise).
-function buyerCell(p) {
-  if (p.node.rowPinned) return p.value;
-  const info = groupOf.get(p.data.id);
-  if (!info?.first) return "";
-  const { group } = info;
-  const sub = group.cancelled ? "Cancelled"
-    : group.total == null ? "Needs a check"
-    : `${plural(group.items, "item")}, ${formatMoney(group.total)}`;
-  const cell = el("span", "buyer");
-  const text = el("span", "");
-  text.append(el("span", "buyer-name", p.value || "No name"), el("span", "buyer-sub", sub));
-  cell.append(el("span", "avatar", initials(p.value)), text);
-  return cell;
+// ---- One table row per buyer, built from the server's groups (no money maths: totals come from the server) ----
+
+function buyerRows() {
+  return groups.map((group) => {
+    const rows = group.rowIds.map((id) => rowsById.get(id)).filter(Boolean);
+    const active = rows.filter((row) => row.orderStatus === "active");
+    const unclear = active.filter((row) => row.unclear);
+    return {
+      id: group.rowIds[0],
+      buyer: group.buyer,
+      rows,
+      cancelled: group.cancelled,
+      items: group.items,
+      total: group.total,
+      unclear: unclear.length > 0,
+      reason: [...new Set(unclear.map((row) => row.reason))].join(" "),
+      dates: [...new Set(active.map((row) => row.deliveryDate).filter(Boolean))].sort(),
+      status: group.cancelled ? "Cancelled" : active[0]?.invoiceStatus ?? "Draft",
+    };
+  });
 }
 
-// One icon per status, so the badge reads at a glance (the words carry the meaning, not the icon).
+const buyerSub = (data) => (data.cancelled ? "Cancelled" : data.unclear ? "Needs a check" : plural(data.items, "item"));
+const datesText = (data) => (data.dates.length ? data.dates.map((d) => formatDate(d)).join(", ") : "—");
+const checkText = (data) => (data.unclear && !data.cancelled ? `Check: ${data.reason}` : "");
+
+function avatar(name, extra = "") {
+  return el("span", `avatar ${extra}`.trim(), initials(name));
+}
+
+// "3 × Classic brownies" with the item's food icon (from menu.json); "Item missing" when the AI couldn't tell.
+function itemChip(row) {
+  const item = menuItem(row.itemId);
+  const chip = el("span", `chip${row.orderStatus === "cancelled" ? " is-cancelled" : ""}`);
+  chip.append(icon(item?.icon ?? "utensils-crossed"), item ? `${row.qty ?? "?"} × ${shortName(item.name)}` : "Item missing");
+  return chip;
+}
+
+function chips(data) {
+  const list = el("span", "chips");
+  list.append(...data.rows.map(itemChip));
+  return list;
+}
+
+// One icon per status, so the tag reads at a glance (the words carry the meaning, not the icon).
 const STATUS_ICONS = {
-  Draft: "PencilLine", Sent: "Send", "Part paid": "Hourglass", Paid: "CircleCheck",
-  "Paid (cash/bank)": "Banknote", "Cancelled/Refunded": "CircleX", Cancelled: "CircleX",
+  Draft: "pencil-line", Sent: "send", "Part paid": "hourglass", Paid: "circle-check",
+  "Paid (cash/bank)": "banknote", "Cancelled/Refunded": "circle-x", Cancelled: "circle-x",
 };
 
-// Status tag: a borderless pill with a soft tint and matching darker text. A cancelled order shows "Cancelled".
-function statusBadge(p) {
-  if (p.node.rowPinned) return "";
-  const label = p.data.orderStatus === "cancelled" ? "Cancelled" : p.value;
-  const badge = el("span", `badge badge-${String(label).toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "")}`);
-  badge.append(icon(STATUS_ICONS[label] ?? "Circle"), label);
-  return badge;
+function statusTag(label) {
+  const tag = el("span", `badge badge-${String(label).toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "")}`);
+  tag.append(icon(STATUS_ICONS[label] ?? "circle"), label);
+  return tag;
 }
 
-// The words for an unclear row: "Check: <reason>", or "" when the row is fine.
-const checkText = (data) => (needsCheck(data) ? `Check: ${data.reason}` : "");
+// ---- Cell renderers (laptop + iPad) ----
 
-// Phones and iPads have no room for a Check column, so the item cell carries the words under the item name:
-// an amber row with no words only says "something's wrong", not what.
-function itemWithCheck(p) {
-  const words = p.node.rowPinned ? "" : checkText(p.data);
-  if (!words) return p.valueFormatted;
-  const cell = el("span", "");
-  cell.append(p.valueFormatted, el("span", "check-text check-under", words));
+function buyerCell(p) {
+  if (p.node.rowPinned) return el("span", "pinned-label", "Total");
+  const cell = el("span", "buyer");
+  const text = el("span", "");
+  // iPad has no Date column (no room), so the date sits under the name, as on the phone cards.
+  const sub = screenSize() === "ipad" && !p.data.cancelled ? `${buyerSub(p.data)}, ${datesText(p.data)}` : buyerSub(p.data);
+  text.append(el("span", "buyer-name", p.data.buyer || "No name"), el("span", "buyer-sub", sub));
+  cell.append(avatar(p.data.buyer), text);
   return cell;
 }
 
-// The columns. Phones get only Buyer, Item, Total, Status. The Check column is laptop-only (iPad and
-// phone show the words under the item name) and only shows while some row needs checking.
-function columns(size, anyCheck) {
-  const isPhone = size === "phone";
-  const narrow = (laptopWidth, ipadWidth, phoneWidth) => ({ laptop: laptopWidth, ipad: ipadWidth, phone: phoneWidth })[size];
+function itemsCell(p) {
+  if (p.node.rowPinned) return el("span", "pinned-label", ordersText(totals.orders));
+  const cell = el("span", "items-cell");
+  cell.append(chips(p.data));
+  const words = checkText(p.data);
+  if (words) cell.append(el("span", "check-text", words));
+  return cell;
+}
+
+// The blue chevron says "this row opens": blue = clickable.
+function openCell(p) {
+  if (p.node.rowPinned) return "";
+  const cue = el("span", "open-cue");
+  cue.append(icon("chevron-right"));
+  return cue;
+}
+
+// ---- Phone: each buyer is one stacked card (a single column) ----
+
+function cardCell(p) {
+  const data = p.data;
+  const card = el("span", "card-row");
+  const top = el("span", "card-top");
+  const who = el("span", "buyer");
+  const text = el("span", "");
+  text.append(el("span", "buyer-name", data.buyer || "No name"), el("span", "buyer-sub", `${buyerSub(data)}, ${datesText(data)}`));
+  who.append(avatar(data.buyer), text);
+  const right = el("span", "card-right");
+  right.append(el("span", "card-total money", data.total == null ? "—" : formatMoney(data.total)), statusTag(data.status));
+  top.append(who, right);
+  card.append(top, chips(data));
+  const words = checkText(data);
+  if (words) card.append(el("span", "check-text", words));
+  return card;
+}
+
+function columns(size) {
+  if (size === "phone") {
+    return [{ colId: "card", headerName: "Buyers", flex: 1, autoHeight: true, wrapText: true, cellClass: "card-cell", cellRenderer: cardCell }];
+  }
+  const wide = size === "laptop";
   return [
+    { colId: "buyer", field: "buyer", headerName: "Buyer", minWidth: wide ? 200 : 180, flex: 1, wrapText: true, autoHeight: true, cellRenderer: buyerCell },
+    { colId: "items", headerName: "Items", minWidth: 220, flex: 2.4, autoHeight: true, wrapText: true, cellRenderer: itemsCell },
     {
-      field: "buyer", headerName: "Buyer", cellDataType: "text", flex: 2, minWidth: narrow(180, 190, 80),
-      wrapText: true, autoHeight: true, cellRenderer: buyerCell,
+      colId: "date", headerName: "Date", minWidth: 130, flex: 0.8, wrapText: true, hide: !wide,
+      valueGetter: (p) => (p.node.rowPinned ? "" : datesText(p.data)),
     },
     {
-      field: "itemId", headerName: "Item", cellDataType: "text", flex: 2, minWidth: narrow(140, 120, 96),
-      wrapText: true, autoHeight: true, editable: canEdit,
-      cellEditor: "agSelectCellEditor",
-      cellEditorParams: () => ({ values: menuItems.map((item) => item.id) }),
-      // The select editor shows its options through this formatter too, so the seller sees names.
-      valueFormatter: (p) => (p.node?.rowPinned ? ordersText(totals.orders) : itemName(p.value)),
-      cellRenderer: size === "laptop" ? undefined : itemWithCheck,
+      colId: "total", headerName: "Total", type: "rightAligned", minWidth: 116, flex: 0.8,
+      cellClass: ["money", "ag-right-aligned-cell"],
+      valueGetter: (p) => (p.node.rowPinned ? formatMoney(totals.total) : p.data.total == null ? "—" : formatMoney(p.data.total)),
     },
-    {
-      field: "qty", headerName: "Qty", cellDataType: "number", type: "rightAligned", minWidth: 52, maxWidth: 80, hide: isPhone,
-      editable: canEdit, cellEditor: "agNumberCellEditor", cellEditorParams: { min: 1, max: 99, precision: 0 },
-      valueFormatter: (p) => (p.value == null ? (p.node?.rowPinned ? "" : "—") : String(p.value)),
-    },
-    {
-      field: "deliveryDate", headerName: "Date", cellDataType: "dateString", minWidth: 112, hide: isPhone,
-      editable: canEdit, cellEditor: "agDateStringCellEditor",
-      valueFormatter: (p) => (p.node?.rowPinned ? "" : formatDate(p.value)),
-    },
-    {
-      // "rightAligned" gives the cell the class ag-right-aligned-cell; listed again here because cellClass replaces it.
-      field: "lineTotal", headerName: "Total", cellDataType: "text", type: "rightAligned", minWidth: narrow(124, 124, 90),
-      cellClass: ["money", "ag-right-aligned-cell"], valueFormatter: (p) => (p.value == null ? "—" : formatMoney(p.value)),
-    },
-    { field: "invoiceStatus", headerName: "Status", cellDataType: "text", minWidth: narrow(144, 144, 92), cellRenderer: statusBadge },
-    {
-      colId: "check", headerName: "Check", cellDataType: "text", flex: 2, minWidth: 140, wrapText: true, autoHeight: true,
-      hide: size !== "laptop" || !anyCheck, valueGetter: (p) => checkText(p.data), cellClass: "check-text",
-    },
+    { colId: "status", headerName: "Status", minWidth: wide ? 150 : 128, flex: 0.9, cellRenderer: (p) => (p.node.rowPinned ? "" : statusTag(p.data.status)) },
+    { colId: "open", headerName: "", width: 64, minWidth: 64, maxWidth: 64, cellClass: "open-cell", cellRenderer: openCell },
   ];
 }
 
@@ -184,37 +222,46 @@ function makeTheme(isPhone) {
     headerBackgroundColor: "#FFFFFF",
     headerTextColor: "#6E6E73",
     headerFontWeight: 500,
-    headerFontSize: 13,
+    headerFontSize: 14,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", sans-serif',
-    fontSize: isPhone ? 14 : 15,
+    fontSize: 16,
     rowHoverColor: "#FAF8F5", // light warm tint, not blue: blue means clickable
     selectedRowBackgroundColor: "#F5F1EB",
     pinnedRowBackgroundColor: "#FAF8F5",
-    rowHeight: 72, // roomy, and well over the 44 px tap minimum
-    headerHeight: 48,
-    wrapperBorder: false, // no outer border: the white card is the frame
+    rowHeight: 92, // generous: a buyer row breathes
+    headerHeight: isPhone ? 0 : 52, // phone cards need no header
+    wrapperBorder: false,
     wrapperBorderRadius: 16,
-    rowBorder: false, // our own hairline goes between buyers only (styles.css)
+    rowBorder: true, // a hairline between buyers
     columnBorder: false,
     headerColumnBorder: false,
-    headerColumnResizeHandleColor: "transparent", // no vertical divider lines
-    cellHorizontalPaddingScale: isPhone ? 0.5 : 1, // phones are narrow: less padding
+    headerColumnResizeHandleColor: "transparent",
+    cellHorizontalPaddingScale: isPhone ? 0.5 : 1.1,
   });
 }
 
-// Made once: a new theme object makes AG Grid redraw everything.
 let themes = null;
-
-const totalsRow = () => ({ id: "totals", buyer: "Total", itemId: null, qty: null, deliveryDate: null, lineTotal: totals.total });
+const screenSize = () => (phone.matches ? "phone" : laptop.matches ? "laptop" : "ipad");
 
 // The pinned totals row (laptop + iPad) and the sticky bar (phone) both show the server's totals.
 function showTotals() {
   if (!grid) return;
-  grid.setGridOption("pinnedBottomRowData", phone.matches ? [] : [totalsRow()]);
+  grid.setGridOption("pinnedBottomRowData", phone.matches ? [] : [{ id: "totals" }]);
   $("phone-total").replaceChildren(el("span", "", `Total: ${ordersText(totals.orders)}`), el("span", "money", formatMoney(totals.total)));
 }
 
-// The four summary cards. Figures come from the server (no money maths here); Expected is the hero.
+// Our own page arrows drive AG Grid's pagination. One row = one buyer, so a buyer is never split.
+function showPager() {
+  if (!grid) return;
+  const pages = grid.paginationGetTotalPages();
+  const page = grid.paginationGetCurrentPage();
+  $("pager").hidden = pages <= 1;
+  $("page-text").textContent = `Page ${page + 1} of ${pages}`;
+  $("page-prev").disabled = page === 0;
+  $("page-next").disabled = page >= pages - 1;
+}
+
+// The four summary cards. Figures come from the server; Expected is the hero.
 // The cards turn amber when an order needs checking and green when money has arrived.
 function showSummary() {
   if (!summary) return;
@@ -228,7 +275,7 @@ function showSummary() {
   set("stat-expected", formatMoney(summary.expected), summary.ready ? `From ${plural(summary.ready, "order")} ready to invoice` : "No orders ready yet");
   set("stat-orders", String(summary.orders), summary.orders ? "One per buyer" : "Paste chats to start");
   set("stat-paid", formatMoney(summary.paid), summary.paidOrders ? `From ${plural(summary.paidOrders, "order")}` : "Nothing paid yet", summary.paidOrders ? "is-paid" : "");
-  set("stat-check", String(summary.needsCheck), summary.needsCheck ? `${plural(summary.needsCheck, "order")} to fix below` : "All clear", summary.needsCheck ? "is-check" : "");
+  set("stat-check", String(summary.needsCheck), summary.needsCheck ? `${plural(summary.needsCheck, "order")} to fix` : "All clear", summary.needsCheck ? "is-check" : "");
 }
 
 // Setup details for the developer and judges, in the quiet footer (not in the seller's way).
@@ -269,57 +316,147 @@ function showSource() {
   $("chat-bar-text").replaceChildren(`${plural(source.messages, "message")} read`, el("span", "bar-date", ` from ${formatDate(source.chatDate, false)}`));
 }
 
-// Rows in buyer order (the server's groups), and which row starts each buyer.
-function applyGroups(groups) {
-  groupOf = new Map();
-  for (const group of groups) {
-    group.rowIds.forEach((id, i) => groupOf.set(id, { first: i === 0, group }));
-  }
-  return groups.flatMap((group) => group.rowIds.map((id) => rowsById.get(id)).filter(Boolean));
-}
-
-const anyCheck = () => [...rowsById.values()].some(needsCheck);
-
-// Phone <-> wider, or the Check column appears/disappears: switch theme and columns.
-// Wrapped rows (autoHeight) measure themselves again.
+// Phone <-> wider: switch theme and columns.
 function fitToWidth() {
   if (!grid) return;
-  grid.updateGridOptions({ theme: phone.matches ? themes.phone : themes.wide, columnDefs: columns(screenSize(), anyCheck()) });
+  grid.updateGridOptions({ theme: phone.matches ? themes.phone : themes.wide, columnDefs: columns(screenSize()) });
   showTotals();
 }
 
-// One edited cell -> PUT /api/orders/:id. The server's reply (price, total, unclear flag, subtotals)
-// replaces the row; if the server refuses the edit, the row goes back to how it was and the reason is shown.
-async function saveEdit(p) {
-  const field = p.colDef.field;
-  if (p.newValue === p.oldValue) return;
-  const id = p.data.id;
+function refreshTable() {
+  if (!grid) return;
+  grid.setGridOption("rowData", buyerRows());
+  grid.redrawRows(); // chips, check words and heights all follow the new data
+  showTotals();
+  showPager();
+}
+
+// ---- The drawer: fix one buyer's items, quantities and dates ----
+
+function field(label, control) {
+  const wrap = el("label", "field");
+  wrap.append(el("span", "field-label", label), control);
+  return wrap;
+}
+
+function editCard(row) {
+  const cancelled = row.orderStatus === "cancelled";
+  const card = el("section", `edit-card${row.unclear && !cancelled ? " is-unclear" : ""}${cancelled ? " is-cancelled" : ""}`);
+  const item = menuItem(row.itemId);
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  name.append(el("span", "icon-circle small"), item ? item.name : "Item missing");
+  name.firstChild.append(icon(item?.icon ?? "utensils-crossed"));
+  title.append(name, el("span", "money", row.lineTotal == null ? "—" : formatMoney(row.lineTotal)));
+  card.append(title);
+
+  const select = el("select", "");
+  if (!item) select.append(Object.assign(el("option", "", "Choose an item"), { value: "", disabled: true, selected: true }));
+  for (const option of menuItems) {
+    select.append(Object.assign(el("option", "", `${option.name}, ${formatMoney(option.price)}`), { value: option.id, selected: option.id === row.itemId }));
+  }
+  const qty = Object.assign(document.createElement("input"), { type: "number", min: 1, max: 99, step: 1, inputMode: "numeric", value: row.qty ?? "" });
+  const date = Object.assign(document.createElement("input"), { type: "date", value: row.deliveryDate ?? "" });
+  for (const [control, name2] of [[select, "itemId"], [qty, "qty"], [date, "deliveryDate"]]) {
+    control.dataset.row = row.id;
+    control.dataset.field = name2;
+    control.id = `edit-${row.id}-${name2}`;
+    control.disabled = cancelled;
+  }
+  const pair = el("div", "field-pair");
+  pair.append(field("Qty", qty), field("Date", date));
+  card.append(field("Item", select), pair);
+  if (cancelled) card.append(el("p", "hint", "This order was cancelled in the chat, so it can't be changed."));
+  else if (row.unclear) card.append(el("p", "check-text", `Check: ${row.reason}`));
+  return card;
+}
+
+function renderDrawer() {
+  const data = buyerRows().find((row) => row.id === openGroupId);
+  if (!data) return closeDrawer();
+  $("drawer-avatar").textContent = initials(data.buyer);
+  $("drawer-title").textContent = data.buyer || "No name";
+  $("drawer-sub").textContent = data.cancelled ? "Cancelled order"
+    : data.total == null ? "Needs a check before it can be invoiced"
+    : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total`;
+  $("drawer-body").replaceChildren(...data.rows.map(editCard));
+}
+
+function openDrawer(id) {
+  openGroupId = id;
+  returnFocus = document.activeElement;
+  hideError("drawer-error");
+  renderDrawer();
+  $("scrim").hidden = false;
+  $("drawer").hidden = false;
+  document.body.classList.add("drawer-open");
+  requestAnimationFrame(() => $("drawer").classList.add("is-open"));
+  ($("drawer-body").querySelector("select:not(:disabled), input:not(:disabled)") ?? $("drawer-close")).focus();
+}
+
+function closeDrawer() {
+  openGroupId = null;
+  $("drawer").classList.remove("is-open");
+  $("drawer").hidden = true;
+  $("scrim").hidden = true;
+  document.body.classList.remove("drawer-open");
+  if (returnFocus?.isConnected) returnFocus.focus();
+}
+
+// One changed field -> PUT /api/orders/:id. The server's reply (price, totals, unclear flag, subtotals)
+// updates the drawer, the table and the cards. A refused change is undone and the reason shown.
+async function saveField(control) {
+  const { row: id, field: name } = control.dataset;
+  const raw = control.value;
+  if (name === "itemId" && !raw) return;
+  const value = name === "qty" ? (raw === "" ? null : Number(raw)) : raw || null;
+  // The quantity is checked here first, so a typo never even reaches the server (the browser would
+  // log every refused request as a red console error). The server still checks everything.
+  if (name === "qty" && !(Number.isInteger(value) && value >= 1 && value <= 99)) {
+    showError(`That change was not saved (Quantity must be a whole number from 1 to 99, got ${raw === "" ? "nothing" : raw}).`, "drawer-error");
+    renderDrawer();
+    $(`edit-${id}-${name}`)?.focus();
+    return;
+  }
   try {
     const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: p.newValue ?? null }),
+      body: JSON.stringify({ [name]: value }),
     });
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
-    saved.set(id, structuredClone(reply.row));
     rowsById.set(id, reply.row);
     totals = reply.totals;
     summary = reply.summary;
-    applyGroups(reply.groups);
-    grid.applyTransaction({ update: [reply.row] });
-    // The buyer's subtotal sits on its first row, which may be another row than the one edited.
-    const first = reply.groups.find((group) => group.rowIds.includes(id))?.rowIds[0];
-    const firstNode = first && grid.getRowNode(first);
-    if (firstNode) grid.refreshCells({ rowNodes: [firstNode], columns: ["buyer"], force: true });
-    fitToWidth(); // hides the Check column once nothing needs checking
-    showSummary();
-    hideError();
+    groups = reply.groups;
+    hideError("drawer-error");
   } catch (err) {
-    grid.applyTransaction({ update: [structuredClone(saved.get(id))] });
-    showError(`That change was not saved (${err.message}).`);
+    showError(`That change was not saved (${err.message}).`, "drawer-error");
+  }
+  refreshTable();
+  showSummary();
+  renderDrawer();
+  $(`edit-${id}-${name}`)?.focus();
+}
+
+// Keep Tab inside the open drawer, and Escape closes it.
+function drawerKeys(event) {
+  if (event.key === "Escape") return closeDrawer();
+  if (event.key !== "Tab") return;
+  const focusable = [...$("drawer").querySelectorAll("button, select, input")].filter((node) => !node.disabled);
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
   }
 }
+
+// ---- The grid ----
 
 function createOrdersGrid() {
   if (typeof agGrid === "undefined") {
@@ -329,20 +466,30 @@ function createOrdersGrid() {
   themes = { wide: makeTheme(false), phone: makeTheme(true) };
   const api = agGrid.createGrid($("grid"), {
     theme: phone.matches ? themes.phone : themes.wide,
-    columnDefs: columns(screenSize(), false),
-    animateRows: false, // rows jump straight to their new height; sliding added nothing here
-    defaultColDef: { flex: 1, sortable: false, resizable: false, suppressMovable: true },
+    columnDefs: columns(screenSize()),
+    animateRows: false,
+    defaultColDef: { sortable: false, resizable: false, suppressMovable: true, cellDataType: false },
     domLayout: "autoHeight", // the page scrolls, not a box inside it
     rowData: [],
     getRowId: (p) => p.data.id,
+    pagination: true,
+    paginationPageSize: BUYERS_PER_PAGE,
+    paginationPageSizeSelector: false,
+    suppressPaginationPanel: true, // our own arrows (#pager)
+    onPaginationChanged: showPager,
     rowClassRules: {
-      "row-unclear": (p) => !p.node.rowPinned && needsCheck(p.data),
-      "row-cancelled": (p) => p.data?.orderStatus === "cancelled",
-      "group-start": (p) => !p.node.rowPinned && groupOf.get(p.data?.id)?.first === true,
+      "row-unclear": (p) => !p.node.rowPinned && p.data?.unclear && !p.data.cancelled,
+      "row-cancelled": (p) => !p.node.rowPinned && p.data?.cancelled,
     },
-    singleClickEdit: true,
-    stopEditingWhenCellsLoseFocus: true,
-    onCellValueChanged: saveEdit,
+    onRowClicked: (p) => {
+      if (!p.node.rowPinned) openDrawer(p.data.id);
+    },
+    onCellKeyDown: (p) => {
+      if ((p.event.key === "Enter" || p.event.key === " ") && !p.node.rowPinned) {
+        p.event.preventDefault();
+        openDrawer(p.data.id);
+      }
+    },
     localeText: { noRowsToShow: "No orders yet. Paste chats and click Read orders." },
   });
   const missing = Object.keys(NEEDED_MODULES).filter((name) => !api.isModuleRegistered(name));
@@ -360,8 +507,8 @@ async function loadState() {
     totals = state.totals;
     summary = state.summary;
     source = state.source;
+    groups = state.groups;
     rowsById = new Map(state.orders.map((row) => [row.id, row]));
-    for (const row of state.orders) saved.set(row.id, structuredClone(row));
     showSetup(state);
     showSummary();
     showSource();
@@ -369,8 +516,8 @@ async function loadState() {
     $("ai-calls-text").textContent = `AI calls left today: ${state.aiCallsLeft}`;
     showStep(state.orders);
     if (grid) {
-      grid.setGridOption("rowData", applyGroups(state.groups));
       fitToWidth();
+      refreshTable();
     }
   } catch (err) {
     showError(`Can't reach the server (${err.message}). Is npm start running?`);
@@ -388,6 +535,14 @@ $("chat-edit").addEventListener("click", () => {
 $("chat-hide").addEventListener("click", () => {
   foldChats(true);
   $("chat-edit").focus();
+});
+$("page-prev").addEventListener("click", () => grid?.paginationGoToPreviousPage());
+$("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
+$("drawer-close").addEventListener("click", closeDrawer);
+$("scrim").addEventListener("click", closeDrawer);
+$("drawer").addEventListener("keydown", drawerKeys);
+$("drawer-body").addEventListener("change", (event) => {
+  if (event.target.dataset.field) saveField(event.target);
 });
 // The chat box can be collapsed on iPad and phone; on a laptop it always stays open.
 laptop.addEventListener("change", () => {
