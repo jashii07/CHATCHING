@@ -122,3 +122,11 @@ export function splitMessages(paste, chatDate) {
   }
   return messages;
 }
+
+// The Chat date and the days after it, as { date: "2026-10-29", label: "Thu 29 Oct 2026" }.
+// The AI prompt lists these, so "Saturday" or "tomorrow" become exact dates without the AI counting days.
+export function calendarDays(chatDate, count) {
+  const start = parseIso(chatDate);
+  if (start === null) throw new RangeError(`Not a valid chat date: ${JSON.stringify(chatDate)}`);
+  return Array.from({ length: count }, (_, i) => ({ date: toIso(start + i), label: toLabel(start + i) }));
+}

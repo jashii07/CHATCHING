@@ -7,6 +7,7 @@
 | `menu.json` | The seller's fixed menu. Prices are in MYR. This is the ONLY source of prices: the AI never sets a price. Each item may have an `icon` (a Lucide icon name such as `cookie` or `cake-slice`) shown on its item chip. |
 | `demo-chats.txt` | One day of chat orders (Wed 28 Oct 2026) in English. One message per line. |
 | `expected-orders.json` | The correct answers for `demo-chats.txt`, used to measure AI accuracy. Orders use the same field names as the AI output (PLAN.md Section 5). `sourceMsgs` are 1-based line numbers in `demo-chats.txt`. `total`, `notOrders` and `summary` are extra fields for checking only; the AI never returns prices. |
+| `ai-cache/demo-parse.json` | Gemini's REAL reply (gemini-3.6-flash, 27 Oct 2026) for `demo-chats.txt`, saved byte for byte by `scripts/spike-parse.mjs`. Mock mode and the demo use it (0 AI calls). It scored perfectly against `expected-orders.json`. `demo-parse.meta.json` holds the call's time (17.6 s), token counts and input hash. No keys inside. |
 
 The demo's fixed chat date is `chatDate: "2026-10-28"` in `expected-orders.json`, so the dates are the same on any day. Date words in the chats, counted from Wed 28 Oct 2026: "tomorrow" = Thu 29 Oct, "Friday" = Fri 30 Oct, "Saturday" = Sat 31 Oct, "this Sunday" = Sun 1 Nov.
 
