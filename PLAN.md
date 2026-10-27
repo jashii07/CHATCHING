@@ -80,8 +80,9 @@ Only one new package is planned: **express**.
 | `rowClassRules` | highlight unclear rows (and grey out cancelled ones) |
 | Custom cell renderer: Copy-link button | copy the payer link for the chat |
 | Pinned bottom row | totals: number of orders and RM total |
-| Quick filter search box | find a buyer or item fast |
-| CSV export (`exportDataAsCsv`) | "Export CSV (opens in Excel)" button (#4) |
+| Quick filter search box (`quickFilterText`) | find a buyer or item fast (**built early, 27 Oct**) |
+| External filter (`isExternalFilterPresent` / `doesExternalFilterPass`) | the Needs check card shows only the buyers that need a check (27 Oct) |
+| CSV export (`getDataAsCsv` + our own UTF-8 byte-order mark) | "Export CSV" button: every buyer, opens in Excel (#4, **built early, 27 Oct**) |
 | Cell flashing (`flashCells`) | the status cell flashes green when it turns Paid (#4) |
 | Row click event (`onRowClicked`, Enter key via `onCellKeyDown`) | opens the buyer drawer: edit items, qty and dates (round 3); the buyer panel (#1) joins it in Step 7 |
 
@@ -232,7 +233,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 4. Parse with **mock AI** (results already include `note` and `fulfilment`) + validation + unclear rows (`rowClassRules` highlight).
 5. PayPal invoices: create + send per buyer, payer link + Copy-link renderer, **double-invoice guard (#3c)**.
    - Missing PayPal keys → the clear message "PayPal is not configured", sent on purpose (the error handler hides every 5xx message), plus a test.
-6. Status polling + Refresh button + status badges + Reset demo. **Paid flash + CSV export (#4)**, pinned totals row + quick filter, **record cash / bank (#3a)**.
+6. Status polling + Refresh button + status badges + Reset demo. **Paid flash (#4)**, **record cash / bank (#3a)**. (CSV export, the pinned totals row and the search box were built early, on 27 Oct.)
 7. Real Gemini call (one batched call, final order per buyer, JSON schema), cache. **Buyer panel with note + highlighted source messages (#1)**, **pickup QR in the panel (#3b)**.
 8. **`scripts/accuracy.mjs`**: compares AI output with `data/expected-orders.json` and prints a score for each of buyers, items, quantities, dates, unclear flags and cancellations.
    - Mock mode by default; a real call only with `--real`.
@@ -380,7 +381,7 @@ In suggested order:
 
 ## 12. UI spec (filled in Mon 26 Oct)
 
-> **DESIGN FROZEN (Tue 27 Oct) until Sun 8 Nov** (the planned polish day). Round 3 was the last design round: no visual changes before 8 Nov except bug fixes and what new features need (e.g. the Send invoices button in Step 5), following these rules.
+> **DESIGN FROZEN (Tue 27 Oct, again after the browser-test fixes) until Sun 8 Nov** (the planned polish day). Round 3 + the browser-test fixes were the last design changes: no visual changes before 8 Nov except bug fixes and what new features need (e.g. the Send invoices button in Step 5), following these rules.
 
 **Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10), **and must be checked at laptop, iPad and phone widths** (1280 px, 820 px and 390 px, with `npm run ui-check` AND by looking at the screenshots). If a step needs something the spec doesn't cover, Claude asks before inventing it.
 
@@ -455,11 +456,14 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 Jasper's reasons: round 1 "the original design is too simple"; round 2 "no personality and no focus"; round 3 "the page is too compact, has no real icons, and the list is too long". Round 3 matched the QUALITY cues of a banking-app reference (colour confidence, big numbers, generous space, icons in soft circles, short card-like lists), not its branding or layout.
 
 - **One focus:** the Expected figure is the hero: a **solid deep indigo card** (`#26307A` → `#33409A` subtle gradient, 24 px corners, a soft lighter sweep in one corner) with **large white numbers** (68 px; 48 px phone), like a bank card. Everything else stays white and quieter.
+- **Background:** 2-3 soft, heavily blurred colour shapes behind the cards (CSS only, `filter: blur(90px)`): very light brand blue `#F3F6FF` (top right, bottom right) and warm cream `#FFF6E8` (left). Their colours are **never darker than the page**, so no text loses contrast: secondary grey is 4.69:1 on the blue and 4.73:1 on the cream (4.66:1 on the plain page). `npm run ui-check` measures this.
 - **Depth without borders:** no outer borders on cards, the chat container or the table; one soft diffused shadow `0 4px 24px rgba(0,0,0,0.04)` on every card. Only inputs have visible borders.
 - **Radii:** at least 16 px on all main containers and inputs: work cards 24 px, summary cards 20 px (18 px phone), the table 16 px, textarea and date picker 16 px, buttons and tags fully rounded.
 - **Whitespace:** page top 48 px; 24-32 px between sections; summary cards 28 px padding, work cards 32 px (28/20 iPad, 24/16 phone); buyer rows at least 92 px tall with 24 px top and bottom padding; header 52 px. Body text 17 px (16 px phone), table 16 px, page title 48 px (36 px phone).
 - **No vertical lines in the table:** no column borders, no header dividers, no resize handles. Rows have no lines between them; one hairline separates buyers.
 - **One row per buyer (our own grouping; AG Grid's row grouping is Enterprise):** the server's `buyerGroups()` gives each buyer's rows and subtotal; the page builds one table row per buyer: a soft initials avatar + name (+ "2 items", "Needs a check" or "Cancelled"), the items as **compact chips** ("3 × Classic brownies" with a food icon from `menu.json`), the delivery date, the buyer's total and ONE status tag. Unclear buyers get the amber tint + stripe and the "Check: <reason>" words under the chips. A blue chevron in a soft blue circle says "this row opens" (blue = clickable).
+- **Needs check card = a filter button:** clicking it shows only the buyers that need a check (an amber note above the table says "Showing 1 buyer that needs a check." with a Show all button); clicking again shows everyone. A blue "Show only these ›" cue says it is clickable (blue = clickable); when it is filtering it gets a 2 px blue ring. With 0 to check it can't be clicked, and if the last one is fixed while filtering, the filter switches itself off. On phones this card is full width (it is the one you tap).
+- **Search and Export CSV** sit above the table: a pill-shaped search box ("Search buyers or items", AG Grid quick filter over the buyer name and item names) and a quiet "Export CSV" pill. No match: "No buyers match. Clear the search, or show all buyers." The CSV has every buyer (whatever the search or filter shows), columns Buyer, Items, Date, Total (MYR) as a plain number, Status, and starts with a UTF-8 byte-order mark so Excel shows "×" and accented names correctly. File name `chatching-orders-<chat date>.csv`.
 - **Pagination:** AG Grid Community pagination, **6 buyers per page**, with our own round arrow buttons and "Page 1 of 2" under the table (AG Grid's own panel is hidden). One row = one buyer, so a buyer is never split across pages. Disabled arrows are grey, not blue.
 - **The buyer drawer (editing):** tapping a buyer opens a drawer (480 px from the right on laptop/iPad, full screen on phones) with one white card per item: the item's food icon, name and line total, then simple form fields: **Item** (dropdown with names and prices), **Qty** (1-99) and **Date**. Each change saves at once with the same `PUT /api/orders/:id`; the drawer, table and cards update from the server's reply. Unclear items are amber cards with the "Check:" words; cancelled items are read-only. A quantity outside 1-99 is stopped in the drawer with the server's own wording (no request is sent, so the browser logs no red 400 error); the server still checks everything. Escape, the close button or the dimmed page closes it; Tab stays inside it while open.
 - **Sticky frosted-glass top bar** with the logo mark (an inline SVG: chat bubble + coin, charcoal), the ChatChing wordmark and "AI calls left today: X".

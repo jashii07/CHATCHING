@@ -19,6 +19,10 @@
   <script defer src="app.js"></script>
 </head>
 <body>
+  <!-- Soft, heavily blurred colour shapes behind everything (CSS only). Their colours are never darker
+       than the page, so no text loses contrast (PLAN.md Section 12). -->
+  <div class="backdrop" aria-hidden="true"><span></span><span></span><span></span></div>
+
   <!-- Sticky frosted-glass bar: the logo and today's AI allowance. -->
   <header class="topbar">
     <div class="topbar-inner">
@@ -70,12 +74,14 @@
         <p class="figure money" data-figure>—</p>
         <p class="caption" data-caption></p>
       </article>
-      <article class="stat" id="stat-check">
+      <!-- A button: it filters the table to the buyers that need a check (press again to show all). -->
+      <button type="button" class="stat stat-button" id="stat-check" aria-pressed="false" aria-controls="grid">
         <span class="icon-circle"><i data-lucide="triangle-alert" aria-hidden="true"></i></span>
-        <h2>Needs check</h2>
-        <p class="figure" data-figure>—</p>
-        <p class="caption" data-caption></p>
-      </article>
+        <span class="stat-label">Needs check</span>
+        <span class="figure" data-figure>—</span>
+        <span class="caption" data-caption></span>
+        <span class="stat-cue" id="check-cue"></span>
+      </button>
     </section>
 
     <!-- After orders are read, the chat box folds into this slim bar so the table gets the full width. -->
@@ -107,6 +113,21 @@
           <h2><i data-lucide="receipt-text" aria-hidden="true"></i>Orders</h2>
           <p class="hint">One row per buyer. Tap a buyer to fix their items, quantities or date.</p>
         </div>
+        <div class="table-tools">
+          <label class="search" for="search">
+            <span class="visually-hidden">Search buyers or items</span>
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input type="search" id="search" placeholder="Search buyers or items" autocomplete="off">
+          </label>
+          <button type="button" class="ghost" id="export-csv" title="Saves a CSV file that opens in Excel">
+            <i data-lucide="download" aria-hidden="true"></i>Export CSV
+          </button>
+        </div>
+        <!-- Shown while the Needs check card filters the table. -->
+        <p class="filter-note" id="filter-note" role="status" hidden>
+          <span id="filter-note-text"></span>
+          <button type="button" class="ghost small" id="filter-clear">Show all</button>
+        </p>
         <div id="grid"></div>
         <!-- Our own page arrows; they drive AG Grid's pagination (6 buyers per page). -->
         <nav class="pager" id="pager" aria-label="Pages" hidden>

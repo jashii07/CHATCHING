@@ -28,6 +28,8 @@ let source = null; // the chats the rows came from: { text, chatDate, messages }
 let rowsById = new Map(); // the order rows (one per item), as the server last confirmed them
 let groups = []; // buyer groups from the server: { buyer, rowIds, items, total, cancelled }
 let openGroupId = null; // the buyer shown in the drawer (its first row id)
+let onlyNeedsCheck = false; // the Needs check card filters the table to buyers that need a check
+let chatDate = null; // for the CSV file name
 let returnFocus = null;
 
 // "54.00" -> "RM 54.00" (MYR) or "$54.00" (USD). Same Intl options as formatMoney in src/money.js.
@@ -106,6 +108,15 @@ function buyerRows() {
   });
 }
 
+// "3 × Classic brownies (box of 6); 1 × Choc chip cookies (jar)": the items as plain text.
+const itemsText = (data) => data.rows
+  .map((row) => {
+    const item = menuItem(row.itemId);
+    const text = item ? `${row.qty ?? "?"} × ${item.name}` : "Item missing";
+    return row.orderStatus === "cancelled" ? `${text} (cancelled)` : text;
+  })
+  .join("; ");
+
 const buyerSub = (data) => (data.cancelled ? "Cancelled" : data.unclear ? "Needs a check" : plural(data.items, "item"));
 const datesText = (data) => (data.dates.length ? data.dates.map((d) => formatDate(d)).join(", ") : "—");
 const checkText = (data) => (data.unclear && !data.cancelled ? `Check: ${data.reason}` : "");
@@ -154,7 +165,7 @@ function buyerCell(p) {
 }
 
 function itemsCell(p) {
-  if (p.node.rowPinned) return el("span", "pinned-label", ordersText(totals.orders));
+  if (p.node.rowPinned) return el("span", "pinned-label", p.value);
   const cell = el("span", "items-cell");
   cell.append(chips(p.data));
   const words = checkText(p.data);
@@ -189,25 +200,38 @@ function cardCell(p) {
   return card;
 }
 
+// Every column always exists, so the search box and the CSV export work the same on every screen:
+// phones show only the card column, wider screens hide it.
 function columns(size) {
-  if (size === "phone") {
-    return [{ colId: "card", headerName: "Buyers", flex: 1, autoHeight: true, wrapText: true, cellClass: "card-cell", cellRenderer: cardCell }];
-  }
+  const isPhone = size === "phone";
   const wide = size === "laptop";
   return [
-    { colId: "buyer", field: "buyer", headerName: "Buyer", minWidth: wide ? 200 : 180, flex: 1, wrapText: true, autoHeight: true, cellRenderer: buyerCell },
-    { colId: "items", headerName: "Items", minWidth: 220, flex: 2.4, autoHeight: true, wrapText: true, cellRenderer: itemsCell },
+    {
+      colId: "card", headerName: "Buyers", flex: 1, autoHeight: true, wrapText: true, hide: !isPhone,
+      cellClass: "card-cell", cellRenderer: cardCell,
+      valueGetter: (p) => (p.node.rowPinned ? "" : `${p.data.buyer} ${itemsText(p.data)}`), // what the search box looks at
+    },
+    { colId: "buyer", field: "buyer", headerName: "Buyer", minWidth: wide ? 200 : 180, flex: 1, wrapText: true, autoHeight: true, hide: isPhone, cellRenderer: buyerCell },
+    {
+      colId: "items", headerName: "Items", minWidth: 220, flex: 2.4, autoHeight: true, wrapText: true, hide: isPhone, cellRenderer: itemsCell,
+      // The totals row carries its own numbers, so AG Grid sees them change and redraws the cell.
+      valueGetter: (p) => (p.node.rowPinned ? ordersText(p.data.orders) : itemsText(p.data)),
+    },
     {
       colId: "date", headerName: "Date", minWidth: 130, flex: 0.8, wrapText: true, hide: !wide,
       valueGetter: (p) => (p.node.rowPinned ? "" : datesText(p.data)),
     },
     {
-      colId: "total", headerName: "Total", type: "rightAligned", minWidth: 116, flex: 0.8,
+      colId: "total", headerName: "Total", type: "rightAligned", minWidth: 116, flex: 0.8, hide: isPhone,
       cellClass: ["money", "ag-right-aligned-cell"],
-      valueGetter: (p) => (p.node.rowPinned ? formatMoney(totals.total) : p.data.total == null ? "—" : formatMoney(p.data.total)),
+      valueGetter: (p) => (p.data.total == null ? "—" : formatMoney(p.data.total)),
     },
-    { colId: "status", headerName: "Status", minWidth: wide ? 150 : 128, flex: 0.9, cellRenderer: (p) => (p.node.rowPinned ? "" : statusTag(p.data.status)) },
-    { colId: "open", headerName: "", width: 64, minWidth: 64, maxWidth: 64, cellClass: "open-cell", cellRenderer: openCell },
+    {
+      colId: "status", headerName: "Status", minWidth: wide ? 150 : 128, flex: 0.9, hide: isPhone,
+      valueGetter: (p) => (p.node.rowPinned ? "" : p.data.status),
+      cellRenderer: (p) => (p.node.rowPinned ? "" : statusTag(p.data.status)),
+    },
+    { colId: "open", headerName: "", width: 64, minWidth: 64, maxWidth: 64, hide: isPhone, cellClass: "open-cell", cellRenderer: openCell },
   ];
 }
 
@@ -246,7 +270,7 @@ const screenSize = () => (phone.matches ? "phone" : laptop.matches ? "laptop" : 
 // The pinned totals row (laptop + iPad) and the sticky bar (phone) both show the server's totals.
 function showTotals() {
   if (!grid) return;
-  grid.setGridOption("pinnedBottomRowData", phone.matches ? [] : [{ id: "totals" }]);
+  grid.setGridOption("pinnedBottomRowData", phone.matches ? [] : [{ id: "totals", orders: totals.orders, total: totals.total }]);
   $("phone-total").replaceChildren(el("span", "", `Total: ${ordersText(totals.orders)}`), el("span", "money", formatMoney(totals.total)));
 }
 
@@ -276,6 +300,49 @@ function showSummary() {
   set("stat-orders", String(summary.orders), summary.orders ? "One per buyer" : "Paste chats to start");
   set("stat-paid", formatMoney(summary.paid), summary.paidOrders ? `From ${plural(summary.paidOrders, "order")}` : "Nothing paid yet", summary.paidOrders ? "is-paid" : "");
   set("stat-check", String(summary.needsCheck), summary.needsCheck ? `${plural(summary.needsCheck, "order")} to fix` : "All clear", summary.needsCheck ? "is-check" : "");
+  // Nothing left to check: the filter switches itself off, so the table never sits empty.
+  if (!summary.needsCheck && onlyNeedsCheck) setNeedsCheckFilter(false);
+  const card = $("stat-check");
+  card.disabled = !summary.needsCheck;
+  card.setAttribute("aria-pressed", String(onlyNeedsCheck));
+  card.classList.toggle("is-active", onlyNeedsCheck);
+  $("check-cue").replaceChildren(...(summary.needsCheck ? [onlyNeedsCheck ? "Show all buyers" : "Show only these", icon("chevron-right")] : []));
+}
+
+// The Needs check card filters the table to the buyers that need a check (AG Grid's external filter).
+function setNeedsCheckFilter(on) {
+  onlyNeedsCheck = on;
+  grid?.onFilterChanged();
+  const shown = buyerRows().filter((row) => row.unclear && !row.cancelled).length;
+  $("filter-note").hidden = !on;
+  $("filter-note-text").textContent = `Showing ${plural(shown, "buyer")} that ${shown === 1 ? "needs" : "need"} a check.`;
+  showSummary();
+  showPager();
+}
+
+// Export CSV: every buyer (whatever the search or filter shows), one row each, opens in Excel.
+// The total is a plain number ("70.00") so Excel can add it up. AG Grid builds the CSV text; we add a
+// byte-order mark so Excel reads it as UTF-8 (otherwise "×" and accented names come out garbled).
+function exportCsv() {
+  if (!grid) return;
+  const csv = grid.getDataAsCsv({
+    columnKeys: ["buyer", "items", "date", "total", "status"],
+    exportedRows: "all",
+    skipPinnedBottom: true,
+    processHeaderCallback: (p) => (p.column.getColId() === "total" ? `Total (${currency})` : p.column.getColDef().headerName),
+    processCellCallback: (p) => {
+      const id = p.column.getColId();
+      if (id === "total") return p.node.data.total ?? "";
+      if (id === "date") return p.node.data.dates.join(", ");
+      return p.value ?? "";
+    },
+  });
+  const link = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" })),
+    download: `chatching-orders-${chatDate ?? todayLocal()}.csv`,
+  });
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 // Setup details for the developer and judges, in the quiet footer (not in the seller's way).
@@ -477,6 +544,8 @@ function createOrdersGrid() {
     paginationPageSizeSelector: false,
     suppressPaginationPanel: true, // our own arrows (#pager)
     onPaginationChanged: showPager,
+    isExternalFilterPresent: () => onlyNeedsCheck,
+    doesExternalFilterPass: (node) => node.data.unclear && !node.data.cancelled,
     rowClassRules: {
       "row-unclear": (p) => !p.node.rowPinned && p.data?.unclear && !p.data.cancelled,
       "row-cancelled": (p) => !p.node.rowPinned && p.data?.cancelled,
@@ -490,7 +559,10 @@ function createOrdersGrid() {
         openDrawer(p.data.id);
       }
     },
-    localeText: { noRowsToShow: "No orders yet. Paste chats and click Read orders." },
+    localeText: {
+      noRowsToShow: "No orders yet. Paste chats and click Read orders.",
+      noMatchingRows: "No buyers match. Clear the search, or show all buyers.",
+    },
   });
   const missing = Object.keys(NEEDED_MODULES).filter((name) => !api.isModuleRegistered(name));
   if (missing.length) console.error(`AG Grid is missing: ${missing.map((name) => NEEDED_MODULES[name]).join(", ")}`);
@@ -507,6 +579,7 @@ async function loadState() {
     totals = state.totals;
     summary = state.summary;
     source = state.source;
+    chatDate = state.source?.chatDate ?? null;
     groups = state.groups;
     rowsById = new Map(state.orders.map((row) => [row.id, row]));
     showSetup(state);
@@ -536,6 +609,13 @@ $("chat-hide").addEventListener("click", () => {
   foldChats(true);
   $("chat-edit").focus();
 });
+$("stat-check").addEventListener("click", () => setNeedsCheckFilter(!onlyNeedsCheck));
+$("filter-clear").addEventListener("click", () => {
+  setNeedsCheckFilter(false);
+  $("stat-check").focus();
+});
+$("search").addEventListener("input", (event) => grid?.setGridOption("quickFilterText", event.target.value));
+$("export-csv").addEventListener("click", exportCsv);
 $("page-prev").addEventListener("click", () => grid?.paginationGoToPreviousPage());
 $("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
 $("drawer-close").addEventListener("click", closeDrawer);

@@ -1,3 +1,5 @@
+// The browser check (design round 3 + tools): it CLICKS the Needs check card, TYPES in the search box and
+// CLICKS Export CSV (and reads the file), so none of them can pass while broken in the browser.
 // The browser check (design round 3): opens the page at laptop, iPad and phone widths, takes screenshots,
 // and fails on any console error or warning. It checks one row per buyer, 6 buyers per page, the hero
 // card and the icon circles, then fixes Priya IN THE DRAWER (item -> Classic brownies, qty -> 1), checks
@@ -6,7 +8,7 @@
 // It starts its own server on a free port with its own store file in tmp/, so your saved orders
 // in data/runtime/ are never touched. Screenshots go to tmp/screenshots/ (git-ignored).
 // (AG Grid 36 class names: body rows sit in .ag-grid-scrolling-container.)
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { loadConfig } from "../src/config.js";
@@ -57,6 +59,20 @@ const rowOf = (page, buyer) => page.locator(ROWS, { hasText: buyer });
 const isUnclear = (locator) => locator.evaluate((el) => el.classList.contains("row-unclear"));
 const putReply = (page) => page.waitForResponse((res) => res.url().includes("/api/orders/") && res.request().method() === "PUT");
 
+// Secondary grey (#6E6E73) against a colour, as a WCAG contrast ratio (computed in the browser).
+const CONTRAST = `(rgb) => {
+  const lum = (r, g, b) => [r, g, b].map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const [r, g, b] = rgb.match(/\\d+/g).map(Number);
+  const a = lum(110, 110, 115), c = lum(r, g, b);
+  return (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
+}`;
+
+async function exportedCsv(page) {
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#export-csv")]);
+  return { name: download.suggestedFilename(), text: readFileSync(await download.path(), "utf8") };
+}
+
 async function goToPage(page, n) {
   const target = `Page ${n} of 2`;
   for (let i = 0; i < 3 && plain(await page.$eval("#page-text", (el) => el.textContent)) !== target; i++) {
@@ -105,6 +121,58 @@ try {
     const chipIcons = await rowOf(page, "Hafiz").locator(".chip svg.lucide").count();
     check(chipIcons === 2, `food icons on Hafiz's item chips (${chipIcons})`);
 
+    // Background shapes: 3 soft blurred shapes, never darker than the page (grey text keeps >= 4.66:1).
+    const shapes = await page.$$eval(".backdrop span", (els, contrast) => els.map((el) => {
+      const style = getComputedStyle(el);
+      return { blur: style.filter.includes("blur"), ratio: new Function(`return ${contrast}`)()(style.backgroundColor) };
+    }), CONTRAST);
+    check(shapes.length === 3 && shapes.every((s) => s.blur && s.ratio >= 4.66),
+      `background: 3 blurred shapes; grey text contrast on them ${shapes.map((s) => s.ratio.toFixed(2)).join(", ")} (>= 4.66)`);
+
+    // CLICK the Needs check card: only Priya; click again: everyone.
+    const card = page.locator("#stat-check");
+    check(await card.evaluate((el) => el.tagName === "BUTTON" && !el.disabled), "Needs check card is a button");
+    await card.click();
+    await page.waitForTimeout(300);
+    let shown = await bodyRows(page);
+    const note = plain(await page.$eval("#filter-note", (el) => (el.hidden ? "" : el.innerText)));
+    check(shown.length === 1 && shown[0].includes("Priya") && (await card.getAttribute("aria-pressed")) === "true" && note.startsWith("Showing 1 buyer that needs a check"),
+      `clicking Needs check shows only Priya (${shown.length} row; note "${note}")`);
+    check(await page.$eval("#pager", (el) => el.hidden), "one page of results: the page arrows hide");
+    await card.click();
+    await page.waitForTimeout(300);
+    shown = await bodyRows(page);
+    check(shown.length === 6 && (await card.getAttribute("aria-pressed")) === "false" && (await page.$eval("#filter-note", (el) => el.hidden)),
+      `clicking it again shows all buyers again (${shown.length} on page 1)`);
+
+    // TYPE in the search box.
+    const search = async (text) => {
+      await page.fill("#search", text);
+      await page.waitForTimeout(300);
+      return (await bodyRows(page)).map((row) => row.split(" ").slice(1, 3).join(" "));
+    };
+    let found = await search("cookies");
+    check(found.length === 2 && found.join().includes("Hafiz") && found.join().includes("Mei Ling"), `search "cookies" finds Hafiz and Mei Ling (${found.join(" | ")})`);
+    found = await search("priya");
+    check(found.length === 1 && found[0].includes("Priya"), `search "priya" finds Priya, even on page 2 (${found.join(" | ")})`);
+    found = await search("pizza");
+    const empty = plain(await page.$eval(".ag-overlay", (el) => el.innerText).catch(() => ""));
+    check(found.length === 0 && empty.includes("No buyers match"), `search "pizza" finds nobody and says so: "${empty}"`);
+    found = await search("");
+    check(found.length === 6, "clearing the search shows 6 buyers again");
+
+    // CLICK Export CSV and read the file.
+    if (viewport.name !== "ipad") {
+      const { name, text } = await exportedCsv(page);
+      const lines = text.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
+      const hafizLine = lines.find((line) => line.includes("Hafiz")) ?? "";
+      check(name === "chatching-orders-2026-10-28.csv", `Export CSV downloads ${name}`);
+      check(text.startsWith("\uFEFF"), "the CSV starts with a byte-order mark (Excel reads it as UTF-8)");
+      check(lines[0] === '"Buyer","Items","Date","Total (MYR)","Status"', `CSV header: ${lines[0]}`);
+      check(lines.length === 10, `CSV has all 9 buyers, not just one page (${lines.length - 1} rows)`);
+      check(hafizLine.includes("1 × Burnt cheesecake 6-inch; 1 × Choc chip cookies (jar)") && hafizLine.includes('"70.00"'), `CSV Hafiz row: ${hafizLine}`);
+    }
+
     if (viewport.name === "phone") {
       const headerHeight = await page.$eval(".ag-header", (el) => el.getBoundingClientRect().height);
       check(headerHeight <= 1 && (await page.$$(".card-row")).length === 6, `phone: buyers are stacked cards, no table header (header ${headerHeight} px)`);
@@ -146,7 +214,8 @@ try {
   // The fix, in the drawer, at laptop width.
   console.log("\nFix Priya in the drawer: item -> Classic brownies, qty -> 1");
   const { page, errors } = await open(WIDTHS[0]);
-  await goToPage(page, 2);
+  await page.click("#stat-check"); // only the buyers that need a check
+  await page.waitForTimeout(300);
   const priya = rowOf(page, "Priya");
   await priya.click();
   await page.waitForSelector("#drawer.is-open");
@@ -184,6 +253,7 @@ try {
   await page.keyboard.press("Escape");
 
   const afterFix = async (label) => {
+    await goToPage(page, 2);
     const row = rowOf(page, "Priya");
     const text = plain(await row.innerText());
     const cards = plain(await page.$eval(".summary", (el) => el.innerText));
@@ -194,6 +264,8 @@ try {
     check(pinned.includes("8 orders ready") && pinned.includes("RM 405.00"), `${label}: totals updated to 8 orders, RM 405.00`);
     check(cards.includes("Expected RM 405.00") && cards.includes("Needs check 0"), `${label}: summary cards updated`);
     check(!(await page.$eval("#stat-check", (el) => el.classList.contains("is-check"))), `${label}: Needs check card is no longer amber`);
+    check(await page.$eval("#stat-check", (el) => el.disabled && el.getAttribute("aria-pressed") === "false" && document.getElementById("filter-note").hidden),
+      `${label}: nothing to check, so the filter switched itself off and the card is not clickable`);
   };
   await afterFix("after the fix");
   await page.evaluate(() => scrollTo(0, 0));
@@ -203,7 +275,6 @@ try {
   await page.reload();
   await page.waitForSelector(ROWS);
   await page.waitForTimeout(400);
-  await goToPage(page, 2);
   await afterFix("after reload");
   check(errors.length === 0, `no console errors or warnings during the fix${errors.length ? `: ${errors.join(" | ")}` : ""}`);
 } finally {
