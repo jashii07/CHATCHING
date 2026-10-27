@@ -2,7 +2,9 @@
 // Starts the real app on a free port with FAKE keys; the real .env is never loaded.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { createApp, errorHandler } from "../src/app.js";
 
@@ -19,7 +21,8 @@ let base;
 const logs = [];
 
 before(async () => {
-  const app = createApp(loadConfig(FAKE), { log: (line) => logs.push(line) });
+  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json"); // never the real data/runtime
+  const app = createApp(loadConfig(FAKE), { log: (line) => logs.push(line), storeFile });
   server = app.listen(0); // 0 = any free port
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://localhost:${server.address().port}`;
@@ -41,13 +44,14 @@ test("GET /api/health -> { ok: true }", async () => {
   assert.deepEqual(JSON.parse(res.text), { ok: true });
 });
 
-test("GET /api/state -> menu, empty orders, AI mode, placeholder counter, true/false key flags", async () => {
+test("GET /api/state -> menu, demo orders + totals, AI mode, placeholder counter, true/false key flags", async () => {
   const res = await call("/api/state");
   assert.equal(res.status, 200);
   const state = JSON.parse(res.text);
-  assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "geminiConfigured", "menu", "orders", "paypalConfigured"]);
+  assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "geminiConfigured", "menu", "orders", "paypalConfigured", "totals"]);
   assert.deepEqual(state.menu, MENU);
-  assert.deepEqual(state.orders, []);
+  assert.equal(state.orders.length, 12); // the demo: one row per item
+  assert.deepEqual(state.totals, { orders: 7, total: "387.00" });
   assert.equal(state.aiMode, "mock");
   assert.equal(typeof state.aiCallsLeft, "number");
   assert.equal(state.paypalConfigured, true);

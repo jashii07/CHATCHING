@@ -28,3 +28,6 @@ tmp/
 Thumbs.db
 .vscode/
 .idea/
+
+# Runtime data (the current orders, saved by src/store.js)
+data/runtime/

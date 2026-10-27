@@ -3,10 +3,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { checkMenu } from "./orders.js";
+import { checkEdit, checkMenu, recalcRow, totals } from "./orders.js";
+import { createStore } from "./store.js";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
+// The current rows live here (git-ignored). Tests pass their own temporary file.
+const STORE_FILE = fileURLToPath(new URL("../data/runtime/orders.json", import.meta.url));
 
 const pathOf = (req) => req.originalUrl.split("?")[0];
 
@@ -41,8 +44,9 @@ export function errorHandler(log) {
   };
 }
 
-export function createApp(config, { log = console.log } = {}) {
+export function createApp(config, { log = console.log, storeFile = STORE_FILE } = {}) {
   const menu = loadMenu();
+  const store = createStore({ file: storeFile, menu, log });
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
 
@@ -65,12 +69,27 @@ export function createApp(config, { log = console.log } = {}) {
   app.get("/api/state", (req, res) => {
     res.json({
       menu,
-      orders: [],
+      orders: store.rows(),
+      totals: totals(store.rows()),
       aiMode: config.aiMode,
       aiCallsLeft: 20, // placeholder until the daily counter (PLAN.md Step 9)
       paypalConfigured: config.paypalConfigured,
       geminiConfigured: config.geminiConfigured,
     });
+  });
+
+  // Save one edited cell (item, qty or date). The server recalculates the price, total and
+  // unclear flag, so the page never does money maths. Bad input -> 400 with the reason.
+  app.put("/api/orders/:id", (req, res) => {
+    const row = store.find(req.params.id);
+    if (!row) return res.status(404).json({ error: `No order row "${req.params.id}".` });
+    if (row.orderStatus === "cancelled") {
+      return res.status(400).json({ error: "This order is cancelled, so it can't be edited." });
+    }
+    const { changes, problems } = checkEdit(req.body, menu);
+    if (problems.length) return res.status(400).json({ error: problems.join(" ") });
+    const updated = store.replace(recalcRow({ ...row, ...changes }, menu));
+    res.json({ row: updated, totals: totals(store.rows()) });
   });
 
   app.use(express.static(PUBLIC_DIR));

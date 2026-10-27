@@ -109,6 +109,37 @@ export function recalcRow(row, menu) {
   };
 }
 
+// The fields the seller can edit in the table, and the checks for each.
+const EDITS = {
+  itemId: (value, menu) => (findItem(menu, value) ? "" : `Unknown menu item ${JSON.stringify(value)}.`),
+  qty: (value) => (Number.isInteger(value) && value >= 1 && value <= 99 ? "" : `Quantity must be a whole number from 1 to 99 (got ${JSON.stringify(value)}).`),
+  deliveryDate: (value) => {
+    if (value === null) return "";
+    const m = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+    const d = m && new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    return d && d.toISOString().slice(0, 10) === value ? "" : `Not a real date ${JSON.stringify(value)}: use YYYY-MM-DD.`;
+  },
+};
+
+// A seller's edit (the PUT body) -> { changes, problems }. Unlike AI output, a bad edit is refused,
+// not turned into an unclear row: the seller gets the reason and the row stays as it was.
+export function checkEdit(edit, menu) {
+  if (!edit || typeof edit !== "object" || Array.isArray(edit)) {
+    return { changes: {}, problems: ["Send the changes as a JSON object, e.g. { \"qty\": 2 }."] };
+  }
+  const problems = [];
+  const fields = Object.keys(edit);
+  if (!fields.length) problems.push(`Nothing to change: send one of ${Object.keys(EDITS).join(", ")}.`);
+  for (const field of fields) {
+    if (!Object.hasOwn(EDITS, field)) problems.push(`"${field}" can't be edited: use ${Object.keys(EDITS).join(", ")}.`);
+    else {
+      const problem = EDITS[field](edit[field], menu);
+      if (problem) problems.push(problem);
+    }
+  }
+  return { changes: problems.length ? {} : { ...edit }, problems };
+}
+
 // One invoice group per buyer, in table order. Cancelled rows are skipped.
 // "Lina", "lina" and " Lina " are one buyer (one invoice), shown with the first spelling.
 // A buyer is invoiceable only when ALL their active rows are clear; total is null otherwise.
