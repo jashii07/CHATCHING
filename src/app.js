@@ -8,8 +8,13 @@ import { createStore } from "./store.js";
 import { createAi } from "./ai.js";
 import { readPaste } from "./paste.js";
 import { checkOrders } from "./validate.js";
+import { createPayPal, NOT_CONFIGURED } from "./paypal.js";
+import { createInvoicer } from "./invoices.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
+const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
+const SENDING = "Invoices are being sent right now. Please wait for that to finish.";
+const READING = "Already reading orders. Please wait for that to finish.";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
@@ -49,10 +54,22 @@ export function errorHandler(log) {
   };
 }
 
-export function createApp(config, { log = console.log, storeFile = STORE_FILE, ai = createAi({ mode: config.aiMode }) } = {}) {
+export function createApp(config, {
+  log = console.log,
+  storeFile = STORE_FILE,
+  ai = createAi({ mode: config.aiMode }),
+  paypal = createPayPal({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, baseUrl: config.paypalBaseUrl }),
+} = {}) {
   const menu = loadMenu();
   const store = createStore({ file: storeFile, menu, log });
+  const invoicer = createInvoicer({ store, paypal, menu, log });
   let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
+
+  // What the table, cards and slim bar need: the same shape after every change.
+  const table = () => {
+    const rows = store.rows();
+    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), source: store.source(), batch: store.batch() };
+  };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
 
@@ -75,11 +92,7 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE, a
   app.get("/api/state", (req, res) => {
     res.json({
       menu,
-      orders: store.rows(),
-      totals: totals(store.rows()),
-      summary: summary(store.rows()),
-      groups: buyerGroups(store.rows()),
-      source: store.source(),
+      ...table(),
       aiMode: config.aiMode,
       aiCallsLeft: 20, // placeholder until the daily counter (PLAN.md Step 9)
       paypalConfigured: config.paypalConfigured,
@@ -95,6 +108,12 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE, a
     if (row.orderStatus === "cancelled") {
       return res.status(400).json({ error: "This order is cancelled, so it can't be edited." });
     }
+    // An invoice can't change after it is sent: editing the row would make it disagree with PayPal.
+    const sameBuyer = (other) => other.buyer.trim().toLowerCase() === row.buyer.trim().toLowerCase();
+    if (store.rows().some((other) => sameBuyer(other) && other.invoiceId)) {
+      return res.status(400).json({ error: `${row.buyer} is already invoiced, so this order can't be changed.` });
+    }
+    if (invoicer.isBusy()) return res.status(409).json({ error: SENDING });
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
     const updated = store.replace(recalcRow({ ...row, ...changes }, menu));
@@ -110,7 +129,10 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE, a
     if (typeof text !== "string" || typeof chatDate !== "string") {
       return res.status(400).json({ error: 'Send { "text": "the chat messages", "chatDate": "YYYY-MM-DD" }.' });
     }
-    if (reading) return res.json({ notice: "Already reading orders. Please wait for that to finish." });
+    if (reading) return res.json({ notice: READING });
+    if (invoicer.isBusy()) return res.json({ notice: SENDING });
+    // Reading replaces every row: never once an invoice exists (its link would be lost). New batch first.
+    if (store.hasInvoices()) return res.json({ notice: INVOICED });
     const { messages, notice } = readPaste(text, chatDate);
     if (notice) return res.json({ notice });
 
@@ -127,7 +149,33 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE, a
       reading = false;
     }
     store.setAll(rows, { text, chatDate, messages: messages.length });
-    res.json({ orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), source: store.source() });
+    res.json(table());
+  });
+
+  // Send invoices: one PayPal sandbox invoice per clear buyer that has none yet (src/invoices.js has the
+  // guards). { buyer } invoices just that buyer. Missing keys -> 503 with the message sent on purpose,
+  // because the error handler hides every 5xx message. Per-buyer PayPal problems come back in "failed".
+  app.post("/api/invoices", async (req, res) => {
+    if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
+    const { buyer } = req.body ?? {};
+    if (buyer !== undefined && typeof buyer !== "string") return res.status(400).json({ error: 'Send {} for every buyer, or { "buyer": "Lina" }.' });
+    if (reading) return res.json({ notice: READING });
+    let result;
+    try {
+      result = await invoicer.sendInvoices({ buyer });
+    } catch (err) {
+      if (err.status === 400 || err.status === 404) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
+    res.json({ ...result, ...table() });
+  });
+
+  // New batch: save this batch (rows + invoice links) to data/runtime/batches/ and start an empty table.
+  app.post("/api/new-batch", (req, res) => {
+    if (invoicer.isBusy()) return res.json({ notice: SENDING });
+    if (reading) return res.json({ notice: READING });
+    store.newBatch();
+    res.json(table());
   });
 
   app.use(express.static(PUBLIC_DIR));
