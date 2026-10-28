@@ -634,6 +634,37 @@ button:disabled {
   margin-top: 12px;
 }
 
+/* ---- Step 5: invoices ---- */
+.send-message:empty {
+  display: none;
+}
+
+.send-message {
+  margin: 0 0 16px;
+}
+
+/* The payer link (blue = clickable) and its quiet Copy button, under a sent buyer's items. */
+.pay-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.pay-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.pay-link a .lucide {
+  width: 16px;
+  height: 16px;
+}
+
 /* ---- The orders table: one row per buyer ---- */
 
 .money {
@@ -1111,6 +1142,29 @@ button.ghost.small {
 
 /* ---- Phone (<= 640 px): everything stacked, cards for buyers, a full-screen drawer. ---- */
 @media (max-width: 640px) {
+  /* Phones: Send invoices sits in the sticky total bar instead. */
+  #send-invoices {
+    display: none;
+  }
+
+  .phone-sum {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .phone-total button {
+    padding: 8px 18px;
+  }
+
+  /* With New batch and Edit in the slim bar, the decorative icon gives its room to the words. */
+  .chat-bar .icon-circle {
+    display: none;
+  }
+
+  .chat-bar button.ghost {
+    padding: 8px 14px;
+  }
+
   :root {
     --topbar-height: 56px;
   }

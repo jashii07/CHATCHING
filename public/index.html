@@ -88,6 +88,8 @@
     <div class="chat-bar" id="chat-bar" hidden>
       <span class="icon-circle small"><i data-lucide="messages-square" aria-hidden="true"></i></span>
       <span id="chat-bar-text"></span>
+      <!-- Once invoices exist, reading again would wipe their links: start a new batch instead (Step 5). -->
+      <button type="button" class="ghost" data-new-batch hidden>New batch</button>
       <button type="button" class="ghost" id="chat-edit" aria-controls="chats">Edit</button>
     </div>
 
@@ -103,6 +105,7 @@
         </div>
         <div class="actions">
           <button type="button" id="read-orders"><i data-lucide="scan-text" aria-hidden="true"></i>Read orders</button>
+          <button type="button" class="ghost" data-new-batch hidden>New batch</button>
           <button type="button" class="ghost" id="chat-hide" hidden>Hide chats</button>
         </div>
         <p id="read-message" class="hint" role="status"></p>
@@ -122,7 +125,14 @@
           <button type="button" class="ghost" id="export-csv" title="Saves a CSV file that opens in Excel">
             <i data-lucide="download" aria-hidden="true"></i>Export CSV
           </button>
+          <!-- One PayPal sandbox invoice per clear buyer. On phones this button sits in the sticky total bar. -->
+          <button type="button" id="send-invoices" data-send-invoices>Send invoices</button>
         </div>
+        <!-- Shown only when it matters: buyers are ready but the PayPal keys are missing. -->
+        <p class="filter-note" id="send-warning" role="status" hidden>
+          <span>PayPal is not configured, so invoices can't be sent yet. Add the sandbox keys to .env and restart.</span>
+        </p>
+        <p class="hint send-message" id="send-message" role="status"></p>
         <!-- Shown while the Needs check card filters the table. -->
         <p class="filter-note" id="filter-note" role="status" hidden>
           <span id="filter-note-text"></span>
@@ -161,6 +171,9 @@
   </aside>
 
   <!-- Phones only: replaces the pinned totals row (PLAN.md Section 12). -->
-  <div class="phone-total" id="phone-total" aria-live="polite"></div>
+  <div class="phone-total" id="phone-total">
+    <span class="phone-sum" id="phone-sum" aria-live="polite"></span>
+    <button type="button" data-send-invoices>Send invoices</button>
+  </div>
 </body>
 </html>

@@ -1,12 +1,19 @@
 // Smoke test: PayPal SANDBOX invoices, without emailing anyone.
-// Run:         node --env-file=.env scripts/smoke-invoice.mjs [--to buyer@personal.example.com]
+// Run:         node --env-file-if-exists=.env scripts/smoke-invoice.mjs
+//              Makes ONE real sandbox invoice for the demo buyer Lina with the app's own code
+//              (src/paypal.js: prices from menu.json), sends it, and prints only its id, status and payer link.
+// Duplicate:   node --env-file-if-exists=.env scripts/smoke-invoice.mjs --dup-test INVOICE_ID
+//              Tries that invoice's number again: PayPal must refuse it, and the lookup must find the same
+//              invoice. Creates nothing (a draft PayPal unexpectedly accepts is deleted at once).
 // Check:       node --env-file=.env scripts/smoke-invoice.mjs --check INVOICE_ID
 // QR code:     node --env-file=.env scripts/smoke-invoice.mjs --qr INVOICE_ID           (saves tmp/qr-INVOICE_ID.png)
 // Record cash: node --env-file=.env scripts/smoke-invoice.mjs --record-cash INVOICE_ID
 // Idempotency: node --env-file=.env scripts/smoke-invoice.mjs --idem-test               (creates + deletes 1-2 drafts)
 // Never prints the token, client ID or secret.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createPayPal, invoiceDraft, invoiceNumber } from "../src/paypal.js";
+import { demoRows, newBatchId } from "../src/store.js";
 
 const BASE = "https://api-m.sandbox.paypal.com";
 const CURRENCIES = ["MYR", "USD"]; // try MYR first, fall back to USD
@@ -224,47 +231,41 @@ async function idemTest(token) {
   return a.ok && c.ok ? 0 : 1;
 }
 
-async function createAndSend(token, buyerEmail) {
-  // Step a: create a draft, MYR first, then USD.
-  let id = null;
-  let currency = null;
-  for (const c of CURRENCIES) {
-    const r = await call("POST", "/v2/invoicing/invoices", token, draftBody(c, buyerEmail), {
-      Prefer: "return=representation",
-    });
-    if (r.ok) {
-      id = invoiceIdFrom(r);
-      currency = c;
-      break;
-    }
-    printError(`create draft (${c})`, r.status, r.body);
-    if (isNotEnabled(r.status, r.body)) {
-      console.log("STOP: Invoicing looks disabled for this sandbox account, so another currency won't help.");
-      return 1;
-    }
-    console.log(`--> ${c} failed, trying next currency...`);
-  }
-  if (!id) return 1;
-  console.log(`currency that worked: ${currency}`);
-  if (!(await showStatus(token, id, "after create"))) return 1;
+// The app's own PayPal client, keys from the environment only (never printed).
+function appPayPal() {
+  return createPayPal({ clientId: process.env.PAYPAL_CLIENT_ID ?? "", clientSecret: process.env.PAYPAL_CLIENT_SECRET ?? "" });
+}
+const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8"));
+const linaRows = () => demoRows(menu).filter((row) => row.buyer === "Lina");
 
-  // Step b: send without emailing the buyer or me.
-  const s = await call("POST", `/v2/invoicing/invoices/${id}/send`, token, {
-    send_to_recipient: false,
-    send_to_invoicer: false,
-  });
-  if (!s.ok) {
-    printError("send invoice", s.status, s.body);
-    return 1;
-  }
-  console.log(`send response: HTTP ${s.status}  rel: ${s.body?.rel ?? "-"}  href: ${s.body?.href ?? "-"}`);
-
-  // Step c: status after send, and the payer link.
-  const inv = await showStatus(token, id, "after send");
-  if (!inv) return 1;
-  console.log(`recipient_view_url: ${inv.detail?.metadata?.recipient_view_url ?? "(not present)"}`);
-  console.log(`Re-check later: node --env-file=.env scripts/smoke-invoice.mjs --check ${id}`);
+// ONE invoice for the demo buyer Lina (3 x Classic brownies = 54.00 from the menu), sent without email.
+async function oneDemoInvoice() {
+  const result = await appPayPal().invoiceBuyer({ buyer: "Lina", rows: linaRows(), menu, number: invoiceNumber(newBatchId(), 1) });
+  console.log(`invoice id: ${result.invoiceId}`);
+  console.log(`status: ${result.status}`);
+  console.log(`payer link: ${result.payerLink ?? "(not given)"}`);
   return 0;
+}
+
+// The duplicate guard on the REAL sandbox: same number again -> refused -> found by number.
+async function dupTest(id) {
+  const paypal = appPayPal();
+  const invoice = await paypal.getInvoice(id);
+  const number = invoice.detail.invoice_number;
+  const { body } = invoiceDraft({ buyer: "Lina", rows: linaRows(), menu, number });
+  try {
+    const extra = await paypal.createDraft(body);
+    console.log(`duplicate refused by PayPal: NO (it made draft ${extra.id}; deleting it)`);
+    const del = await call("DELETE", `/v2/invoicing/invoices/${extra.id}`, await paypal.token());
+    console.log(`deleted: HTTP ${del.status}`);
+    return 1;
+  } catch (err) {
+    if (err.issue !== "DUPLICATE_INVOICE_NUMBER") throw err;
+    console.log("duplicate refused by PayPal: yes (DUPLICATE_INVOICE_NUMBER)");
+  }
+  const found = await paypal.findByNumber(number);
+  console.log(`lookup by number finds the same invoice: ${found?.id === id ? "yes" : `NO (${found?.id ?? "nothing"})`}`);
+  return found?.id === id ? 0 : 1;
 }
 
 async function main() {
@@ -274,7 +275,14 @@ async function main() {
     return i >= 0 ? args[i + 1] : undefined;
   };
   const withId = { "--check": check, "--qr": qr, "--record-cash": recordCash };
+  if (args.includes("--dup-test") && !flag("--dup-test")) {
+    console.log("Usage: --dup-test INVOICE_ID");
+    return 1;
+  }
   try {
+    // The app's own code (src/paypal.js): its errors never contain a key or token.
+    if (args.includes("--dup-test")) return await dupTest(flag("--dup-test"));
+    if (!Object.keys(withId).some((n) => args.includes(n)) && !args.includes("--idem-test")) return await oneDemoInvoice();
     const name = Object.keys(withId).find((n) => args.includes(n));
     if (name && !flag(name)) {
       console.log(`Usage: ${name} INVOICE_ID`);
@@ -283,10 +291,10 @@ async function main() {
     const token = await getToken();
     if (!token) return 1;
     if (name) return await withId[name](token, flag(name));
-    if (args.includes("--idem-test")) return await idemTest(token);
-    return await createAndSend(token, flag("--to"));
+    return await idemTest(token);
   } catch (err) {
-    if (err.name === "TimeoutError") console.log("Timed out after 30s waiting for PayPal. Try again.");
+    if (err.name === "PayPalError" || err.status) console.log(`FAILED: ${err.message}`);
+    else if (err.name === "TimeoutError") console.log("Timed out after 30s waiting for PayPal. Try again.");
     else console.log(`Network error: ${err.cause?.code ?? err.message}`);
     return 1;
   }

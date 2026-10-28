@@ -185,7 +185,7 @@ try {
     if (viewport.name === "phone") {
       const headerHeight = await page.$eval(".ag-header", (el) => el.getBoundingClientRect().height);
       check(headerHeight <= 1 && (await page.$$(".card-row")).length === 6, `phone: buyers are stacked cards, no table header (header ${headerHeight} px)`);
-      const sticky = plain(await page.$eval("#phone-total", (el) => el.innerText));
+      const sticky = plain(await page.$eval("#phone-sum", (el) => el.innerText));
       check(sticky === "Total: 7 orders ready RM 387.00", `sticky bar: "${sticky}"`);
     } else {
       const expected = viewport.name === "ipad" ? "Buyer,Items,Total,Status" : "Buyer,Items,Date,Total,Status";

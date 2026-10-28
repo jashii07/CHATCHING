@@ -32,6 +32,8 @@ let openGroupId = null; // the buyer shown in the drawer (its first row id)
 let onlyNeedsCheck = false; // the Needs check card filters the table to buyers that need a check
 let chatDate = null; // for the CSV file name
 let returnFocus = null;
+let paypalReady = false; // both PayPal keys are set on the server
+let sending = false; // invoices are being sent: the Send buttons wait
 
 // "54.00" -> "RM 54.00" (MYR) or "$54.00" (USD). Same Intl options as formatMoney in src/money.js.
 function formatMoney(amount) {
@@ -94,7 +96,11 @@ function buyerRows() {
     const rows = group.rowIds.map((id) => rowsById.get(id)).filter(Boolean);
     const active = rows.filter((row) => row.orderStatus === "active");
     const unclear = active.filter((row) => row.unclear);
+    const payerLink = active.find((row) => row.payerLink)?.payerLink ?? null;
     return {
+      payerLink, // set once the buyer's invoice is sent
+      // Clear, not cancelled, and no sent invoice yet (a draft whose send failed is sent again).
+      toSend: !group.cancelled && group.total != null && !active.some((row) => row.invoiceId && row.invoiceStatus !== "Draft"),
       id: group.rowIds[0],
       buyer: group.buyer,
       rows,
@@ -118,7 +124,21 @@ const itemsText = (data) => data.rows
   })
   .join("; ");
 
-const buyerSub = (data) => (data.cancelled ? "Cancelled" : data.unclear ? "Needs a check" : plural(data.items, "item"));
+const buyerSub = (data) => (data.cancelled ? "Cancelled" : data.unclear ? "Needs a check" : data.payerLink ? "Invoice sent" : plural(data.items, "item"));
+
+// After the invoice is sent: the payer link (opens PayPal's pay page) and a Copy button for the chat.
+// Both are inside the row, so the row-click handler ignores clicks on links and buttons.
+function payLink(data) {
+  if (!data.payerLink) return null;
+  const line = el("span", "pay-link");
+  const link = Object.assign(el("a", "", ""), { href: data.payerLink, target: "_blank", rel: "noopener" });
+  link.append(icon("external-link"), "Payer link");
+  const copy = Object.assign(el("button", "ghost small copy-link", "Copy link"), { type: "button" });
+  copy.dataset.link = data.payerLink;
+  copy.setAttribute("aria-label", `Copy ${data.buyer}'s payer link`);
+  line.append(link, copy);
+  return line;
+}
 const datesText = (data) => (data.dates.length ? data.dates.map((d) => formatDate(d)).join(", ") : "—");
 const checkText = (data) => (data.unclear && !data.cancelled ? `Check: ${data.reason}` : "");
 
@@ -171,6 +191,8 @@ function itemsCell(p) {
   cell.append(chips(p.data));
   const words = checkText(p.data);
   if (words) cell.append(el("span", "check-text", words));
+  const link = payLink(p.data);
+  if (link) cell.append(link);
   return cell;
 }
 
@@ -198,6 +220,8 @@ function cardCell(p) {
   card.append(top, chips(data));
   const words = checkText(data);
   if (words) card.append(el("span", "check-text", words));
+  const link = payLink(data);
+  if (link) card.append(link);
   return card;
 }
 
@@ -272,7 +296,22 @@ const screenSize = () => (phone.matches ? "phone" : laptop.matches ? "laptop" : 
 function showTotals() {
   if (!grid) return;
   grid.setGridOption("pinnedBottomRowData", phone.matches ? [] : [{ id: "totals", orders: totals.orders, total: totals.total }]);
-  $("phone-total").replaceChildren(el("span", "", `Total: ${ordersText(totals.orders)}`), el("span", "money", formatMoney(totals.total)));
+  $("phone-sum").replaceChildren(el("span", "", `Total: ${ordersText(totals.orders)}`), el("span", "money", formatMoney(totals.total)));
+}
+
+// The Send invoices buttons (above the table; in the sticky bar on phones): "Send 7 invoices", or
+// waiting while sending, or nothing to send. Missing PayPal keys: an amber note next to them instead.
+function showSendButtons() {
+  const count = buyerRows().filter((row) => row.toSend).length;
+  for (const button of document.querySelectorAll("[data-send-invoices]")) {
+    button.disabled = sending || !paypalReady || count === 0;
+    button.toggleAttribute("aria-busy", sending);
+    button.replaceChildren(icon("send"), sending ? "Sending..." : count ? `Send ${plural(count, "invoice")}` : "Send invoices");
+  }
+  $("send-warning").hidden = paypalReady || count === 0;
+  // Once invoices exist, reading again is refused: New batch is the way on.
+  const invoiced = [...rowsById.values()].some((row) => row.invoiceId);
+  for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !invoiced;
 }
 
 // Our own page arrows drive AG Grid's pagination. One row = one buyer, so a buyer is never split.
@@ -397,6 +436,7 @@ function refreshTable() {
   grid.redrawRows(); // chips, check words and heights all follow the new data
   showTotals();
   showPager();
+  showSendButtons();
 }
 
 // ---- The drawer: fix one buyer's items, quantities and dates ----
@@ -409,6 +449,7 @@ function field(label, control) {
 
 function editCard(row) {
   const cancelled = row.orderStatus === "cancelled";
+  const invoiced = Boolean(row.invoiceId); // the invoice must keep matching what PayPal has
   const card = el("section", `edit-card${row.unclear && !cancelled ? " is-unclear" : ""}${cancelled ? " is-cancelled" : ""}`);
   const item = menuItem(row.itemId);
   const title = el("div", "edit-title");
@@ -429,12 +470,13 @@ function editCard(row) {
     control.dataset.row = row.id;
     control.dataset.field = name2;
     control.id = `edit-${row.id}-${name2}`;
-    control.disabled = cancelled;
+    control.disabled = cancelled || invoiced;
   }
   const pair = el("div", "field-pair");
   pair.append(field("Qty", qty), field("Date", date));
   card.append(field("Item", select), pair);
   if (cancelled) card.append(el("p", "hint", "This order was cancelled in the chat, so it can't be changed."));
+  else if (invoiced) card.append(el("p", "hint", "The invoice is sent, so this order can't be changed any more."));
   else if (row.unclear) card.append(el("p", "check-text", `Check: ${row.reason}`));
   return card;
 }
@@ -551,10 +593,12 @@ function createOrdersGrid() {
       "row-unclear": (p) => !p.node.rowPinned && p.data?.unclear && !p.data.cancelled,
       "row-cancelled": (p) => !p.node.rowPinned && p.data?.cancelled,
     },
+    // A click on the payer link or its Copy button does its own job, not open the drawer.
     onRowClicked: (p) => {
-      if (!p.node.rowPinned) openDrawer(p.data.id);
+      if (!p.node.rowPinned && !p.event?.target?.closest?.("a, button")) openDrawer(p.data.id);
     },
     onCellKeyDown: (p) => {
+      if (p.event.target?.closest?.("a, button")) return;
       if ((p.event.key === "Enter" || p.event.key === " ") && !p.node.rowPinned) {
         p.event.preventDefault();
         openDrawer(p.data.id);
@@ -586,6 +630,7 @@ function showOrders(state) {
     fitToWidth();
     refreshTable();
   }
+  showSendButtons();
 }
 
 async function loadState() {
@@ -595,6 +640,7 @@ async function loadState() {
     if (!res.ok) throw new Error(state.error ?? `HTTP ${res.status}`);
     currency = state.menu.currency;
     menuItems = state.menu.items;
+    paypalReady = state.paypalConfigured;
     showSetup(state);
     $("ai-calls-text").textContent = `AI calls left today: ${state.aiCallsLeft}`;
     showOrders(state);
@@ -650,8 +696,85 @@ async function readOrders() {
   }
 }
 
+// "Send invoices": the server sends one PayPal sandbox invoice per clear buyer that has none yet, and
+// replies with the updated rows plus who was sent, skipped or failed. One send at a time: the buttons
+// wait, and the server's own guards make a double-click harmless anyway.
+async function sendInvoices() {
+  if (sending || !paypalReady) return;
+  sending = true;
+  showSendButtons();
+  hideError();
+  const say = (message) => ($("send-message").textContent = message);
+  say("Sending invoices to PayPal...");
+  try {
+    const res = await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) return say(reply.notice);
+    sending = false;
+    showOrders(reply);
+    const needCheck = reply.skipped.filter((s) => s.reason === "Needs a check first.").map((s) => s.buyer);
+    say([
+      reply.sent.length ? `${plural(reply.sent.length, "invoice")} sent. Copy each payer link into the chat.` : "Nothing new to send.",
+      needCheck.length ? `Not sent: ${needCheck.join(", ")} (${needCheck.length === 1 ? "needs" : "need"} a check first).` : "",
+    ].filter(Boolean).join(" "));
+    if (reply.failed.length) {
+      showError(`${plural(reply.failed.length, "invoice")} could not be sent: ${reply.failed.map((f) => `${f.buyer} (${f.reason})`).join("; ")} Click Send again to retry.`);
+    }
+  } catch (err) {
+    say("");
+    showError(`The invoices could not be sent (${err.message}).`);
+  } finally {
+    sending = false;
+    showSendButtons();
+  }
+}
+
+// "New batch": the server saves this batch (rows + invoice links) and starts an empty table, so the
+// next day's chats can be read without losing or re-sending any invoice.
+async function newBatch() {
+  if (!window.confirm("Start a new batch? These orders and their payer links are saved, and the table starts empty.")) return;
+  hideError();
+  try {
+    const res = await fetch("/api/new-batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) return ($("read-message").textContent = reply.notice);
+    $("chat").value = "";
+    $("read-message").textContent = "";
+    $("send-message").textContent = "";
+    showOrders(reply);
+    $("chat").focus();
+  } catch (err) {
+    showError(`A new batch could not be started (${err.message}).`);
+  }
+}
+
+// Copy a payer link for the chat. The clipboard API needs a secure page (https or localhost);
+// elsewhere the older copy command is the fallback.
+async function copyLink(button) {
+  const link = button.dataset.link;
+  try {
+    await navigator.clipboard.writeText(link);
+  } catch {
+    const box = Object.assign(document.createElement("textarea"), { value: link });
+    document.body.append(box);
+    box.select();
+    document.execCommand("copy");
+    box.remove();
+  }
+  button.textContent = "Copied";
+  setTimeout(() => (button.textContent = "Copy link"), 2000);
+}
+
 $("chat-date").value = todayLocal();
 $("read-orders").addEventListener("click", readOrders);
+for (const button of document.querySelectorAll("[data-send-invoices]")) button.addEventListener("click", sendInvoices);
+for (const button of document.querySelectorAll("[data-new-batch]")) button.addEventListener("click", newBatch);
+$("grid").addEventListener("click", (event) => {
+  const copy = event.target.closest(".copy-link");
+  if (copy) copyLink(copy);
+});
 $("chat-edit").addEventListener("click", () => {
   foldChats(false);
   $("chat").focus();
