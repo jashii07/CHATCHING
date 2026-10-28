@@ -46,6 +46,14 @@ test("real AI mode without a Gemini key warns instead of crashing", () => {
   assert.match(config.warnings.join(" "), /GEMINI_API_KEY is missing/);
 });
 
+test("PayPal is sandbox only: the default base URL is the sandbox, and any other one stops the server", () => {
+  assert.equal(loadConfig({}).paypalBaseUrl, "https://api-m.sandbox.paypal.com");
+  assert.equal(loadConfig({ PAYPAL_BASE_URL: "https://api-m.sandbox.paypal.com/" }).paypalBaseUrl, "https://api-m.sandbox.paypal.com");
+  for (const url of ["https://api-m.paypal.com", "https://api.paypal.com", "http://api-m.sandbox.paypal.com", "https://example.com"]) {
+    assert.throws(() => loadConfig({ PAYPAL_BASE_URL: url }), /PAYPAL_BASE_URL must be https:\/\/api-m\.sandbox\.paypal\.com/, url);
+  }
+});
+
 test("printing the config or turning it into JSON never shows a secret", () => {
   const config = loadConfig(FAKE);
   const printed = `${JSON.stringify(config)}\n${inspect(config, { depth: 5 })}`;
