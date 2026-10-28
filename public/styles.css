@@ -1092,6 +1092,10 @@ button.ghost.small {
   font-size: 0.8125rem;
 }
 
+.footer #reset-demo {
+  margin-top: 16px;
+}
+
 .footer ul {
   display: flex;
   flex-wrap: wrap;

@@ -896,6 +896,28 @@ async function newBatch() {
   }
 }
 
+// "Reset demo": the server empties the table (the saved orders file) so the demo can start over.
+// Nothing in PayPal is deleted or cancelled; sent invoices are kept in data/runtime/batches/.
+async function resetDemo() {
+  if (!window.confirm("Reset the demo? The table empties so you can start over. Nothing in PayPal is deleted or cancelled.")) return;
+  hideError();
+  try {
+    const res = await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) return showError(reply.notice);
+    stopPolling();
+    closeDrawer();
+    for (const id of ["read-message", "send-message", "status-message"]) $(id).textContent = "";
+    $("chat").value = "";
+    showOrders(reply);
+    scrollTo(0, 0);
+    $("chat").focus();
+  } catch (err) {
+    showError(`The demo could not be reset (${err.message}).`);
+  }
+}
+
 // Copy a payer link for the chat. The clipboard API needs a secure page (https or localhost);
 // elsewhere the older copy command is the fallback.
 async function copyLink(button) {
@@ -918,6 +940,7 @@ $("read-orders").addEventListener("click", readOrders);
 for (const button of document.querySelectorAll("[data-send-invoices]")) button.addEventListener("click", sendInvoices);
 for (const button of document.querySelectorAll("[data-new-batch]")) button.addEventListener("click", newBatch);
 $("refresh-status").addEventListener("click", () => refreshStatus({ byHand: true }));
+$("reset-demo").addEventListener("click", resetDemo);
 $("grid").addEventListener("click", (event) => {
   const copy = event.target.closest(".copy-link");
   if (copy) copyLink(copy);

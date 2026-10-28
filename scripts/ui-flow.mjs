@@ -5,7 +5,8 @@
 //           creates nothing new; Read orders is refused; New batch empties the table and reading works again.
 //   Step 6: a buyer pays -> the 20-second poll turns the row Paid (the page's clock is faked, so no real
 //           20 s wait) and flashes green once (not with reduced motion); Refresh status; record cash for
-//           Lina in her drawer -> Paid (cash/bank); polling pauses after 30 minutes.
+//           Lina in her drawer -> Paid (cash/bank) -> Refresh keeps it; polling pauses after 30 minutes;
+//           at the end, Reset demo -> an empty table, with no call to PayPal.
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
@@ -288,6 +289,10 @@ try {
     errors.splice(0, errors.length, ...errors.filter((e) => !e.includes("409"))); // that refusal was on purpose
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6d-cash-paid.png`, fullPage: true });
+    skip(11_000);
+    await page.click("#refresh-status");
+    await page.waitForTimeout(500);
+    check((await statusOf("Lina")) === "Paid (cash/bank)" && (await statusOf("Hafiz")) === "Paid", "Refresh after the cash payment: Lina stays Paid (cash/bank)");
 
     // 30 minutes later the polling stops by itself.
     const getsBefore = fake.calls.filter((c) => c.kind === "get").length;
@@ -327,6 +332,28 @@ try {
     await page.waitForTimeout(500);
     check((await allBuyers(page)).length === 9 && plain(await sendButton.innerText()) === "Send 7 invoices", "the new batch reads the chats again: 9 buyers, 7 to send");
     check(fake.invoices.size === 7, "and no invoice was made by reading");
+
+    // ---- Reset demo (with sent invoices in the table) ----
+    await sendButton.click();
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("7 invoices sent"));
+    await page.waitForTimeout(400);
+    const invoicesBefore = fake.invoices.size;
+    const callsBefore = fake.calls.length;
+    page.once("dialog", (dialog) => {
+      check(dialog.message().includes("Nothing in PayPal is deleted or cancelled"), `Reset asks first: "${dialog.message()}"`);
+      dialog.accept();
+    });
+    await page.click("#reset-demo");
+    await page.waitForSelector(".ag-overlay");
+    await page.waitForTimeout(400);
+    const afterReset = plain(await page.$eval(".ag-overlay", (el) => el.innerText));
+    check(afterReset.includes("No orders yet") && (await cards(page)).includes("Orders 0") && (await cards(page)).includes("Paid RM 0.00"),
+      `Reset demo: the table is empty ("${afterReset}")`);
+    check(fake.calls.length === callsBefore && fake.invoices.size === invoicesBefore, "Reset made no PayPal call and deleted nothing");
+    const savedFile = JSON.parse(readFileSync(`${OUT}${viewport.name}-orders.json`, "utf8"));
+    check(savedFile.rows.length === 0 && savedFile.source === null, "the saved orders file is cleared");
+    check((await page.inputValue("#chat")) === "" && !(await page.locator("#chats").isHidden()), "the chat box is open and empty, ready for a new paste");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-9-reset.png`, fullPage: true });
 
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();

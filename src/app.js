@@ -203,6 +203,15 @@ export function createApp(config, {
     }
   });
 
+  // Reset demo: clear the saved orders so the demo can start over (0 AI calls, 0 PayPal calls). It never
+  // deletes or cancels anything in PayPal; sent invoices are saved to batches/ first.
+  app.post("/api/reset", (req, res) => {
+    if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });
+    if (reading) return res.json({ notice: READING });
+    store.reset();
+    res.json(table());
+  });
+
   // New batch: save this batch (rows + invoice links) to data/runtime/batches/ and start an empty table.
   app.post("/api/new-batch", (req, res) => {
     if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });

@@ -101,5 +101,15 @@ export function createStore({ file, menu, log = console.log }) {
       save();
       return archive;
     },
+    // Reset demo: an empty table, so the demo can start over. Sent invoices are first saved like a
+    // New batch (their links are kept); nothing else is kept. PayPal is never touched.
+    reset() {
+      if (rows.some((row) => row.invoiceId)) return this.newBatch();
+      rows = [];
+      source = null;
+      batch = newBatchId();
+      save();
+      return null;
+    },
   };
 }

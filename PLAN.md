@@ -66,7 +66,7 @@ Only one new package is planned: **express**.
 | `GET /api/invoices/:id/qr` | pickup QR code image from PayPal (#3b) | **Never** |
 | `POST /api/messages` | ready-to-send message per invoiced buyer (#2) | 1 call, or template |
 | `POST /api/reminders` | reminders for all unpaid buyers, same design as messages | 1 call, or template |
-| `POST /api/reset` | reload the demo orders + saved AI results | **0 calls** |
+| `POST /api/reset` | Reset demo: empty the table (the saved orders) so the demo starts over; sent invoices are saved to `batches/` first; nothing in PayPal is deleted or cancelled (changed 28 Oct, Step 6) | **0 calls** |
 
 ### AG Grid showcase (Community features only, no Enterprise)
 
