@@ -32,3 +32,12 @@
 - **Batches:** reading the chats replaces every row, which would wipe the payer links. So once an invoice exists, Read orders is refused. New batch saves the old batch (rows + links) to a file and starts an empty table.
 - **Why it matters:** this is the step where real money could go wrong. Every rule here follows Jasper's "check first, charge second": no AI price, no wrong total, no double invoice, no lost link.
 - **Testing without PayPal:** a fake in-memory PayPal (`scripts/fake-paypal.mjs`) copies what the real sandbox did on 25 Oct. So 215 tests and the browser check run in seconds, with no keys and no real invoices.
+
+### 2026-10-28, Step 6: who has paid, cash payments, Reset demo (summary by Claude)
+
+- **What was built:** the table now learns who has paid. A "Refresh status" button asks PayPal, and the page also asks by itself every 20 seconds. When a buyer pays, their row flashes green once and the Paid card counts it. In the drawer, the seller can record a cash or bank-transfer payment. "Reset demo" empties the table to start over. The video storyboard is saved in PLAN.md Section 13.
+- **Polling without flooding PayPal:** the page only asks while the tab is visible, an invoice is still open, and for at most 30 minutes. The server remembers PayPal's answer for 10 seconds and lets many tabs share one question. So even many open tabs cost at most a few calls a minute. Like a shop assistant who checks the post once, not once per customer asking.
+- **Cash and bank payments:** the seller only says HOW the buyer paid. The amount is the full total of the invoice saved at PayPal, checked against the menu, so it can't be mistyped or come from the AI. Recording twice is refused three ways: our saved status, a lock while recording, and a fresh question to PayPal (a buyer who already paid online is marked Paid instead).
+- **A race we closed:** a status check that started before a cash payment could finish after it and turn "Paid (cash/bank)" back into "Sent". Now a final status is never downgraded, with a test for it.
+- **Reset demo** never calls PayPal: real invoices stay in the sandbox, and any sent ones are saved to `batches/` first.
+- **Real sandbox proof:** the Step 5 invoice for Lina went UNPAID -> MARKED_AS_PAID with one CASH payment of 54.00 MYR.
