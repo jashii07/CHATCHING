@@ -35,42 +35,65 @@ function toLabel(days) {
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-// "9:02 AM" -> "09:02"; "21:30" -> "21:30". null if the time is not real.
-function parseTime(hours, minutes, ampm) {
+// "9:02 AM" -> "09:02"; "21:30" -> "21:30". null if the time is not real. Seconds are checked, then dropped.
+function parseTime(hours, minutes, ampm, seconds) {
   let h = Number(hours);
-  const min = Number(minutes);
-  if (min > 59) return null;
+  if (Number(minutes) > 59 || Number(seconds ?? 0) > 59) return null;
   if (ampm) {
     if (h < 1 || h > 12) return null;
-    h = (h % 12) + (ampm.toUpperCase() === "PM" ? 12 : 0);
+    h = (h % 12) + (ampm[0].toUpperCase() === "P" ? 12 : 0);
   } else if (h > 23) return null;
   return `${String(h).padStart(2, "0")}:${minutes}`;
 }
 
-// "[28/10 9:02 AM]" (no year) + the chat date -> { date, time, label, warning, reason }.
-// The year is the one (chat year, or one before or after) that puts the message NEAREST the chat date;
-// on a tie the earlier year wins. A date after the chat date, or more than 60 days away, gets a
-// visible warning; it is never moved silently. An impossible date gives date: null and a reason.
+// The timestamp formats phones paste (day/month order, as in Malaysia). Best effort (PLAN.md robustness #1-#5);
+// each line is tried against these in order. A year is optional; seconds are read and dropped.
+const DATE = String.raw`(?<day>\d{1,2})\/(?<month>\d{1,2})(?:\/(?<year>\d{4}|\d{2}))?`;
+const TIME = String.raw`(?<hours>\d{1,2})[:.](?<minutes>\d{2})(?::(?<seconds>\d{2}))?(?:\s*(?<ampm>[AaPp]\.?[Mm]\.?))?`;
+const STAMPS = [
+  new RegExp(String.raw`^\[\s*${DATE}(?:,?\s+${TIME})?\s*\]\s*`), // [28/10 9:02 AM], [28/10/2026, 9:02:15 AM], [28/10]
+  new RegExp(String.raw`^\[\s*${TIME},?\s+${DATE}\s*\]\s*`), // [9:02 am, 28/10/2026] (copied from a web chat)
+  new RegExp(String.raw`^${DATE},?\s+${TIME}\s+[-–]\s+`), // 28/10/26, 9:02 am - Lina: (Android, no brackets)
+];
+// Spaces and the invisible direction marks some phone exports put before a line.
+const LEADING = /^[\s‎‏‪-‮⁦-⁩]+/;
+// A bracketed stamp we can't read ("[28/10 25:00]") still starts a new message, so the reason shows on it.
+const LOOKS_LIKE_STAMP = /^\[\s*\d{1,2}[/:.]\d/;
+
+// A line -> { groups, text } when it starts with a timestamp (text = what comes after it), else null.
+function matchStamp(line) {
+  if (typeof line !== "string") return null;
+  const clean = line.replace(LEADING, "");
+  for (const re of STAMPS) {
+    const m = clean.match(re);
+    if (m) return { groups: m.groups, text: clean.slice(m[0].length) };
+  }
+  return null;
+}
+
+// A chat line + the chat date -> { date, time, label, warning, reason }. With no year in the stamp
+// ("[28/10 9:02 AM]"), the year is the one (chat year, or one before or after) that puts the message
+// NEAREST the chat date; on a tie the earlier year wins. A year in the stamp is used as written.
+// A date after the chat date, or more than 60 days away, gets a visible warning; it is never moved
+// silently. An impossible date gives date: null and a reason.
 export function parseTimestamp(stamp, chatDate) {
   const chat = parseIso(chatDate);
   if (chat === null) throw new RangeError(`Not a valid chat date: ${JSON.stringify(chatDate)}`);
 
   const fail = (reason, time = null) => ({ date: null, time, label: null, warning: "", reason });
-  const m = typeof stamp === "string"
-    ? stamp.match(/^\s*\[\s*(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?)?\s*\]/)
-    : null;
-  const time = m?.[3] ? parseTime(m[3], m[4], m[5]) : null;
-  if (!m || (m[3] && !time)) return fail(`Can't read the timestamp ${JSON.stringify(stamp)}.`);
+  const g = matchStamp(stamp)?.groups;
+  const time = g?.hours ? parseTime(g.hours, g.minutes, g.ampm, g.seconds) : null;
+  if (!g || (g.hours && !time)) return fail(`Can't read the timestamp ${JSON.stringify(stamp)}.`);
 
-  const day = Number(m[1]);
-  const month = Number(m[2]);
+  const day = Number(g.day);
+  const month = Number(g.month);
   const chatYear = new Date(chat * DAY_MS).getUTCFullYear();
 
   // Distance uses Date.UTC as-is (29 Feb 2027 rolls to 1 Mar 2027), so we can find the
   // nearest year first and only then ask whether the date really exists in that year.
-  let year = null;
+  let year = g.year ? Number(g.year) + (g.year.length === 2 ? 2000 : 0) : null;
   let best = Infinity;
-  for (const y of [chatYear - 1, chatYear, chatYear + 1]) {
+  for (const y of year ? [] : [chatYear - 1, chatYear, chatYear + 1]) {
     const distance = Math.abs(Date.UTC(y, month - 1, day) / DAY_MS - chat);
     if (distance < best) [year, best] = [y, distance];
   }
@@ -99,21 +122,23 @@ export function resolveDayWord(word, messageDate) {
   return null;
 }
 
-// A pasted chat -> messages, numbered from 1, each with its full date (for the AI prompt in Step 4).
-// A line that starts with a timestamp ("[28/10 9:02 AM] ...") starts a new message; every other
-// line belongs to the message above it. Text before the first timestamp (or a whole paste with no
-// timestamps, like one copied message) is one message dated on the Chat date. Blank lines are skipped;
-// no other text is ever dropped.
+// A pasted chat -> messages, numbered from 1, each with its full date (for the AI prompt).
+// A line that starts with a timestamp ("[28/10 9:02 AM] ...", or another phone format above) starts a
+// new message; every other line belongs to the message above it. Text before the first timestamp (or a
+// whole paste with no timestamps, like one copied message) is one message dated on the Chat date.
+// Blank lines are skipped; no other text is ever dropped.
 export function splitMessages(paste, chatDate) {
   const chat = parseIso(chatDate);
   if (chat === null) throw new RangeError(`Not a valid chat date: ${JSON.stringify(chatDate)}`);
 
   const messages = [];
   for (const line of String(paste ?? "").split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    if (/^\s*\[\s*\d{1,2}\/\d{1,2}/.test(line)) {
-      const stamp = parseTimestamp(line, chatDate);
-      messages.push({ n: messages.length + 1, ...stamp, text: line.replace(/^\s*\[[^\]]*\]\s*/, "") });
+    if (!line.replace(LEADING, "")) continue;
+    const found = matchStamp(line);
+    const unreadable = !found && LOOKS_LIKE_STAMP.test(line.replace(LEADING, ""));
+    if (found || unreadable) {
+      const text = found ? found.text : line.replace(LEADING, "").replace(/^\[[^\]]*\]\s*/, "");
+      messages.push({ n: messages.length + 1, ...parseTimestamp(line, chatDate), text: text.trimEnd() });
     } else if (messages.length) {
       messages.at(-1).text += `\n${line.trimEnd()}`;
     } else {

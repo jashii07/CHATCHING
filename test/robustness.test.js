@@ -1,5 +1,6 @@
 // Robustness check on money.js, orders.js and dates.js (26 Oct): edge cases, a property check and a fuzz check.
 // Tests marked { todo: true } FAIL today on purpose: they show a known gap, waiting for Jasper's decision.
+// The phone formats (#1-#5) became real tests in Step 4 (28 Oct).
 // Random tests use a fixed seed, so a failure always repeats the same way.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,25 +25,25 @@ function seeded(seed) {
 }
 
 describe("1a. paste formats", () => {
-  test('iPhone style "[28/10/2026, 9:02:15 AM]" (year + seconds + comma) -> 28 Oct, 09:02', { todo: true }, () => {
+  test('iPhone style "[28/10/2026, 9:02:15 AM]" (year + seconds + comma) -> 28 Oct, 09:02', () => {
     const msg = parseTimestamp("[28/10/2026, 9:02:15 AM] Lina: kak nak order", CHAT);
     assert.equal(msg.date, "2026-10-28");
     assert.equal(msg.time, "09:02");
   });
 
-  test('a comma after the date, lowercase am: "[28/10, 9:02 am]"', { todo: true }, () => {
+  test('a comma after the date, lowercase am: "[28/10, 9:02 am]"', () => {
     assert.equal(parseTimestamp("[28/10, 9:02 am] Lina: hi", CHAT).date, "2026-10-28");
   });
 
-  test('Android style with no brackets: "28/10/26, 9:02 am - Lina: hi"', { todo: true }, () => {
+  test('Android style with no brackets: "28/10/26, 9:02 am - Lina: hi"', () => {
     assert.equal(parseTimestamp("28/10/26, 9:02 am - Lina: hi", CHAT).date, "2026-10-28");
   });
 
-  test('time first (web copy): "[9:02 am, 28/10/2026] Lina: hi"', { todo: true }, () => {
+  test('time first (web copy): "[9:02 am, 28/10/2026] Lina: hi"', () => {
     assert.equal(parseTimestamp("[9:02 am, 28/10/2026] Lina: hi", CHAT).date, "2026-10-28");
   });
 
-  test("an invisible left-to-right mark before the [ (some phone exports add one)", { todo: true }, () => {
+  test("an invisible left-to-right mark before the [ (some phone exports add one)", () => {
     assert.equal(parseTimestamp("‎[28/10 9:02 AM] Lina: hi", CHAT).date, "2026-10-28");
   });
 
