@@ -48,3 +48,9 @@
 - **Why:** after Reset demo the box was empty, and a judge had nothing to paste. Now testing takes seconds: Reset demo → Load demo → Read orders → 9 buyers.
 - **Same rules as Read orders:** once invoices are sent, Load demo shows the same "start a new batch" message and leaves the chat box alone, so no payer link can be lost.
 - **Part payments:** decided out of scope (full payment only), and logged in DECISIONS.md.
+
+### 2026-10-28, invoice progress bar + "All invoices sent" (summary by Claude)
+
+- **What was built:** Send invoices now goes one buyer at a time. A thin blue bar and "Sending invoice 3 of 7..." move forward only when each invoice is really done at PayPal, so the bar can't lie. If one buyer fails, their row turns amber with "Error: ..." and the rest carry on. The end message says "6 of 7 sent, 1 needs a retry", and the button becomes "Send 1 invoice". When everything is sent, the button says "All invoices sent" instead of just going grey.
+- **Why it was cheap and safe:** the server already had a one-buyer mode with every guard (lock, invoice-exists check, duplicate lookup, batch rule). The page just calls it once per buyer, so no server code changed.
+- **What looking caught:** all checks passed, but the mid-send screenshot showed blank rows: the whole table was redrawn after every invoice, which would flicker. Now only the finished buyer's row is redrawn. The phone screenshot showed the sticky button wrapping onto two lines; it now stays on one.
