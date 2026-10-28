@@ -480,12 +480,22 @@ Jasper's reasons: round 1 "the original design is too simple"; round 2 "no perso
 ### Errors (decided Mon 26 Oct)
 - Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in charcoal, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".
 
-## 13. Video storyboard (placeholder: you draft it by Fri 30 Oct)
+## 13. Video storyboard (Jasper, 28 Oct)
 
-Drafted early so we build the moments the video needs. Rules (RULES.md): public on YouTube, **under 3 minutes**, shows the app working end to end, no copyrighted music, no third-party trademarks (no WhatsApp/Instagram logos). The words come later: video script on Sat 7 Nov, recording on Mon 9 Nov.
+Drafted by Jasper on Wed 28 Oct. The words come later: video script on Sat 7 Nov, recording on Mon 9 Nov.
 
-| # | Time | On screen | What I say | Moment the app must have | Built in step |
+**Video rules:** under 3:00; captions on every scene (judges may watch muted); no copyrighted music; no third-party logos (no WhatsApp/Instagram); sandbox accounts only. Also from RULES.md: public on YouTube, shows the app working end to end.
+
+| # | Time | On screen | Caption | Moment the app must have | Built in step |
 |---|---|---|---|---|---|
-| 1 | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+| 1 | 0:00-0:15 | A day of messy order chats (our own plain text, no app logos) | "Small sellers take orders by chat, then copy them into Excel by hand." | `data/demo-chats.txt` shown as plain text | ✅ Step 1 |
+| 2 | 0:15-0:30 | Paste the chats, set the Chat date | "ChatChing: paste a day of chats." | Chat box + Chat date | ✅ Step 4 |
+| 3 | 0:30-1:00 | Read orders -> 9 buyers, Danish cancelled, Priya amber | "AI reads the language. The code supplies the facts." | Read orders, cancelled + unclear rows, summary cards | ✅ Step 4 (real AI: Step 7) |
+| 4 | 1:00-1:20 | Open Priya's drawer, see what she wrote, fix it | "Unclear orders are never guessed. The seller decides." | Drawer edit ✅ Step 2; **her own message in the drawer** = buyer panel (#1) | Step 7 |
+| 5 | 1:20-1:50 | Send invoices -> links + Copy, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, payer links, Copy, double-invoice guard | ✅ Step 5 |
+| 6 | 1:50-2:15 | Buyer pays in the PayPal sandbox -> row turns green; record one cash payment | "See who paid, live." | Polling + Paid flash + record cash | Step 6 |
+| 7 | 2:15-2:30 | Pickup QR + ready-to-send reminder | "Pickup and reminders, ready to send." | Pickup QR (#3b) Step 7; reminders (#2) Step 10 | Steps 7 + 10 |
+| 8 | 2:30-2:45 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests passing | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |
+| 9 | 2:45-2:50 | Logo | "ChatChing: from chat to cha-ching." | The logo mark | ✅ Step 2 |
 
-Moments the plan already has (ideas, not decisions): messy chats → a clean table with totals; fixing the "which brownies?" unclear row; one click → an invoice per buyer; copying a payer link and a ready-to-send message; paying in sandbox → the status cell flashes Paid; recording cash; the pickup QR; the CSV opening in Excel; the buyer panel showing the AI's note and source messages.
+Notes (Claude): the captions add up to 2:50, leaving 10 s of margin under 3:00. Scene 6 needs a sandbox buyer login (the judge accounts, Sat 7 Nov) and English payment pages (Mon 9 Nov). Scene 1 shows our own plain-text chats, never a chat app's screen.
