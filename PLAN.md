@@ -230,8 +230,8 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 - **The real reply is saved unchanged** as `data/ai-cache/demo-parse.json`. Step 4's mock mode returns it, so the mock data matches what Gemini really returns, mistakes included.
 - The prompt, schema and comparison code are reused in Step 7 (the real call inside the app) and Step 8 (`accuracy.mjs`).
 
-4. ✅ (done early, Wed 28 Oct) Parse with **mock AI** (results already include `note` and `fulfilment`) + validation + unclear rows (`rowClassRules` highlight). `POST /api/parse`, `src/paste.js` (limits), `src/validate.js` (checks), phone timestamp formats, `npm run ui-parse`.
-5. PayPal invoices: create + send per buyer, payer link + Copy-link renderer, **double-invoice guard (#3c)**.
+4. ✅ (done early, Wed 28 Oct) Parse with **mock AI** (results already include `note` and `fulfilment`) + validation + unclear rows (`rowClassRules` highlight). `POST /api/parse`, `src/paste.js` (limits), `src/validate.js` (checks), phone timestamp formats, `npm run ui-parse` (since Step 5: `npm run ui-flow`).
+5. ✅ (done early, Wed 28 Oct) PayPal invoices: create + send per buyer, payer link + Copy-link renderer, **double-invoice guard (#3c)**. `src/paypal.js`, `src/invoices.js`, `POST /api/invoices`, `POST /api/new-batch`, `npm run ui-flow`; real sandbox invoice `INV2-BKCU-NGE3-RZG3-U35Y` (UNPAID, 54.00 MYR).
    - Missing PayPal keys → the clear message "PayPal is not configured", sent on purpose (the error handler hides every 5xx message), plus a test.
    - **Batches (added 28 Oct, Jasper):** once any invoice has been sent for the current orders, "Read orders" is blocked with the message "Invoices already sent for these orders. Start a new batch to read again." A **"New batch"** button saves the old batch and starts an empty one, so invoice links are never wiped and never sent twice. Needs tests: reading is refused after an invoice is sent (server, not only the page); New batch keeps the old batch's rows and invoice links; the new batch starts empty and can be read; no buyer of the old batch is invoiced again.
 6. Status polling + Refresh button + status badges + Reset demo. **Paid flash (#4)**, **record cash / bank (#3a)**. (CSV export, the pinned totals row and the search box were built early, on 27 Oct.)
@@ -274,7 +274,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Tue 27 Oct (2 h) | ✅ **Step 2 DONE** (`npm run ui-check`: 3 widths, Priya's edit survives a reload): AG Grid table + edits, select + date editors, **following the UI spec (Section 12)**. **You: fill in Section 12 from your sketch before this session** | Edits survive a page reload; the page matches Section 12 |
 | Wed 28 Oct (2 h) | ✅ **Step 3b DONE early (Tue 27 Oct)**: perfect score, 17.6 s, real reply saved as `data/ai-cache/demo-parse.json` and used by mock mode. **AI reality check** (the day freed by finishing Step 1 early): one real gemini-3.6-flash call, **max 3 that day** | Call time + comparison with expected-orders.json printed and logged in DECISIONS.md; the real reply saved as the mock-AI data |
 | Thu 29 Oct (2 h) | ✅ **Step 4 DONE early (Wed 28 Oct)**: 184 tests, `npm run ui-parse` at 1280 + 390 px. Step 4: parse with mock AI (= Wednesday's real Gemini reply) + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
-| Fri 30 Oct (2 h) | Step 5: create + send invoices per buyer + double-invoice guard. **You: draft the video storyboard (Section 13)** | Payer link + Copy work; double-click still gives one invoice per buyer; storyboard drafted |
+| Fri 30 Oct (2 h) | ✅ **Step 5 DONE early (Wed 28 Oct)**: 215 tests, `npm run ui-flow` at 1280 + 390 px, one real sandbox invoice. Step 5: create + send invoices per buyer + double-invoice guard. **You: draft the video storyboard (Section 13)** | Payer link + Copy work; double-click still gives one invoice per buyer; storyboard drafted |
 | Sat 31 Oct (6 h) | Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank. **Buffer hour: FIRST DEPLOY to Render of whatever exists (walking skeleton)**, and check Render's free-tier rules (sleep after inactivity, monthly hours, whether it asks for a card; **if it asks for a card, stop and ask Jasper**) → note them in DECISIONS.md | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel; **the app loads from a Render URL** |
 | Sun 1 Nov (5 h) | Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR | Real call once, cached after; clicking Arif shows his 2 messages + a QR. **You: holdout chats + expected answers saved** |
 | Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give 7 orders / RM 387.00 |
@@ -347,7 +347,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 - **c.** Three layers:
   1. The server skips buyers that already have an invoice.
   2. A per-buyer "in progress" lock, with the button disabled while sending, so a double-click can't create two.
-  3. Every invoice gets `invoice_number` = `CHATCHING-{batch}-{nn}`, e.g. `CHATCHING-K3F9Q2ZA-07`. The batch is 8 characters, so the number is 21 characters, within PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the row shows "Already invoiced, click Refresh".
+  3. Every invoice gets `invoice_number` = `CHATCHING-{batch}-{nn}`, e.g. `CHATCHING-K3F9Q2ZA-07`. The batch is 8 characters, so the number is 21 characters, within PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the server looks that invoice up by its number and uses it (changed 28 Oct, Step 5; verified on the real sandbox).
 
 ### 4. AG Grid extras (both Community, checked in AG Grid's module list)
 - **"Export CSV (opens in Excel)"** → `api.exportDataAsCsv()` (CsvExportModule, Community).
@@ -378,7 +378,7 @@ In suggested order:
 6. **Already planned as stretch:**
    - PayPal `remind` endpoint.
    - Webhooks.
-   - Finding the existing invoice after `DUPLICATE_INVOICE_NUMBER`, via invoice search.
+   - ~~Finding the existing invoice after `DUPLICATE_INVOICE_NUMBER`, via invoice search.~~ Built in Step 5 (28 Oct).
 
 ## 12. UI spec (filled in Mon 26 Oct)
 
