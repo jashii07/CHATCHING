@@ -1,0 +1,80 @@
+// Our checks on the AI's orders, against the messages that were pasted (PLAN.md Section 5), before
+// toRows() turns them into rows. Pure: no files, no network, no clock.
+// A problem never drops an order: the order becomes unclear, with every problem in its reason.
+// (toRows() then checks the items and quantities against the menu.)
+
+export const MAX_NOTE = 120;
+const MAX_DAYS_AHEAD = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STATUSES = ["active", "cancelled"];
+const FULFILMENTS = ["delivery", "pickup", null, undefined]; // missing = the buyer didn't say
+
+// "2026-10-28" -> day number, or null if it isn't a real date.
+function dayOf(iso) {
+  const m = typeof iso === "string" ? iso.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.toISOString().slice(0, 10) === iso ? d.getTime() / DAY_MS : null;
+}
+
+const label = (days) => new Date(days * DAY_MS).toLocaleDateString("en-GB", {
+  weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+}).replace(/,/g, "");
+
+// One order -> the list of problems (plain sentences) + its message numbers that really exist.
+function problemsOf(order, messages) {
+  const problems = [];
+  const asked = Array.isArray(order.sourceMsgs) ? order.sourceMsgs : [];
+  const real = [...new Set(asked.filter((n) => Number.isInteger(n) && n >= 1 && n <= messages.length))];
+  const missing = asked.filter((n) => !real.includes(n));
+
+  if (!STATUSES.includes(order.status)) problems.push(`Unknown order status ${JSON.stringify(order.status)}.`);
+  if (!real.length && !missing.length) problems.push("The AI didn't say which messages this order came from.");
+  if (missing.length) {
+    problems.push(`Message ${missing.map(String).join(", ")} is not in the chat (it has ${messages.length} messages).`);
+  }
+
+  // The order's own messages: an impossible timestamp or a date far from the Chat date shows here.
+  const own = real.map((n) => messages[n - 1]);
+  for (const msg of own) {
+    if (msg.reason) problems.push(`Message ${msg.n}: ${msg.reason}`);
+    else if (msg.warning) problems.push(`Message ${msg.n} is dated ${msg.label}: ${msg.warning}.`);
+  }
+
+  if (order.deliveryDate != null) {
+    const day = dayOf(order.deliveryDate);
+    const dated = own.filter((msg) => msg.date).map((msg) => ({ n: msg.n, day: dayOf(msg.date) }));
+    if (day === null) problems.push(`The delivery date ${JSON.stringify(order.deliveryDate)} is not a real date.`);
+    else if (dated.length) {
+      const first = dated.reduce((a, b) => (b.day < a.day ? b : a));
+      const last = dated.reduce((a, b) => (b.day > a.day ? b : a));
+      if (day < first.day) problems.push(`The delivery date ${label(day)} is before message ${first.n} (${label(first.day)}).`);
+      else if (day > last.day + MAX_DAYS_AHEAD) {
+        problems.push(`The delivery date ${label(day)} is more than ${MAX_DAYS_AHEAD} days after message ${last.n}.`);
+      }
+    }
+  }
+
+  if (!FULFILMENTS.includes(order.fulfilment)) problems.push(`Unknown pickup or delivery ${JSON.stringify(order.fulfilment)}.`);
+  return { problems, real };
+}
+
+// The AI's orders + the pasted messages -> the same orders, checked. A clear order comes back unchanged
+// (apart from a long note being cut); an order with problems gets unclear: true and a reason that starts
+// with the AI's own reason. Entries that aren't objects pass through: toRows() makes them unclear rows.
+export function checkOrders(aiOrders, messages) {
+  if (!Array.isArray(aiOrders)) throw new TypeError("aiOrders must be an array");
+  return aiOrders.map((order) => {
+    if (!order || typeof order !== "object" || Array.isArray(order)) return order;
+    const { problems, real } = problemsOf(order, messages);
+    const checked = { ...order };
+    if (typeof order.note !== "string") checked.note = "";
+    else if (order.note.length > MAX_NOTE) checked.note = `${order.note.slice(0, MAX_NOTE - 1)}…`;
+    if (!problems.length) return checked;
+
+    const aiReason = order.unclear
+      ? (typeof order.reason === "string" && order.reason.trim()) || "The AI marked this order unclear."
+      : "";
+    return { ...checked, sourceMsgs: real, unclear: true, reason: [aiReason, ...problems].filter(Boolean).join(" ") };
+  });
+}

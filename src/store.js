@@ -58,5 +58,11 @@ export function createStore({ file, menu, log = console.log }) {
       save();
       return updated;
     },
+    // A new parse replaces every row, and remembers the chats they came from.
+    setAll(newRows, newSource) {
+      rows = newRows;
+      source = newSource;
+      save();
+    },
   };
 }

@@ -3,8 +3,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { buyerGroups, checkEdit, checkMenu, recalcRow, summary, totals } from "./orders.js";
+import { buyerGroups, checkEdit, checkMenu, recalcRow, summary, toRows, totals } from "./orders.js";
 import { createStore } from "./store.js";
+import { createAi } from "./ai.js";
+import { readPaste } from "./paste.js";
+import { checkOrders } from "./validate.js";
+
+const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
@@ -44,9 +49,10 @@ export function errorHandler(log) {
   };
 }
 
-export function createApp(config, { log = console.log, storeFile = STORE_FILE } = {}) {
+export function createApp(config, { log = console.log, storeFile = STORE_FILE, ai = createAi({ mode: config.aiMode }) } = {}) {
   const menu = loadMenu();
   const store = createStore({ file: storeFile, menu, log });
+  let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
 
@@ -93,6 +99,35 @@ export function createApp(config, { log = console.log, storeFile = STORE_FILE } 
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
     const updated = store.replace(recalcRow({ ...row, ...changes }, menu));
     res.json({ row: updated, totals: totals(store.rows()), summary: summary(store.rows()), groups: buyerGroups(store.rows()) });
+  });
+
+  // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
+  // our checks and toRows(), so bad AI data becomes unclear rows, never dropped (PLAN.md Section 5).
+  // Anything the seller can fix by pasting again (too long, mock mode doesn't know the chats, an
+  // unreadable AI answer) is a { notice } with status 200: friendly words, not an error, rows unchanged.
+  app.post("/api/parse", async (req, res) => {
+    const { text, chatDate } = req.body ?? {};
+    if (typeof text !== "string" || typeof chatDate !== "string") {
+      return res.status(400).json({ error: 'Send { "text": "the chat messages", "chatDate": "YYYY-MM-DD" }.' });
+    }
+    if (reading) return res.json({ notice: "Already reading orders. Please wait for that to finish." });
+    const { messages, notice } = readPaste(text, chatDate);
+    if (notice) return res.json({ notice });
+
+    reading = true;
+    let rows;
+    try {
+      const reply = await ai.parse({ text, chatDate, messages });
+      if (reply.notice) return res.json({ notice: reply.notice });
+      rows = toRows(checkOrders(reply.orders, messages), menu);
+    } catch (err) {
+      log(`Warning: the AI reply could not be read (${err.message}).`);
+      return res.json({ notice: UNREADABLE });
+    } finally {
+      reading = false;
+    }
+    store.setAll(rows, { text, chatDate, messages: messages.length });
+    res.json({ orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), source: store.source() });
   });
 
   app.use(express.static(PUBLIC_DIR));
