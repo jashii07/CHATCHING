@@ -1,7 +1,8 @@
 // The page: one row per buyer in an AG Grid table (6 buyers per page), and a drawer to fix a buyer's
 // items, quantities and dates. Every change goes to the server (PUT /api/orders/:id), which recalculates
 // the price, totals and unclear flag; the page never does money maths.
-// Layout and colours follow the UI spec (PLAN.md Section 12). Reading orders comes in Step 4.
+// "Read orders" sends the pasted chats to POST /api/parse and shows the rows it replies with.
+// Layout and colours follow the UI spec (PLAN.md Section 12).
 // Icons: Lucide (pinned in index.html). Static icons are <i data-lucide="..."> tags; the rest are built in code.
 
 // The AG Grid features later steps rely on (all Community, none Enterprise).
@@ -569,6 +570,24 @@ function createOrdersGrid() {
   return api;
 }
 
+// The rows, totals, cards and chats, from /api/state or from a new parse (same shape).
+function showOrders(state) {
+  totals = state.totals;
+  summary = state.summary;
+  source = state.source;
+  chatDate = state.source?.chatDate ?? null;
+  groups = state.groups;
+  rowsById = new Map(state.orders.map((row) => [row.id, row]));
+  showSummary();
+  showSource();
+  foldChats(Boolean(source && state.orders.length));
+  showStep(state.orders);
+  if (grid) {
+    fitToWidth();
+    refreshTable();
+  }
+}
+
 async function loadState() {
   try {
     const res = await fetch("/api/state");
@@ -576,31 +595,63 @@ async function loadState() {
     if (!res.ok) throw new Error(state.error ?? `HTTP ${res.status}`);
     currency = state.menu.currency;
     menuItems = state.menu.items;
-    totals = state.totals;
-    summary = state.summary;
-    source = state.source;
-    chatDate = state.source?.chatDate ?? null;
-    groups = state.groups;
-    rowsById = new Map(state.orders.map((row) => [row.id, row]));
     showSetup(state);
-    showSummary();
-    showSource();
-    foldChats(Boolean(source && state.orders.length));
     $("ai-calls-text").textContent = `AI calls left today: ${state.aiCallsLeft}`;
-    showStep(state.orders);
-    if (grid) {
-      fitToWidth();
-      refreshTable();
-    }
+    showOrders(state);
   } catch (err) {
     showError(`Can't reach the server (${err.message}). Is npm start running?`);
   }
 }
 
+// Same limit and words as src/paste.js. Checked here too, so a huge paste is never sent at all
+// (over 100 KB the server refuses the request, and the browser logs that as a red error).
+const MAX_CHARS = 10_000;
+let reading = false; // one parse at a time: the button is disabled while the server reads
+
+// "Read orders": the chats + Chat date go to the server, which replies with the new rows, or with a
+// friendly notice (too long, mock mode doesn't know these chats) that leaves the rows as they are.
+async function readOrders() {
+  if (reading) return;
+  const text = $("chat").value;
+  const say = (message) => ($("read-message").textContent = message);
+  if (!text.trim()) return say("Paste some chat messages first.");
+  if (text.length > MAX_CHARS) {
+    return say(`That paste is ${text.length.toLocaleString("en")} characters. ChatChing reads up to ${MAX_CHARS.toLocaleString("en")} at a time, so please paste fewer messages.`);
+  }
+  if (!$("chat-date").value) return say("Choose the Chat date (the day these chats are from) first.");
+
+  reading = true;
+  const button = $("read-orders");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  hideError();
+  say("Reading your messages... this can take up to a minute.");
+  try {
+    const res = await fetch("/api/parse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, chatDate: $("chat-date").value }),
+    });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) say(reply.notice);
+    else {
+      say("");
+      showOrders(reply);
+      $("chat-edit").focus(); // the chat box folded away: keep keyboard focus on the slim bar
+    }
+  } catch (err) {
+    say("");
+    showError(`The orders could not be read (${err.message}).`);
+  } finally {
+    reading = false;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
 $("chat-date").value = todayLocal();
-$("read-orders").addEventListener("click", () => {
-  $("read-message").textContent = "Coming soon: reading orders is built in Step 4.";
-});
+$("read-orders").addEventListener("click", readOrders);
 $("chat-edit").addEventListener("click", () => {
   foldChats(false);
   $("chat").focus();
