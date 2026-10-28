@@ -14,3 +14,12 @@
 ## Step summaries (summary by Claude)
 
 *From Step 4 on: what was built and why, a few lines per step.*
+
+### 2026-10-28, Step 4: parse with mock AI + validation + unclear rows (summary by Claude)
+
+- **What was built:** "Read orders" now works. The page sends the pasted chats and the Chat date to a new route, `POST /api/parse`. In mock mode the server finds Gemini's saved reply by a fingerprint (a hash) of the chats + date, checks every order, turns them into rows and saves them. The table, cards and totals fill, and the chats fold into the slim bar.
+- **Reading the paste** (`src/dates.js`, `src/paste.js`): it now understands the iPhone, Android and web timestamp formats (5 todo tests became real tests). A line without a timestamp still joins the message above it. Over 50 messages or 10,000 characters gives a friendly message instead of a crash, so one AI call stays small and cheap.
+- **Checking the AI** (`src/validate.js`): the AI's answer is treated like a stranger's form. Message numbers must exist, dates must be real and near the messages, and status and pickup/delivery must be known words. Anything wrong turns the order amber ("Check: ...") instead of dropping it, so the seller always sees it. A reply that can't be read at all leaves the old rows alone.
+- **Why it matters:** from Step 7 a real AI writes this data. The checks are the guard between the AI and a PayPal invoice: a wrong order can't slip into an invoice silently. The friendly messages are normal replies, not errors, so the browser console stays clean.
+- **One at a time:** the button is disabled while reading, and the server refuses a second parse while one is running. From Step 7 each parse costs one of 20 free AI calls a day, shared with the judges.
+- **Choices for Jasper to know** (DECISIONS.md, 28 Oct): a "Check the Chat date" warning makes the order unclear. Reading replaces all rows, so more than 50 messages can't be read in two goes.
