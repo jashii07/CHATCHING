@@ -3,6 +3,8 @@
 //           table fills, chats fold into the slim bar, summary cards update, Priya amber.
 //   Step 5: Send invoices -> one invoice per clear buyer, payer links + Copy appear; clicking again
 //           creates nothing new; Read orders is refused; New batch empties the table and reading works again.
+//   Step 6: a buyer pays -> the 20-second poll turns the row Paid (the page's clock is faked, so no real
+//           20 s wait); Refresh status; polling pauses after 30 minutes.
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
@@ -44,9 +46,11 @@ async function startServer(name) {
   writeFileSync(storeFile, JSON.stringify({ rows: [], source: null }));
   const fake = fakePayPal();
   const paypal = createPayPal({ clientId: FAKE_KEYS.PAYPAL_CLIENT_ID, clientSecret: FAKE_KEYS.PAYPAL_CLIENT_SECRET, fetch: fake.fetch });
-  const server = createApp(loadConfig(FAKE_KEYS), { log: () => {}, storeFile, paypal }).listen(0);
+  // The server's clock can be moved past its 10-second status cache (skip), without waiting.
+  let skew = 0;
+  const server = createApp(loadConfig(FAKE_KEYS), { log: () => {}, storeFile, paypal, now: () => Date.now() + skew }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
-  return { server, fake };
+  return { server, fake, skip: (ms) => (skew += ms) };
 }
 
 const bodyRows = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerText.replace(/\s+/g, " ").trim()));
@@ -70,7 +74,7 @@ async function allBuyers(page) {
 
 try {
   for (const viewport of WIDTHS) {
-    const { server, fake } = await startServer(viewport.name);
+    const { server, fake, skip } = await startServer(viewport.name);
     const base = `http://localhost:${server.address().port}`;
     const page = await browser.newPage({ viewport, permissions: ["clipboard-read", "clipboard-write"] });
     const errors = [];
@@ -80,6 +84,7 @@ try {
     page.on("request", (req) => req.url().endsWith("/api/parse") && req.method() === "POST" && posts++);
 
     console.log(`\n${viewport.width} px (${viewport.name})`);
+    await page.clock.install(); // the page's timers run normally, but we can jump ahead (polling)
     await page.goto(base);
     await page.waitForSelector(".ag-overlay");
     await page.waitForTimeout(400);
@@ -205,6 +210,52 @@ try {
     const creates = fake.count("create");
     const again = await page.evaluate(async () => (await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json());
     check(again.sent.length === 0 && fake.count("create") === creates && fake.invoices.size === 7, "sending again creates nothing new (server check)");
+
+    // ---- Step 6: who has paid ----
+    const idOf = async (buyer) => (await (await fetch(`${base}/api/state`)).json()).orders.find((row) => row.buyer === buyer).invoiceId;
+    const statusOf = async (buyer) => plain(await page.locator(ROWS, { hasText: buyer }).locator(".badge").innerText());
+    check(await page.locator("#refresh-status").isVisible(), "Refresh status shows once invoices exist");
+    // Hafiz pays in the sandbox; 20 s later the page's own poll notices (no click).
+    fake.pay(await idOf("Hafiz"));
+    skip(11_000);
+    await page.clock.fastForward(20_000);
+    await page.waitForFunction(() => document.getElementById("status-message").textContent.includes("Paid: Hafiz"), null, { timeout: 5000 }).catch(() => {});
+    check((await statusOf("Hafiz")) === "Paid", `the 20-second poll turned Hafiz Paid by itself ("${await statusOf("Hafiz")}")`);
+    const paidCard = plain(await page.$eval("#stat-paid", (el) => el.innerText));
+    check(paidCard.includes("RM 70.00") && await page.$eval("#stat-paid", (el) => el.classList.contains("is-paid")), `the Paid card turned green: "${paidCard}"`);
+    const paidTag = await page.locator(ROWS, { hasText: "Hafiz" }).locator(".badge").evaluate((el) => getComputedStyle(el).backgroundColor);
+    check(paidTag === "rgb(220, 242, 227)", `the Paid tag is the green tint #DCF2E3 (${paidTag}); Sent stays neutral`);
+    // Mei Ling pays; Refresh status asks at once.
+    fake.pay(await idOf("Mei Ling"));
+    skip(11_000);
+    await page.click("#refresh-status");
+    await page.waitForFunction(() => document.getElementById("status-message").textContent.includes("Paid: Mei Ling"), null, { timeout: 5000 }).catch(() => {});
+    const statusLine = plain(await page.$eval("#status-message", (el) => el.textContent));
+    check((await statusOf("Mei Ling")) === "Paid" && statusLine.includes("Checking again every 20 seconds"), `Refresh status: "${statusLine}"`);
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6b-paid.png`, fullPage: true });
+    // A hidden tab doesn't poll; when it is visible again, the next tick asks.
+    fake.pay(await idOf("Arif"));
+    skip(11_000);
+    const setVisibility = (state) => page.evaluate((s) => Object.defineProperty(document, "visibilityState", { value: s, configurable: true }), state);
+    await setVisibility("hidden");
+    const getsHidden = fake.calls.filter((c) => c.kind === "get").length;
+    await page.clock.fastForward(20_000);
+    await page.waitForTimeout(300);
+    check(fake.calls.filter((c) => c.kind === "get").length === getsHidden && (await statusOf("Arif")) === "Sent", "a hidden tab doesn't ask PayPal");
+    await setVisibility("visible");
+    await page.clock.fastForward(20_000);
+    await page.waitForFunction(() => document.getElementById("status-message").textContent.includes("Paid: Arif"), null, { timeout: 5000 }).catch(() => {});
+    check((await statusOf("Arif")) === "Paid", "visible again: the next poll turns Arif Paid");
+    // 30 minutes later the polling stops by itself.
+    const getsBefore = fake.calls.filter((c) => c.kind === "get").length;
+    await page.clock.fastForward(31 * 60_000);
+    await page.waitForTimeout(300);
+    const paused = plain(await page.$eval("#status-message", (el) => el.textContent));
+    check(paused.startsWith("Auto-check paused after 30 minutes"), `polling pauses after 30 minutes: "${paused}"`);
+    await page.clock.fastForward(5 * 60_000);
+    await page.waitForTimeout(300);
+    check(fake.calls.filter((c) => c.kind === "get").length === getsBefore, "after the pause, no more PayPal checks");
 
     // Read orders is refused while these invoices exist; the chats still refill on Edit.
     check(await page.locator("#chat-bar [data-new-batch]").isVisible(), "the slim bar offers New batch");

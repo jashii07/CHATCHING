@@ -10,6 +10,7 @@ import { readPaste } from "./paste.js";
 import { checkOrders } from "./validate.js";
 import { createPayPal, NOT_CONFIGURED } from "./paypal.js";
 import { createInvoicer } from "./invoices.js";
+import { createStatusChecker } from "./status.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
@@ -59,10 +60,12 @@ export function createApp(config, {
   storeFile = STORE_FILE,
   ai = createAi({ mode: config.aiMode }),
   paypal = createPayPal({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, baseUrl: config.paypalBaseUrl }),
+  now = Date.now, // the clock for the status cache (tests pass their own)
 } = {}) {
   const menu = loadMenu();
   const store = createStore({ file: storeFile, menu, log });
   const invoicer = createInvoicer({ store, paypal, menu, log });
+  const status = createStatusChecker({ store, paypal, now, log });
   let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
 
   // What the table, cards and slim bar need: the same shape after every change.
@@ -167,7 +170,15 @@ export function createApp(config, {
       if (err.status === 400 || err.status === 404) return res.status(err.status).json({ error: err.message });
       throw err;
     }
+    if (result.sent.length) status.markFresh(); // PayPal just told us these statuses
     res.json({ ...result, ...table() });
+  });
+
+  // Refresh status (the button, and the page's polling every 20 s): PayPal's status for every open
+  // invoice, saved. 10-second cache + one shared round (src/status.js), so many tabs can't flood PayPal.
+  app.post("/api/invoices/refresh", async (req, res) => {
+    if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
+    res.json({ ...(await status.refresh()), ...table() });
   });
 
   // New batch: save this batch (rows + invoice links) to data/runtime/batches/ and start an empty table.

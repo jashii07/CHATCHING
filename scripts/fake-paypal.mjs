@@ -1,7 +1,8 @@
 // An in-memory FAKE PayPal sandbox for the tests and the browser checks: no network, no keys, no real
 // invoices. It copies what the real sandbox did in the smoke tests of 25 Oct (PLAN.md Sections 5 and 10):
 // a created invoice is a DRAFT; sending it makes it UNPAID and replies with the "payer-view" link; a
-// repeated invoice_number is refused with 422 DUPLICATE_INVOICE_NUMBER. Totals are worked out in sen.
+// repeated invoice_number is refused with 422 DUPLICATE_INVOICE_NUMBER; recording a cash or bank payment
+// makes it MARKED_AS_PAID. Totals are worked out in sen. pay(id) plays a buyer paying in the sandbox.
 // Lives in scripts/, not test/, because node --test would run every .js file under test/ as a test.
 import { toSen, fromSen } from "../src/money.js";
 
@@ -16,7 +17,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
   const validTokens = new Set();
   let tokenCount = 0;
   let idCount = 0;
-  let gate = null; // while set, creating an invoice waits (to test locks)
+  const gates = {}; // kind -> a promise: while set, calls of that kind wait (to test locks)
   let wrongTotal = false;
 
   const payerLink = (id) => `https://www.sandbox.paypal.com/invoice/p/#${id}`;
@@ -34,6 +35,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       : pathname === "/v2/invoicing/invoices" ? "create"
       : pathname === "/v2/invoicing/search-invoices" ? "search"
       : pathname.endsWith("/send") ? "send"
+      : pathname.endsWith("/payments") ? "payment"
       : "get";
     calls.push({ kind, method, path: pathname, body });
 
@@ -55,8 +57,8 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       return json(401, { name: "AUTHENTICATION_FAILURE", message: "Authentication failed due to invalid authentication credentials." });
     }
 
+    if (gates[kind]) await gates[kind];
     if (kind === "create") {
-      if (gate) await gate;
       const number = body.detail?.invoice_number;
       if ([...invoices.values()].some((inv) => inv.detail.invoice_number === number)) {
         return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ field: "/detail/invoice_number", issue: "DUPLICATE_INVOICE_NUMBER", description: "Invoice number must be unique." }] });
@@ -73,6 +75,17 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
     const id = pathname.split("/")[4];
     const invoice = invoices.get(id);
     if (!invoice) return json(404, { name: "RESOURCE_NOT_FOUND", message: "The specified resource does not exist." });
+    if (kind === "payment") {
+      if (!["UNPAID", "SENT", "PARTIALLY_PAID"].includes(invoice.status)) {
+        return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INVOICE_ALREADY_PAID", description: "Invoice is already paid." }] });
+      }
+      if (body.amount?.value !== invoice.amount.value || body.amount?.currency_code !== invoice.amount.currency_code) {
+        return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INVALID_AMOUNT" }] });
+      }
+      invoice.status = "MARKED_AS_PAID";
+      invoice.payments = { transactions: [{ payment_id: `PAY-${id}`, method: body.method, payment_date: body.payment_date, amount: body.amount }] };
+      return json(200, { payment_id: `PAY-${id}` });
+    }
     if (kind === "send") {
       if (invoice.status !== "DRAFT") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "CANNOT_SEND_INVOICE" }] });
       invoice.status = "UNPAID";
@@ -91,12 +104,14 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
     failNext: (kind, status, body = {}) => failures.push({ kind, status, body }),
     throwNext: (kind, error) => failures.push({ kind, throws: error }),
     expireTokens: () => validTokens.clear(),
-    // While held, creating an invoice waits; returns release().
-    hold() {
+    // While held, calls of this kind ("create", "get", ...) wait; returns release().
+    hold(kind = "create") {
       let release;
-      gate = new Promise((resolve) => (release = resolve));
-      return () => { gate = null; release(); };
+      gates[kind] = new Promise((resolve) => (release = resolve));
+      return () => { delete gates[kind]; release(); };
     },
+    // A buyer pays (or PayPal changes the status some other way).
+    pay: (id, status = "PAID") => (invoices.get(id).status = status),
     // PayPal's total comes out 1 sen more than ours (to test the total check).
     setWrongTotal: (on) => (wrongTotal = on),
     // An invoice already at PayPal (e.g. made by an earlier click that timed out).

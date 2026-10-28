@@ -127,12 +127,15 @@
           </button>
           <!-- One PayPal sandbox invoice per clear buyer. On phones this button sits in the sticky total bar. -->
           <button type="button" id="send-invoices" data-send-invoices>Send invoices</button>
+          <!-- Asks PayPal who has paid (the page also checks by itself every 20 s while invoices are open). -->
+          <button type="button" class="ghost" id="refresh-status" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh status</button>
         </div>
         <!-- Shown only when it matters: buyers are ready but the PayPal keys are missing. -->
         <p class="filter-note" id="send-warning" role="status" hidden>
           <span>PayPal is not configured, so invoices can't be sent yet. Add the sandbox keys to .env and restart.</span>
         </p>
         <p class="hint send-message" id="send-message" role="status"></p>
+        <p class="hint send-message" id="status-message" role="status"></p>
         <!-- Shown while the Needs check card filters the table. -->
         <p class="filter-note" id="filter-note" role="status" hidden>
           <span id="filter-note-text"></span>

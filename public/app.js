@@ -34,6 +34,11 @@ let chatDate = null; // for the CSV file name
 let returnFocus = null;
 let paypalReady = false; // both PayPal keys are set on the server
 let sending = false; // invoices are being sent: the Send buttons wait
+let checking = false; // a status check is on its way to the server
+let pollTimer = null;
+let pollUntil = 0;
+const POLL_MS = 20_000; // PLAN.md Section 3: every 20 s while the page is open
+const POLL_FOR_MS = 30 * 60_000; // then stop, so a forgotten tab doesn't ask PayPal all day
 
 // "54.00" -> "RM 54.00" (MYR) or "$54.00" (USD). Same Intl options as formatMoney in src/money.js.
 function formatMoney(amount) {
@@ -312,6 +317,7 @@ function showSendButtons() {
   // Once invoices exist, reading again is refused: New batch is the way on.
   const invoiced = [...rowsById.values()].some((row) => row.invoiceId);
   for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !invoiced;
+  $("refresh-status").hidden = !paypalReady || !invoiced;
 }
 
 // Our own page arrows drive AG Grid's pagination. One row = one buyer, so a buyer is never split.
@@ -631,6 +637,7 @@ function showOrders(state) {
     refreshTable();
   }
   showSendButtons();
+  if (openGroupId) renderDrawer();
 }
 
 async function loadState() {
@@ -644,10 +651,83 @@ async function loadState() {
     showSetup(state);
     $("ai-calls-text").textContent = `AI calls left today: ${state.aiCallsLeft}`;
     showOrders(state);
+    if (hasOpenInvoices()) startPolling();
   } catch (err) {
     showError(`Can't reach the server (${err.message}). Is npm start running?`);
   }
 }
+
+// ---- Who has paid: Refresh status + polling ----
+
+// An invoice is open while it is sent but not (fully) paid.
+const hasOpenInvoices = () => paypalReady && [...rowsById.values()].some((row) => row.invoiceId && ["Sent", "Part paid"].includes(row.invoiceStatus));
+const clockTime = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// Polling: every 20 s, only while this tab is visible and an invoice is still open, for 30 minutes
+// from the last start (Send or Refresh starts it again). The server answers from a 10-second cache,
+// so many open tabs can't flood PayPal.
+function startPolling() {
+  pollUntil = Date.now() + POLL_FOR_MS;
+  pollTimer ??= setInterval(pollTick, POLL_MS);
+}
+
+function stopPolling() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+function pollTick() {
+  if (!hasOpenInvoices()) return stopPolling();
+  if (Date.now() > pollUntil) {
+    stopPolling();
+    $("status-message").textContent = "Auto-check paused after 30 minutes. Click Refresh status to check again.";
+    return;
+  }
+  if (document.visibilityState === "visible") refreshStatus({ byHand: false });
+}
+
+// Ask the server for PayPal's latest status. The table only redraws when something changed.
+// byHand: the Refresh button (errors show in the Error box); a poll only notes a problem quietly.
+async function refreshStatus({ byHand }) {
+  if (checking) return;
+  checking = true;
+  const button = $("refresh-status");
+  if (byHand) {
+    button.disabled = true;
+    hideError();
+    startPolling();
+  }
+  try {
+    const res = await fetch("/api/invoices/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.changed.length) {
+      showOrders(reply);
+      flashPaid(reply.changed);
+    }
+    const paid = reply.changed.filter((c) => c.to.startsWith("Paid")).map((c) => c.buyer);
+    $("status-message").textContent = [
+      paid.length ? `Paid: ${paid.join(", ")}.` : "",
+      `Checked with PayPal at ${clockTime()}.`,
+      hasOpenInvoices() ? "Checking again every 20 seconds while this page is open." : "Every invoice is settled.",
+    ].filter(Boolean).join(" ");
+    if (reply.failed.length) {
+      const words = `PayPal could not be asked about ${reply.failed.map((f) => `${f.buyer} (${f.reason})`).join("; ")}`;
+      if (byHand) showError(words);
+      else $("status-message").textContent += ` ${words}; trying again soon.`;
+    }
+    if (!hasOpenInvoices()) stopPolling();
+  } catch (err) {
+    if (byHand) showError(`The status could not be checked (${err.message}).`);
+    else $("status-message").textContent = `Couldn't reach the server just now (${err.message}); trying again in 20 seconds.`;
+  } finally {
+    checking = false;
+    button.disabled = false;
+  }
+}
+
+// Part 2 fills this in (the Paid flash).
+function flashPaid() {}
 
 // Same limit and words as src/paste.js. Checked here too, so a huge paste is never sent at all
 // (over 100 KB the server refuses the request, and the browser logs that as a red error).
@@ -713,6 +793,7 @@ async function sendInvoices() {
     if (reply.notice) return say(reply.notice);
     sending = false;
     showOrders(reply);
+    if (reply.sent.length) startPolling();
     const needCheck = reply.skipped.filter((s) => s.reason === "Needs a check first.").map((s) => s.buyer);
     say([
       reply.sent.length ? `${plural(reply.sent.length, "invoice")} sent. Copy each payer link into the chat.` : "Nothing new to send.",
@@ -771,6 +852,7 @@ $("chat-date").value = todayLocal();
 $("read-orders").addEventListener("click", readOrders);
 for (const button of document.querySelectorAll("[data-send-invoices]")) button.addEventListener("click", sendInvoices);
 for (const button of document.querySelectorAll("[data-new-batch]")) button.addEventListener("click", newBatch);
+$("refresh-status").addEventListener("click", () => refreshStatus({ byHand: true }));
 $("grid").addEventListener("click", (event) => {
   const copy = event.target.closest(".copy-link");
   if (copy) copyLink(copy);
