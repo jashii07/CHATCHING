@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { buyerGroups, checkEdit, checkMenu, recalcRow, summary, toRows, totals } from "./orders.js";
-import { createStore } from "./store.js";
+import { createStore, demoSource } from "./store.js";
 import { createAi } from "./ai.js";
 import { readPaste } from "./paste.js";
 import { checkOrders } from "./validate.js";
@@ -201,6 +201,14 @@ export function createApp(config, {
       if (err instanceof PayPalError) return res.json({ failed: err.message, ...table() });
       throw err;
     }
+  });
+
+  // Load demo (stretch #2): the demo chats + their Chat date, to fill the chat box. It does NOT read them:
+  // the judge clicks Read orders to see that step (the saved Gemini reply, 0 AI calls). Same batch rule
+  // as Read orders: once invoices are sent, no new reading until New batch.
+  app.get("/api/demo", (req, res) => {
+    if (store.hasInvoices()) return res.json({ notice: INVOICED });
+    res.json(demoSource());
   });
 
   // Reset demo: clear the saved orders so the demo can start over (0 AI calls, 0 PayPal calls). It never

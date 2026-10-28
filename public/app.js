@@ -896,6 +896,25 @@ async function newBatch() {
   }
 }
 
+// "Load demo": fill the chat box with the demo chats and their Chat date (2026-10-28). It doesn't read
+// them: the judge clicks Read orders and sees the AI step (the saved Gemini reply, 0 AI calls). Once
+// invoices are sent the server says to start a new batch first, exactly like Read orders.
+async function loadDemo() {
+  const say = (message) => ($("read-message").textContent = message);
+  try {
+    const res = await fetch("/api/demo");
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) return say(reply.notice);
+    $("chat").value = reply.text;
+    $("chat-date").value = reply.chatDate;
+    say(`Demo chats loaded: ${plural(reply.messages, "message")} from ${formatDate(reply.chatDate)}. Click Read orders.`);
+    $("read-orders").focus();
+  } catch (err) {
+    showError(`The demo chats could not be loaded (${err.message}).`);
+  }
+}
+
 // "Reset demo": the server empties the table (the saved orders file) so the demo can start over.
 // Nothing in PayPal is deleted or cancelled; sent invoices are kept in data/runtime/batches/.
 async function resetDemo() {
@@ -941,6 +960,7 @@ for (const button of document.querySelectorAll("[data-send-invoices]")) button.a
 for (const button of document.querySelectorAll("[data-new-batch]")) button.addEventListener("click", newBatch);
 $("refresh-status").addEventListener("click", () => refreshStatus({ byHand: true }));
 $("reset-demo").addEventListener("click", resetDemo);
+$("load-demo").addEventListener("click", loadDemo);
 $("grid").addEventListener("click", (event) => {
   const copy = event.target.closest(".copy-link");
   if (copy) copyLink(copy);

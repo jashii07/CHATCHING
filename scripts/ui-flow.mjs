@@ -7,6 +7,8 @@
 //           20 s wait) and flashes green once (not with reduced motion); Refresh status; record cash for
 //           Lina in her drawer -> Paid (cash/bank) -> Refresh keeps it; polling pauses after 30 minutes;
 //           at the end, Reset demo -> an empty table, with no call to PayPal.
+//   Load demo: refused like Read orders while invoices exist; after Reset demo it fills the chat box and
+//           date, reads nothing by itself, and Read orders then gives the 9 buyers.
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
@@ -313,6 +315,11 @@ try {
     check((await readMessage(page)) === INVOICED && (await allBuyers(page)).length === 9, `Read orders is refused: "${await readMessage(page)}"`);
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-7-read-refused.png`, fullPage: true });
+    await page.fill("#chat", "kept as it is");
+    await page.click("#load-demo");
+    await page.waitForTimeout(300);
+    check((await readMessage(page)) === INVOICED && (await page.inputValue("#chat")) === "kept as it is",
+      "Load demo follows the batch rule while invoices exist: same notice, the chat box is left alone");
 
     // New batch: confirm -> an empty table; then the chats can be read again.
     page.once("dialog", (dialog) => dialog.accept());
@@ -354,6 +361,29 @@ try {
     check(savedFile.rows.length === 0 && savedFile.source === null, "the saved orders file is cleared");
     check((await page.inputValue("#chat")) === "" && !(await page.locator("#chats").isHidden()), "the chat box is open and empty, ready for a new paste");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-9-reset.png`, fullPage: true });
+
+    // ---- Load demo after Reset: fills the box, reads nothing; Read orders does the reading ----
+    const loadDemo = page.locator("#load-demo");
+    const fits = await loadDemo.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const read = document.getElementById("read-orders").getBoundingClientRect();
+      return box.right <= innerWidth && box.height >= 44 && box.width >= 44 && Math.abs(box.top - read.top) < 80;
+    });
+    check(await loadDemo.isVisible() && fits, "Load demo sits next to Read orders, fits the screen, and is at least 44 px");
+    const parseBefore = fake.calls.length;
+    await loadDemo.click();
+    await page.waitForTimeout(300);
+    const loaded = await readMessage(page);
+    check((await page.inputValue("#chat")) === DEMO && (await page.inputValue("#chat-date")) === "2026-10-28",
+      "Load demo fills the chat box with the demo chats and the Chat date 2026-10-28");
+    check(loaded === "Demo chats loaded: 15 messages from Wed 28 Oct. Click Read orders." && (await cards(page)).includes("Orders 0"),
+      `it reads nothing by itself: "${loaded}"`);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-10-demo-loaded.png`, fullPage: true });
+    await page.click("#read-orders");
+    await page.waitForSelector(ROWS);
+    await page.waitForTimeout(500);
+    check((await allBuyers(page)).length === 9 && (await cards(page)).includes("Expected RM 387.00"), "Read orders after Load demo: 9 buyers, RM 387.00 expected");
+    check(fake.calls.length === parseBefore, "Load demo + Read orders made no PayPal call");
 
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();
