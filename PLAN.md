@@ -371,7 +371,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 
 In suggested order:
 1. **Mask phone numbers before AI calls.** Cheap, and fits the free-tier privacy rule.
-2. **Judge-first screen:** a 3-step guide, a "Load demo" button and money summary cards (orders, invoiced, paid). It helps the Design and Presentation scores.
+2. ✅ **Judge-first screen:** a 3-step guide, a "Load demo" button and money summary cards (orders, invoiced, paid). (Guide + cards built in the design rounds; Load demo built 28 Oct: fills the chat box, Read orders still reads.) It helps the Design and Presentation scores.
 3. **Quick-fix buttons for unclear rows,** e.g. "Classic" / "Cheese" for "which brownies?".
 4. **README trust signals** + a GitHub Actions test badge.
 5. **Screenshot input:** a picture of the seller's own plain chat text only (no app logos). It costs AI quota.

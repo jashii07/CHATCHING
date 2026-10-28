@@ -41,3 +41,10 @@
 - **A race we closed:** a status check that started before a cash payment could finish after it and turn "Paid (cash/bank)" back into "Sent". Now a final status is never downgraded, with a test for it.
 - **Reset demo** never calls PayPal: real invoices stay in the sandbox, and any sent ones are saved to `batches/` first.
 - **Real sandbox proof:** the Step 5 invoice for Lina went UNPAID -> MARKED_AS_PAID with one CASH payment of 54.00 MYR.
+
+### 2026-10-28, Load demo button, stretch #2 (summary by Claude)
+
+- **What was built:** a "Load demo" button next to Read orders. It fills the chat box with the demo chats and sets the Chat date to 28 Oct. It does not read them: the judge clicks Read orders and watches the AI step. That step uses Gemini's saved reply, so it costs no AI calls.
+- **Why:** after Reset demo the box was empty, and a judge had nothing to paste. Now testing takes seconds: Reset demo → Load demo → Read orders → 9 buyers.
+- **Same rules as Read orders:** once invoices are sent, Load demo shows the same "start a new batch" message and leaves the chat box alone, so no payer link can be lost.
+- **Part payments:** decided out of scope (full payment only), and logged in DECISIONS.md.
