@@ -665,6 +665,31 @@ button:disabled {
   height: 16px;
 }
 
+/* The invoice progress bar: a thin neutral track filled with the existing blue, moved only by real
+   results. With reduced motion the fill jumps instead of easing (the words still count). */
+.send-progress {
+  height: 6px;
+  margin: 0 0 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--neutral-tint);
+}
+
+.send-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send-progress span {
+    transition: none;
+  }
+}
+
 /* Step 6: record a cash / bank payment in the drawer. */
 .pay-card #record-payment {
   margin-top: 16px;
@@ -1162,7 +1187,13 @@ button.ghost.small {
   }
 
   .phone-total button {
+    flex: none;
     padding: 8px 18px;
+    white-space: nowrap; /* "Sending 5 of 7..." stays on one line */
+  }
+
+  .phone-sum {
+    min-width: 0;
   }
 
   /* With New batch and Edit in the slim bar, the decorative icon gives its room to the words. */

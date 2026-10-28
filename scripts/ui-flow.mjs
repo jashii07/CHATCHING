@@ -1,7 +1,9 @@
 // The browser check for the whole flow so far, at laptop and phone widths, from an EMPTY table:
 //   Step 4: random text -> the friendly mock notice; the demo chats -> loading message, button disabled,
 //           table fills, chats fold into the slim bar, summary cards update, Priya amber.
-//   Step 5: Send invoices -> one invoice per clear buyer, payer links + Copy appear; clicking again
+//   Step 5: Send invoices, one buyer at a time with a real progress bar ("Sending invoice 3 of 7...");
+//           one buyer fails (amber "Error:" on that row), the others go on, "6 of 7 sent, 1 needs a retry";
+//           retry; the button then says "All invoices sent"; payer links + Copy appear; clicking again
 //           creates nothing new; Read orders is refused; New batch empties the table and reading works again.
 //   Step 6: a buyer pays -> the 20-second poll turns the row Paid (the page's clock is faked, so no real
 //           20 s wait) and flashes green once (not with reduced motion); Refresh status; record cash for
@@ -185,18 +187,55 @@ try {
     check(plain(await sendButton.innerText()) === "Send 7 invoices" && await sendButton.isVisible(), `the Send button: "${plain(await sendButton.innerText())}"`);
     let invoicePosts = 0;
     page.on("request", (req) => req.url().endsWith("/api/invoices") && req.method() === "POST" && invoicePosts++);
-    const releasePayPal = fake.hold(); // PayPal "thinks" for a moment, so we can see the waiting state and double-click
+    fake.slow("send", 300); // each invoice takes a moment, so the bar can be seen moving
+    // Arif (4th in the table) fails once at PayPal; the others must carry on.
+    fake.failNext("create", 500, { name: "INTERNAL_SERVER_ERROR", message: "Try again later." }, ({ body }) => body?.detail?.invoice_number?.endsWith("-04"));
+    const progress = async () => page.$eval("#send-progress", (el) => ({
+      hidden: el.hidden, now: Number(el.getAttribute("aria-valuenow")), max: Number(el.getAttribute("aria-valuemax")),
+      width: el.querySelector("span").getBoundingClientRect().width / el.getBoundingClientRect().width,
+    }));
     await sendButton.click();
-    await page.waitForTimeout(150);
-    check(await sendButton.evaluate((el) => el.disabled) && plain(await sendButton.innerText()) === "Sending...", "while sending, the button says Sending... and waits");
-    await sendButton.click({ force: true }).catch(() => {});
-    setTimeout(releasePayPal, 300);
-    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("sent"));
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("Sending invoice 3 of 7"), null, { timeout: 10000 });
+    const mid = await progress();
+    const midText = plain(await page.$eval("#send-message", (el) => el.textContent));
+    // Buyer 3's draft may already exist at PayPal; "done" means really sent (UNPAID).
+    const sentAtPayPal = [...fake.invoices.values()].filter((inv) => inv.status === "UNPAID").length;
+    check(!mid.hidden && mid.max === 7 && mid.now === 2 && sentAtPayPal === 2, `mid-send: "${midText}", the bar counts REAL results (${mid.now} of ${mid.max} done, ${sentAtPayPal} sent at PayPal)`);
+    check(await sendButton.evaluate((el) => el.disabled) && plain(await sendButton.innerText()) === "Sending 3 of 7...", `the button waits and counts: "${plain(await sendButton.innerText())}"`);
+    await sendButton.click({ force: true }).catch(() => {}); // a click while sending does nothing
+    await page.waitForTimeout(300); // let the bar finish easing to its new length
+    await page.evaluate(() => scrollTo(0, document.getElementById("send-progress").getBoundingClientRect().top + scrollY - 200));
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-5b-sending.png` });
+    await page.waitForFunction(() => /\d of 7 sent/.test(document.getElementById("send-message").textContent), null, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    const done = await progress();
+    const doneText = plain(await page.$eval("#send-message", (el) => el.textContent));
+    check(doneText === "6 of 7 sent, 1 needs a retry. Not sent: Priya (needs a check first).", `one failure doesn't stop the others: "${doneText}"`);
+    check(done.now === 7 && done.width > 0.98, `the bar still finishes (${done.now} of ${done.max})`);
+    check(invoicePosts === 7 && fake.invoices.size === 6, `one request per buyer, the extra click sent nothing (requests ${invoicePosts}, invoices ${fake.invoices.size})`);
+    await goToBuyerPage(page, "Arif");
+    const arifRow = page.locator(ROWS, { hasText: "Arif" });
+    const arifText = plain(await arifRow.innerText());
+    check(arifText.includes("Error: PayPal could not create the invoice (HTTP 500, INTERNAL_SERVER_ERROR)") && await arifRow.evaluate((el) => el.classList.contains("row-unclear")),
+      `Arif's row shows the amber Error: message: "${arifText}"`);
+    check(plain(await sendButton.innerText()) === "Send 1 invoice" && !(await sendButton.evaluate((el) => el.disabled)), "the button offers the retry: Send 1 invoice");
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-5c-one-failed.png`, fullPage: true });
+    // With reduced motion the bar doesn't animate (the words still count).
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const still = await page.$eval("#send-progress span", (el) => getComputedStyle(el).transitionDuration);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const moving = await page.$eval("#send-progress span", (el) => getComputedStyle(el).transitionDuration);
+    check(still === "0s" && moving !== "0s", `reduced motion: the bar doesn't animate (${still} vs ${moving})`);
+    // Retry Arif.
+    await sendButton.click();
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("1 of 1 sent"), null, { timeout: 10000 });
     await page.waitForTimeout(500);
     const sentMessage = plain(await page.$eval("#send-message", (el) => el.textContent));
-    check(sentMessage === "7 invoices sent. Copy each payer link into the chat. Not sent: Priya (needs a check first).", `after sending: "${sentMessage}"`);
-    check(invoicePosts === 1 && fake.invoices.size === 7, `one request, 7 invoices at PayPal (requests ${invoicePosts}, invoices ${fake.invoices.size})`);
+    check(sentMessage === "1 of 1 sent. Copy each payer link into the chat. Not sent: Priya (needs a check first).", `the retry: "${sentMessage}"`);
+    check(fake.invoices.size === 7 && !plain(await page.locator(ROWS, { hasText: "Arif" }).innerText()).includes("Error:"), "Arif is sent and his Error: is gone (7 invoices at PayPal)");
     check(fake.calls.filter((c) => c.kind === "send").every((c) => c.body.send_to_recipient === false), "sent without emailing anyone");
+    fake.slow("send", 0);
 
     const afterSend = await allBuyers(page);
     const withLinks = afterSend.filter((text) => text.includes("Invoice sent") && text.includes("Payer link") && text.includes("Copy link") && text.includes("Sent"));
@@ -219,7 +258,7 @@ try {
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6-sent.png`, fullPage: true });
 
     // Clicking again creates nothing new: the button has nothing left to send, and the server agrees.
-    check(await sendButton.evaluate((el) => el.disabled) && plain(await sendButton.innerText()) === "Send invoices", "nothing left to send: the button rests");
+    check(await sendButton.evaluate((el) => el.disabled) && plain(await sendButton.innerText()) === "All invoices sent", `nothing left to send: "${plain(await sendButton.innerText())}" (disabled)`);
     const creates = fake.count("create");
     const again = await page.evaluate(async () => (await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json());
     check(again.sent.length === 0 && fake.count("create") === creates && fake.invoices.size === 7, "sending again creates nothing new (server check)");
@@ -342,7 +381,7 @@ try {
 
     // ---- Reset demo (with sent invoices in the table) ----
     await sendButton.click();
-    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("7 invoices sent"));
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("7 of 7 sent"), null, { timeout: 15000 });
     await page.waitForTimeout(400);
     const invoicesBefore = fake.invoices.size;
     const callsBefore = fake.calls.length;

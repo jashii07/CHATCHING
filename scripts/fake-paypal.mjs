@@ -18,6 +18,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
   let tokenCount = 0;
   let idCount = 0;
   const gates = {}; // kind -> a promise: while set, calls of that kind wait (to test locks)
+  const delays = {}; // kind -> ms: calls of that kind take this long (so the browser check sees progress)
   let wrongTotal = false;
 
   const payerLink = (id) => `https://www.sandbox.paypal.com/invoice/p/#${id}`;
@@ -40,7 +41,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
     calls.push({ kind, method, path: pathname, body });
 
     const auth = init.headers?.Authorization ?? "";
-    const failure = failures.findIndex((f) => f.kind === kind);
+    const failure = failures.findIndex((f) => f.kind === kind && (!f.match || f.match({ path: pathname, body })));
     if (failure >= 0) {
       const [f] = failures.splice(failure, 1);
       if (f.throws) throw f.throws;
@@ -58,6 +59,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
     }
 
     if (gates[kind]) await gates[kind];
+    if (delays[kind]) await new Promise((resolve) => setTimeout(resolve, delays[kind]));
     if (kind === "create") {
       const number = body.detail?.invoice_number;
       if ([...invoices.values()].some((inv) => inv.detail.invoice_number === number)) {
@@ -101,7 +103,8 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
     calls,
     count: (kind) => calls.filter((c) => c.kind === kind).length,
     // The next call of this kind fails once: with a PayPal reply, or by throwing (a network error).
-    failNext: (kind, status, body = {}) => failures.push({ kind, status, body }),
+    // match({ path, body }) picks which call, e.g. one buyer's invoice number.
+    failNext: (kind, status, body = {}, match = null) => failures.push({ kind, status, body, match }),
     throwNext: (kind, error) => failures.push({ kind, throws: error }),
     expireTokens: () => validTokens.clear(),
     // While held, calls of this kind ("create", "get", ...) wait; returns release().
@@ -110,6 +113,8 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       gates[kind] = new Promise((resolve) => (release = resolve));
       return () => { delete gates[kind]; release(); };
     },
+    // Calls of this kind take ms milliseconds from now on (0 = no delay).
+    slow: (kind, ms) => (delays[kind] = ms),
     // A buyer pays (or PayPal changes the status some other way).
     pay: (id, status = "PAID") => (invoices.get(id).status = status),
     // PayPal's total comes out 1 sen more than ours (to test the total check).

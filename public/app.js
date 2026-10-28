@@ -34,6 +34,8 @@ let chatDate = null; // for the CSV file name
 let returnFocus = null;
 let paypalReady = false; // both PayPal keys are set on the server
 let sending = false; // invoices are being sent: the Send buttons wait
+let sendProgress = null; // while sending: { done, total }, counted from real replies only
+let sendErrors = new Map(); // buyer (lowercase) -> why their invoice failed in the last send
 let checking = false; // a status check is on its way to the server
 let recording = false; // a cash / bank payment is being recorded
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -105,6 +107,7 @@ function buyerRows() {
     const unclear = active.filter((row) => row.unclear);
     const payerLink = active.find((row) => row.payerLink)?.payerLink ?? null;
     return {
+      sendError: sendErrors.get(String(group.buyer).trim().toLowerCase()) ?? "", // shown as amber "Error:"
       payerLink, // set once the buyer's invoice is sent
       // Clear, not cancelled, and no sent invoice yet (a draft whose send failed is sent again).
       toSend: !group.cancelled && group.total != null && !active.some((row) => row.invoiceId && row.invoiceStatus !== "Draft"),
@@ -198,6 +201,7 @@ function itemsCell(p) {
   cell.append(chips(p.data));
   const words = checkText(p.data);
   if (words) cell.append(el("span", "check-text", words));
+  if (p.data.sendError) cell.append(el("span", "check-text", `Error: ${p.data.sendError}`));
   const link = payLink(p.data);
   if (link) cell.append(link);
   return cell;
@@ -227,6 +231,7 @@ function cardCell(p) {
   card.append(top, chips(data));
   const words = checkText(data);
   if (words) card.append(el("span", "check-text", words));
+  if (data.sendError) card.append(el("span", "check-text", `Error: ${data.sendError}`));
   const link = payLink(data);
   if (link) card.append(link);
   return card;
@@ -310,11 +315,17 @@ function showTotals() {
 // The Send invoices buttons (above the table; in the sticky bar on phones): "Send 7 invoices", or
 // waiting while sending, or nothing to send. Missing PayPal keys: an amber note next to them instead.
 function showSendButtons() {
-  const count = buyerRows().filter((row) => row.toSend).length;
+  const rows = buyerRows();
+  const count = rows.filter((row) => row.toSend).length;
+  // Every clear order already has an invoice: say so, instead of a grey button with no reason.
+  const allSent = count === 0 && rows.some((row) => row.payerLink);
+  const label = sending
+    ? (sendProgress ? `Sending ${Math.min(sendProgress.done + 1, sendProgress.total)} of ${sendProgress.total}...` : "Sending...")
+    : count ? `Send ${plural(count, "invoice")}` : allSent ? "All invoices sent" : "Send invoices";
   for (const button of document.querySelectorAll("[data-send-invoices]")) {
     button.disabled = sending || !paypalReady || count === 0;
     button.toggleAttribute("aria-busy", sending);
-    button.replaceChildren(icon("send"), sending ? "Sending..." : count ? `Send ${plural(count, "invoice")}` : "Send invoices");
+    button.replaceChildren(icon(allSent && !sending ? "circle-check" : "send"), label);
   }
   $("send-warning").hidden = paypalReady || count === 0;
   // Once invoices exist, reading again is refused: New batch is the way on.
@@ -439,10 +450,12 @@ function fitToWidth() {
   showTotals();
 }
 
-function refreshTable() {
+// onlyId: redraw just that buyer's row (while sending invoices, so the other rows don't flicker).
+function refreshTable(onlyId = null) {
   if (!grid) return;
   grid.setGridOption("rowData", buyerRows());
-  grid.redrawRows(); // chips, check words and heights all follow the new data
+  const node = onlyId && grid.getRowNode(onlyId);
+  grid.redrawRows(node ? { rowNodes: [node] } : undefined); // chips, check words and heights follow the new data
   showTotals();
   showPager();
   showSendButtons();
@@ -601,7 +614,7 @@ function createOrdersGrid() {
     isExternalFilterPresent: () => onlyNeedsCheck,
     doesExternalFilterPass: (node) => node.data.unclear && !node.data.cancelled,
     rowClassRules: {
-      "row-unclear": (p) => !p.node.rowPinned && p.data?.unclear && !p.data.cancelled,
+      "row-unclear": (p) => !p.node.rowPinned && (p.data?.unclear || p.data?.sendError) && !p.data.cancelled,
       "row-cancelled": (p) => !p.node.rowPinned && p.data?.cancelled,
     },
     // A click on the payer link or its Copy button does its own job, not open the drawer.
@@ -841,39 +854,71 @@ async function readOrders() {
   }
 }
 
-// "Send invoices": the server sends one PayPal sandbox invoice per clear buyer that has none yet, and
-// replies with the updated rows plus who was sent, skipped or failed. One send at a time: the buttons
-// wait, and the server's own guards make a double-click harmless anyway.
+// The progress bar: done of total, from real replies only.
+function showProgress(done, total) {
+  const bar = $("send-progress");
+  bar.hidden = total === 0;
+  bar.setAttribute("aria-valuemax", String(total));
+  bar.setAttribute("aria-valuenow", String(done));
+  bar.firstElementChild.style.width = `${total ? (done / total) * 100 : 0}%`;
+}
+
+// "Send invoices": ONE buyer at a time, each a separate request to the server, so the bar and the words
+// ("Sending invoice 3 of 7...") move only when an invoice is really done; no timer. A buyer that fails
+// gets the amber "Error:" words on their row and the others carry on. The server's guards are the same
+// as ever (per-buyer lock, invoice-exists check, duplicate-number lookup, batch rule).
 async function sendInvoices() {
-  if (sending || !paypalReady) return;
-  sending = true;
-  showSendButtons();
-  hideError();
+  const queue = buyerRows().filter((row) => row.toSend).map((row) => row.buyer);
+  if (sending || !paypalReady || !queue.length) return;
+  const needCheck = buyerRows().filter((row) => row.unclear && !row.cancelled).map((row) => row.buyer);
+  const total = queue.length;
   const say = (message) => ($("send-message").textContent = message);
-  say("Sending invoices to PayPal...");
-  try {
-    const res = await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    const reply = await res.json();
-    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
-    if (reply.notice) return say(reply.notice);
-    sending = false;
-    showOrders(reply);
-    if (reply.sent.length) startPolling();
-    const needCheck = reply.skipped.filter((s) => s.reason === "Needs a check first.").map((s) => s.buyer);
-    say([
-      reply.sent.length ? `${plural(reply.sent.length, "invoice")} sent. Copy each payer link into the chat.` : "Nothing new to send.",
-      needCheck.length ? `Not sent: ${needCheck.join(", ")} (${needCheck.length === 1 ? "needs" : "need"} a check first).` : "",
-    ].filter(Boolean).join(" "));
-    if (reply.failed.length) {
-      showError(`${plural(reply.failed.length, "invoice")} could not be sent: ${reply.failed.map((f) => `${f.buyer} (${f.reason})`).join("; ")} Click Send again to retry.`);
-    }
-  } catch (err) {
-    say("");
-    showError(`The invoices could not be sent (${err.message}).`);
-  } finally {
-    sending = false;
+  let sent = 0;
+  let failed = 0;
+  let stopped = "";
+  sending = true;
+  sendErrors = new Map();
+  hideError();
+  showProgress(0, total);
+  for (const [done, buyer] of queue.entries()) {
+    sendProgress = { done, total };
+    say(`Sending invoice ${done + 1} of ${total}...`);
     showSendButtons();
+    try {
+      const res = await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ buyer }) });
+      const reply = await res.json();
+      if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+      if (reply.notice) {
+        stopped = reply.notice; // e.g. orders are being read right now: stop, nothing half-done
+        break;
+      }
+      if (reply.failed.length) {
+        failed++;
+        sendErrors.set(buyer.trim().toLowerCase(), reply.failed[0].reason);
+      } else sent++; // sent now, or already invoiced (another tab got there first)
+      // The row gets its link as soon as it's done; only that row is redrawn.
+      totals = reply.totals;
+      summary = reply.summary;
+      groups = reply.groups;
+      rowsById = new Map(reply.orders.map((row) => [row.id, row]));
+      showSummary();
+      showStep(reply.orders);
+      refreshTable(buyerRows().find((row) => row.buyer === buyer)?.id);
+    } catch (err) {
+      failed++;
+      sendErrors.set(buyer.trim().toLowerCase(), err.message);
+    }
+    showProgress(done + 1, total);
   }
+  sending = false;
+  sendProgress = null;
+  refreshTable(); // the amber Error: rows, and the button's new label
+  if (sent) startPolling();
+  if (stopped) return say(stopped);
+  say([
+    failed ? `${sent} of ${total} sent, ${failed} ${failed === 1 ? "needs" : "need"} a retry.` : `${sent} of ${total} sent. Copy each payer link into the chat.`,
+    needCheck.length ? `Not sent: ${needCheck.join(", ")} (${needCheck.length === 1 ? "needs" : "need"} a check first).` : "",
+  ].filter(Boolean).join(" "));
 }
 
 // "New batch": the server saves this batch (rows + invoice links) and starts an empty table, so the
@@ -889,6 +934,8 @@ async function newBatch() {
     $("chat").value = "";
     $("read-message").textContent = "";
     $("send-message").textContent = "";
+    sendErrors = new Map();
+    showProgress(0, 0);
     showOrders(reply);
     $("chat").focus();
   } catch (err) {
@@ -928,6 +975,8 @@ async function resetDemo() {
     stopPolling();
     closeDrawer();
     for (const id of ["read-message", "send-message", "status-message"]) $(id).textContent = "";
+    sendErrors = new Map();
+    showProgress(0, 0);
     $("chat").value = "";
     showOrders(reply);
     scrollTo(0, 0);

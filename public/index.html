@@ -136,6 +136,8 @@
         <p class="filter-note" id="send-warning" role="status" hidden>
           <span>PayPal is not configured, so invoices can't be sent yet. Add the sandbox keys to .env and restart.</span>
         </p>
+        <!-- Sending invoices: moves only after each buyer's invoice is really done (no timer). -->
+        <div class="send-progress" id="send-progress" role="progressbar" aria-label="Invoices sent" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" hidden><span></span></div>
         <p class="hint send-message" id="send-message" role="status"></p>
         <p class="hint send-message" id="status-message" role="status"></p>
         <!-- Shown while the Needs check card filters the table. -->
