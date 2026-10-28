@@ -8,7 +8,8 @@ import { createStore } from "./store.js";
 import { createAi } from "./ai.js";
 import { readPaste } from "./paste.js";
 import { checkOrders } from "./validate.js";
-import { createPayPal, NOT_CONFIGURED } from "./paypal.js";
+import { createPayPal, NOT_CONFIGURED, PayPalError } from "./paypal.js";
+import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
 
@@ -66,6 +67,7 @@ export function createApp(config, {
   const store = createStore({ file: storeFile, menu, log });
   const invoicer = createInvoicer({ store, paypal, menu, log });
   const status = createStatusChecker({ store, paypal, now, log });
+  const payments = createPaymentRecorder({ store, paypal, menu, now });
   let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
 
   // What the table, cards and slim bar need: the same shape after every change.
@@ -181,9 +183,29 @@ export function createApp(config, {
     res.json({ ...(await status.refresh()), ...table() });
   });
 
+  // Record a cash / bank-transfer payment: the page sends ONLY the method; the amount is the saved
+  // invoice's full total (src/payments.js). Refusals (already paid, part paid, a second click) are 4xx
+  // with the reason; a PayPal problem comes back as { failed } so its words reach the seller.
+  app.post("/api/invoices/:id/payment", async (req, res) => {
+    if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
+    const body = req.body ?? {};
+    if (Object.hasOwn(body, "amount")) {
+      return res.status(400).json({ error: "Send only the method: the amount always comes from the invoice." });
+    }
+    if (invoicer.isBusy()) return res.status(409).json({ error: SENDING });
+    try {
+      const recorded = await payments.record(req.params.id, body.method);
+      res.json({ recorded, ...table() });
+    } catch (err) {
+      if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ error: err.message });
+      if (err instanceof PayPalError) return res.json({ failed: err.message, ...table() });
+      throw err;
+    }
+  });
+
   // New batch: save this batch (rows + invoice links) to data/runtime/batches/ and start an empty table.
   app.post("/api/new-batch", (req, res) => {
-    if (invoicer.isBusy()) return res.json({ notice: SENDING });
+    if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });
     if (reading) return res.json({ notice: READING });
     store.newBatch();
     res.json(table());

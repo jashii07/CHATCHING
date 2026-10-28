@@ -156,6 +156,14 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
     return links.find((link) => link?.rel === "payer-view")?.href ?? null;
   }
 
+  // Records a payment made outside PayPal (cash or bank transfer) -> the invoice becomes MARKED_AS_PAID.
+  // The caller passes the amount from the saved invoice; it is never typed.
+  async function recordPayment(id, { method, date, amount, note }) {
+    const reply = await api("POST", `/v2/invoicing/invoices/${encodeURIComponent(id)}/payments`, { method, payment_date: date, amount, note });
+    if (!reply.ok) throw refused(`record the payment for invoice ${id}`, reply);
+    return reply.body;
+  }
+
   // The invoice with exactly this number (full details), or null.
   async function findByNumber(number) {
     const reply = await api("POST", "/v2/invoicing/search-invoices?page=1&page_size=20&total_required=false", { invoice_number: number });
@@ -206,5 +214,5 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
     return { invoiceId: invoice.id, invoiceNumber: number, status, payerLink, reused };
   }
 
-  return { token, getInvoice, createDraft, sendInvoice, findByNumber, invoiceBuyer };
+  return { token, getInvoice, createDraft, sendInvoice, findByNumber, invoiceBuyer, recordPayment };
 }

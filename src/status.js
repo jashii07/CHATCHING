@@ -37,7 +37,8 @@ export function createStatusChecker({ store, paypal, now = Date.now, log = conso
     // New batch or Reset while we waited: these answers belong to rows that are gone.
     if (store.batch() !== batch) return result;
     for (const { id, buyer, status } of answers) {
-      const rows = store.rows().filter((row) => row.invoiceId === id && row.invoiceStatus !== status);
+      // Never downgrade a final status: a cash payment recorded while we waited must stay paid.
+      const rows = store.rows().filter((row) => row.invoiceId === id && row.invoiceStatus !== status && !FINAL.includes(row.invoiceStatus));
       if (!rows.length) continue;
       result.changed.push({ buyer, from: rows[0].invoiceStatus, to: status });
       store.replaceMany(rows.map((row) => ({ ...row, invoiceStatus: status })));

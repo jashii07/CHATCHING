@@ -35,6 +35,8 @@ let returnFocus = null;
 let paypalReady = false; // both PayPal keys are set on the server
 let sending = false; // invoices are being sent: the Send buttons wait
 let checking = false; // a status check is on its way to the server
+let recording = false; // a cash / bank payment is being recorded
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let pollTimer = null;
 let pollUntil = 0;
 const POLL_MS = 20_000; // PLAN.md Section 3: every 20 s while the page is open
@@ -282,6 +284,7 @@ function makeTheme(isPhone) {
     rowHoverColor: "#FAF8F5", // light warm tint, not blue: blue means clickable
     selectedRowBackgroundColor: "#F5F1EB",
     pinnedRowBackgroundColor: "#FAF8F5",
+    valueChangeValueHighlightBackgroundColor: "#DCF2E3", // the Paid flash: green = money arrived
     rowHeight: 92, // generous: a buyer row breathes
     headerHeight: isPhone ? 0 : 52, // phone cards need no header
     wrapperBorder: false,
@@ -494,8 +497,10 @@ function renderDrawer() {
   $("drawer-title").textContent = data.buyer || "No name";
   $("drawer-sub").textContent = data.cancelled ? "Cancelled order"
     : data.total == null ? "Needs a check before it can be invoiced"
-    : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total`;
+    : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total${data.payerLink ? `. Invoice: ${data.status}` : ""}`;
   $("drawer-body").replaceChildren(...data.rows.map(editCard));
+  const pay = payCard(data);
+  if (pay) $("drawer-body").append(pay);
 }
 
 function openDrawer(id) {
@@ -726,8 +731,68 @@ async function refreshStatus({ byHand }) {
   }
 }
 
-// Part 2 fills this in (the Paid flash).
-function flashPaid() {}
+// The Paid flash: when a buyer turns Paid, their status cell (the whole card on phones) flashes the
+// green tint once. AG Grid's flashCells (Community). Nothing flashes when reduced motion is on.
+function flashPaid(changed) {
+  if (!grid || reducedMotion.matches) return;
+  const paid = new Set(changed.filter((c) => c.to.startsWith("Paid")).map((c) => c.buyer.trim().toLowerCase()));
+  const rowNodes = [];
+  grid.forEachNode((node) => {
+    if (paid.has(String(node.data?.buyer ?? "").trim().toLowerCase())) rowNodes.push(node);
+  });
+  if (rowNodes.length) grid.flashCells({ rowNodes, columns: [phone.matches ? "card" : "status"], flashDuration: 1200, fadeDuration: 1000 });
+}
+
+// ---- Record a cash / bank-transfer payment (in the drawer) ----
+
+// Shown for a sent, unpaid invoice. The seller picks HOW the buyer paid; the amount is the invoice's full
+// total, shown here but never typed: the server takes it from the saved invoice at PayPal.
+function payCard(data) {
+  const invoiceId = data.rows.find((row) => row.invoiceId)?.invoiceId;
+  if (!paypalReady || data.cancelled || !data.payerLink || data.status !== "Sent" || !invoiceId) return null;
+  const card = el("section", "edit-card pay-card");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon("banknote"));
+  name.append(circle, "Paid by cash or bank transfer?");
+  title.append(name, el("span", "money", formatMoney(data.total)));
+  const method = Object.assign(el("select", ""), { id: "pay-method" });
+  for (const [value, label] of [["CASH", "Cash"], ["BANK_TRANSFER", "Bank transfer"]]) method.append(Object.assign(el("option", "", label), { value }));
+  const button = Object.assign(el("button", "", "Record payment"), { type: "button", id: "record-payment" });
+  button.dataset.invoice = invoiceId;
+  card.append(title, el("p", "hint", "Records the full invoice total in PayPal. It can't be undone here."), field("Paid by", method), button);
+  return card;
+}
+
+async function recordPayment(button) {
+  if (recording) return;
+  const data = buyerRows().find((row) => row.id === openGroupId);
+  const method = $("pay-method");
+  const how = method.selectedOptions[0].textContent.toLowerCase();
+  if (!data || !window.confirm(`Record ${formatMoney(data.total)} paid by ${how} for ${data.buyer}? It is saved in PayPal and can't be undone here.`)) return;
+  recording = true;
+  button.disabled = true;
+  button.textContent = "Recording...";
+  hideError("drawer-error");
+  try {
+    const res = await fetch(`/api/invoices/${encodeURIComponent(button.dataset.invoice)}/payment`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ method: method.value }),
+    });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.failed) throw new Error(reply.failed);
+    closeDrawer(); // so the flash is seen, also on phones (full-screen drawer)
+    showOrders(reply);
+    flashPaid([{ buyer: data.buyer, to: "Paid (cash/bank)" }]);
+    $("status-message").textContent = `Recorded: ${data.buyer} paid ${formatMoney(reply.recorded.amount)} by ${how}.`;
+  } catch (err) {
+    showError(`The payment was not recorded (${err.message}).`, "drawer-error");
+    renderDrawer();
+  } finally {
+    recording = false;
+  }
+}
 
 // Same limit and words as src/paste.js. Checked here too, so a huge paste is never sent at all
 // (over 100 KB the server refuses the request, and the browser logs that as a red error).
@@ -877,6 +942,9 @@ $("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
 $("drawer-close").addEventListener("click", closeDrawer);
 $("scrim").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("keydown", drawerKeys);
+$("drawer-body").addEventListener("click", (event) => {
+  if (event.target.closest("#record-payment")) recordPayment(event.target.closest("#record-payment"));
+});
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);
 });

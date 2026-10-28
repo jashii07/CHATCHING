@@ -665,6 +665,11 @@ button:disabled {
   height: 16px;
 }
 
+/* Step 6: record a cash / bank payment in the drawer. */
+.pay-card #record-payment {
+  margin-top: 16px;
+}
+
 /* ---- The orders table: one row per buyer ---- */
 
 .money {

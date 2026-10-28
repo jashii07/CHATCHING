@@ -4,7 +4,8 @@
 //   Step 5: Send invoices -> one invoice per clear buyer, payer links + Copy appear; clicking again
 //           creates nothing new; Read orders is refused; New batch empties the table and reading works again.
 //   Step 6: a buyer pays -> the 20-second poll turns the row Paid (the page's clock is faked, so no real
-//           20 s wait); Refresh status; polling pauses after 30 minutes.
+//           20 s wait) and flashes green once (not with reduced motion); Refresh status; record cash for
+//           Lina in her drawer -> Paid (cash/bank); polling pauses after 30 minutes.
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
@@ -56,6 +57,15 @@ async function startServer(name) {
 const bodyRows = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerText.replace(/\s+/g, " ").trim()));
 const cards = async (page) => plain(await page.$eval(".summary", (el) => el.innerText));
 const readMessage = async (page) => plain(await page.$eval("#read-message", (el) => el.textContent));
+
+// Go to the page of the table that shows this buyer (the AI decides the order of buyers).
+async function goToBuyerPage(page, buyer) {
+  for (let i = 0; i < 3 && !(await page.locator(ROWS, { hasText: buyer }).count()); i++) {
+    const next = !(await page.$eval("#page-next", (el) => el.disabled));
+    await page.click(next ? "#page-next" : "#page-prev");
+    await page.waitForTimeout(300);
+  }
+}
 
 // Every buyer's row text, across all pages (6 buyers per page).
 async function allBuyers(page) {
@@ -221,6 +231,8 @@ try {
     await page.clock.fastForward(20_000);
     await page.waitForFunction(() => document.getElementById("status-message").textContent.includes("Paid: Hafiz"), null, { timeout: 5000 }).catch(() => {});
     check((await statusOf("Hafiz")) === "Paid", `the 20-second poll turned Hafiz Paid by itself ("${await statusOf("Hafiz")}")`);
+    const flashing = (buyer) => page.locator(ROWS, { hasText: buyer }).locator(".ag-cell-data-changed, .ag-cell-data-changed-animation").count();
+    check((await flashing("Hafiz")) > 0, "Hafiz's status flashes green once");
     const paidCard = plain(await page.$eval("#stat-paid", (el) => el.innerText));
     check(paidCard.includes("RM 70.00") && await page.$eval("#stat-paid", (el) => el.classList.contains("is-paid")), `the Paid card turned green: "${paidCard}"`);
     const paidTag = await page.locator(ROWS, { hasText: "Hafiz" }).locator(".badge").evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -228,8 +240,11 @@ try {
     // Mei Ling pays; Refresh status asks at once.
     fake.pay(await idOf("Mei Ling"));
     skip(11_000);
+    await page.emulateMedia({ reducedMotion: "reduce" }); // this seller turned animations off
     await page.click("#refresh-status");
     await page.waitForFunction(() => document.getElementById("status-message").textContent.includes("Paid: Mei Ling"), null, { timeout: 5000 }).catch(() => {});
+    check((await flashing("Mei Ling")) === 0, "with reduced motion on, Mei Ling turns Paid without a flash");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     const statusLine = plain(await page.$eval("#status-message", (el) => el.textContent));
     check((await statusOf("Mei Ling")) === "Paid" && statusLine.includes("Checking again every 20 seconds"), `Refresh status: "${statusLine}"`);
     await page.evaluate(() => scrollTo(0, 0));
@@ -247,6 +262,33 @@ try {
     await page.clock.fastForward(20_000);
     await page.waitForFunction(() => document.getElementById("status-message").textContent.includes("Paid: Arif"), null, { timeout: 5000 }).catch(() => {});
     check((await statusOf("Arif")) === "Paid", "visible again: the next poll turns Arif Paid");
+    // Lina pays cash at pickup: record it in her drawer. The amount is shown, never typed.
+    await goToBuyerPage(page, "Lina");
+    await page.locator(ROWS, { hasText: "Lina" }).locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open");
+    await page.waitForTimeout(400);
+    const payCard = plain(await page.$eval(".pay-card", (el) => el.innerText).catch(() => ""));
+    check(payCard.includes("Paid by cash or bank transfer?") && payCard.includes("RM 54.00") && !(await page.$(".pay-card input")),
+      `Lina's drawer offers Record payment for RM 54.00, with no amount box: "${payCard}"`);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6c-record-cash.png` });
+    await page.selectOption("#pay-method", "CASH");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.click("#record-payment");
+    await page.waitForFunction(() => document.getElementById("status-message").textContent.startsWith("Recorded: Lina"), null, { timeout: 5000 }).catch(() => {});
+    check(await page.$eval("#drawer", (el) => el.hidden), "after recording, the drawer closes so the row is seen");
+    check((await statusOf("Lina")) === "Paid (cash/bank)" && (await flashing("Lina")) > 0, `Lina turns "Paid (cash/bank)" and flashes green (${await statusOf("Lina")})`);
+    const linaId = await idOf("Lina");
+    const cashCall = fake.calls.find((c) => c.kind === "payment");
+    check(fake.invoices.get(linaId).status === "MARKED_AS_PAID" && cashCall?.body.method === "CASH" && cashCall.body.amount.value === "54.00",
+      "PayPal recorded CASH for the full 54.00 (MARKED_AS_PAID)");
+    const msg = plain(await page.$eval("#status-message", (el) => el.textContent));
+    check(msg === "Recorded: Lina paid RM 54.00 by cash.", `message: "${msg}"`);
+    const twice = await page.evaluate(async (id) => (await fetch(`/api/invoices/${id}/payment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"method":"CASH"}' })).status, linaId);
+    check(twice === 409 && fake.calls.filter((c) => c.kind === "payment").length === 1, `recording twice is refused by the server (HTTP ${twice})`);
+    errors.splice(0, errors.length, ...errors.filter((e) => !e.includes("409"))); // that refusal was on purpose
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6d-cash-paid.png`, fullPage: true });
+
     // 30 minutes later the polling stops by itself.
     const getsBefore = fake.calls.filter((c) => c.kind === "get").length;
     await page.clock.fastForward(31 * 60_000);
