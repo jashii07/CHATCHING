@@ -10,6 +10,16 @@ Business happens in the chat. ChatChing's AI turns a day of messy chats into a c
 
 For thousands of online sellers, business happens in the chat — but managing orders and collecting payments is still a headache. ChatChing turns a full day of messy conversations into a clean, reviewable order list using AI. With one click, sellers can generate PayPal payment links for every buyer. No more digging through endless chats, manually tracking orders, or chasing payments one by one. Just chat, confirm, and get paid.
 
+## What's next
+
+- Voice notes as input
+- Chat screenshots as input
+- Daily stock limits ("only 10 boxes on Saturday")
+- More payment methods
+- Order history across days
+- Analytics (best sellers, busiest days)
+- More languages
+
 ## TODO
 
 - [ ] "thousands" needs a real source, or change it to "many".

@@ -1,6 +1,6 @@
 # PLAN — ChatChing
 
-Status: APPROVED 2026-10-25 (with changes). Standout features added 2026-10-25 (Sections 10-11). Build starts Mon 26 Oct, 7 PM MYT.
+Status: APPROVED 2026-10-25 (with changes). Standout features added 2026-10-25 (Sections 10-11). Build starts Mon 26 Oct, 7 PM MYT. **"Signature moments" added 2026-10-29** (Section 7: Steps 7, 10, 10b, 10c; Section 9: Sun 8 Nov polish; Section 13: new storyboard).
 
 ## 1. Problem
 
@@ -67,6 +67,11 @@ Only one new package is planned: **express**.
 | `POST /api/messages` | ready-to-send message per invoiced buyer (#2) | 1 call, or template |
 | `POST /api/reminders` | reminders for all unpaid buyers, same design as messages | 1 call, or template |
 | `POST /api/reset` | Reset demo: empty the table (the saved orders) so the demo starts over; sent invoices are saved to `batches/` first; nothing in PayPal is deleted or cancelled (changed 28 Oct, Step 6) | **0 calls** |
+| `GET /api/kitchen` | (Step 10b, planned) kitchen list: per date, how many of each item to make | **Never** |
+| `GET /api/pickup/:ref` | (Step 10c, planned) look up a scanned or typed invoice id/number in the store, then ask PayPal for its live status | **Never** |
+| `POST /api/invoices/:id/collected` | (Step 10c, planned) mark an order Collected: our own status, never sent to PayPal | **Never** |
+
+*(Route names for 10b/10c are placeholders; the step sessions may rename them.)*
 
 ### AG Grid showcase (Community features only, no Enterprise)
 
@@ -136,6 +141,8 @@ Only one new package is planned: **express**.
 - `fulfilment`: `"delivery"`, `"pickup"` or `null`. It decides whether the pickup QR button shows (#3b).
 - `note`: one line, max 120 characters, saying what the AI did. It is shown as plain text only (#1).
 - Questions ("do you still have bahulu?") and payment requests ("pls send me the payment link") are **not** orders. They appear only in `sourceMsgs` if they belong to a real order.
+- `mentionedPrices` (optional, **added 29 Oct, Step 7**): prices the buyer wrote, e.g. `[{ "text": "RM15", "itemId": "classic_brownies", "msg": 4 }]`. `text` is the price as written, `itemId` the menu id it refers to (or `null`), `msg` the message number. **The AI only reports; it never decides.** Our code reads the number from `text` and compares it with `menu.json`. A mismatch makes the row amber: "Check: buyer mentioned RM 15.00, menu says RM 18.00." **The invoice price always comes from the menu.**
+  - Details for Step 7 (Claude's proposal, to confirm in that session): a mention matches if it equals the unit price, the line total ("2 boxes for RM36") or, when `itemId` is null, the buyer's total. The amber row is unclear like the Chat-date warning (check first, charge second), so it blocks invoicing until the seller clears it.
 
 Our code checks every order:
 - `itemId` must be `null` or exist in the menu.
@@ -157,7 +164,7 @@ Anything that fails a check becomes an unclear row. It is never dropped silently
 - Money is calculated in cents (whole numbers; "sen" for MYR) to avoid rounding errors, stored as "54.00", and shown in the menu's currency ("RM 54.00").
 - Invoices group rows per buyer. A buyer is invoiced only when all their active rows are clear.
 
-**Accuracy check:** `data/expected-orders.json` holds the correct answers for the demo chats: 7 clear orders worth RM 387.00, 1 unclear, 1 cancelled and 1 non-order, plus the demo's fixed `chatDate` (2026-10-28). Its orders use the same field names as the AI output above, so `scripts/accuracy.mjs` compares the parser's output against it directly, with no name translation (see Section 7).
+**Accuracy check:** `data/expected-orders.json` holds the correct answers for the demo chats: 7 clear orders worth RM 387.00, 1 unclear, 1 cancelled and 1 non-order (**these numbers change in Step 7**, when the demo chats get messier; update them here then), plus the demo's fixed `chatDate` (2026-10-28). Its orders use the same field names as the AI output above, so `scripts/accuracy.mjs` compares the parser's output against it directly, with no name translation (see Section 7).
 
 **Invoice status**: PayPal's status → what the app shows:
 
@@ -238,11 +245,23 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - **Batches (added 28 Oct, Jasper):** once any invoice has been sent for the current orders, "Read orders" is blocked with the message "Invoices already sent for these orders. Start a new batch to read again." A **"New batch"** button saves the old batch and starts an empty one, so invoice links are never wiped and never sent twice. Needs tests: reading is refused after an invoice is sent (server, not only the page); New batch keeps the old batch's rows and invoice links; the new batch starts empty and can be read; no buyer of the old batch is invoiced again.
 6. ✅ (done early, Wed 28 Oct; the first Render deploy stays on Sat 31 Oct) Status polling + Refresh button + status badges + Reset demo. **Paid flash (#4)**, **record cash / bank (#3a)**. `src/status.js`, `src/payments.js`, `POST /api/invoices/refresh`, `POST /api/invoices/:id/payment`, `POST /api/reset`; real sandbox: `INV2-BKCU-NGE3-RZG3-U35Y` MARKED_AS_PAID (CASH 54.00 MYR). (CSV export, the pinned totals row and the search box were built early, on 27 Oct.)
 7. Real Gemini call (one batched call, final order per buyer, JSON schema), cache. **Buyer panel with note + highlighted source messages (#1)**, **pickup QR in the panel (#3b)**.
+   - **a. Price mismatch (added 29 Oct):** the schema gets the optional `mentionedPrices` list (Section 5). The AI only reports what the buyer wrote; the code compares it with `menu.json`; a mismatch makes the row amber ("Check: buyer mentioned RM 15.00, menu says RM 18.00."). The invoice price always comes from the menu. Tests: match, mismatch, unreadable text, unknown item id.
+   - **b. Messier demo chats for the video (added 29 Oct):** add a few realistic twists to `data/demo-chats.txt`: a change of quantity, "same as Lina", a cancelled add-on, and one price mention that is wrong. Update `data/expected-orders.json` to match (and the "7 orders / RM 387.00" numbers in Sections 5 and 9), then save Gemini's **real** reply as the new demo cache (`data/ai-cache/demo-parse.json`), scored with the Step 3b scorer. Fictional chats only (free-tier privacy).
 8. **`scripts/accuracy.mjs`**: compares AI output with `data/expected-orders.json` and prints a score for each of buyers, items, quantities, dates, unclear flags and cancellations.
    - Mock mode by default; a real call only with `--real`.
    - `--holdout` runs it on the holdout chats (only once, on 7 Nov).
 9. Timeout, retry, backup model, daily counter, "AI calls left".
 10. **Ready-to-send messages + reminders (#2)**: one batched call each, placeholders, checks, English templates, Copy.
+   - **Ask the buyer (added 29 Oct):** every unclear row gets a **"Copy question"** button. The code builds the question from the menu and the reason it is unclear, e.g. "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" The AI may only write wording with placeholders (same design and checks as #2: no money, no links); **the code fills in names, items and prices**. Template when there is no AI. Open for Step 10: whether the AI wording rides in one batched call for all unclear rows or the template is enough.
+10b. **Kitchen list (new, 29 Oct; pure code, no AI):** per date, how many of each item to make, from **active clear orders only**. Cancelled orders are left out; unclear orders are not counted but shown separately as "+1 order still to check". A **Copy** button copies the list as plain text. Tests: cancelled excluded, unclear shown apart, several dates, an empty day.
+10c. **Pickup scan (new, 29 Oct; the feature we drop first if time is tight):** on a phone, the seller scans the buyer's PayPal invoice QR with the camera.
+   - The app finds the invoice id in the QR, checks it is in our store, and asks PayPal for the **live** status.
+   - Paid: a big green "Paid: Lina, 3 x Classic brownies". Not paid: an amber "Not paid yet: RM 54.00".
+   - Then a **"Collected"** button: our own status, **never sent to PayPal**.
+   - **Fallback:** type the invoice number when the camera isn't available (or permission is refused).
+   - Any QR library is pinned with an integrity hash (like AG Grid and Lucide). Add a Content-Security-Policy (the app has none yet) that allows it; **never `'unsafe-eval'`**.
+   - The camera needs HTTPS, so test it on Render (localhost also counts as secure for a first check).
+   - To verify at the start of 10c: what PayPal's QR actually encodes (assumed: the payer link containing the invoice id), and how the buyer has the QR on pickup day (assumed: the seller sends the PayPal QR image with the payment message).
 11. Deploy to Render; end-to-end test on the hosted URL.
 12. **User test with a real seller (#5)**; non-AI fallback parser.
 13. Edge-case tests, **holdout accuracy run (#5)**, README, video script, Devpost draft.
@@ -277,15 +296,17 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Wed 28 Oct (2 h) | ✅ **Step 3b DONE early (Tue 27 Oct)**: perfect score, 17.6 s, real reply saved as `data/ai-cache/demo-parse.json` and used by mock mode. **AI reality check** (the day freed by finishing Step 1 early): one real gemini-3.6-flash call, **max 3 that day** | Call time + comparison with expected-orders.json printed and logged in DECISIONS.md; the real reply saved as the mock-AI data |
 | Thu 29 Oct (2 h) | ✅ **Step 4 DONE early (Wed 28 Oct)**: 184 tests, `npm run ui-parse` at 1280 + 390 px. Step 4: parse with mock AI (= Wednesday's real Gemini reply) + unclear rows | Demo chats → final orders with totals, notes, unclear rows highlighted |
 | Fri 30 Oct (2 h) | ✅ **Step 5 DONE early (Wed 28 Oct)**: 215 tests, `npm run ui-flow` at 1280 + 390 px, one real sandbox invoice. Step 5: create + send invoices per buyer + double-invoice guard. **You: draft the video storyboard (Section 13)** | Payer link + Copy work; double-click still gives one invoice per buyer; storyboard drafted |
+| Fri 30 Oct (2 h) | **Step 10b: Kitchen list** (added 29 Oct, one session; uses the evening freed by finishing Step 5 early) | Per date, a count per item from active clear orders; cancelled left out; "+1 order still to check"; Copy works |
 | Sat 31 Oct (6 h) | ✅ **Step 6 DONE early (Wed 28 Oct)**: 239 tests, `npm run ui-flow` at 1280 + 390 px, one real cash payment. **Still on Sat 31 Oct: the first Render deploy (buffer hour).** Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank. **Buffer hour: FIRST DEPLOY to Render of whatever exists (walking skeleton)**, and check Render's free-tier rules (sleep after inactivity, monthly hours, whether it asks for a card; **if it asks for a card, stop and ask Jasper**) → note them in DECISIONS.md | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel; **the app loads from a Render URL** |
-| Sun 1 Nov (5 h) | Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR | Real call once, cached after; clicking Arif shows his 2 messages + a QR. **You: holdout chats + expected answers saved** |
-| Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give 7 orders / RM 387.00 |
+| Sat 31 Oct (rest of the day) | **Step 10c: Pickup scan** (added 29 Oct, one session; the hours freed by finishing Step 6 early). It needs HTTPS, so it follows the first Render deploy and is tested there. **Dropped first if time is tight** | On a phone over the Render URL: scan a sandbox invoice QR → green "Paid: ..." or amber "Not paid yet: ..." → Collected; typing the invoice number works without a camera |
+| Sun 1 Nov (5 h) | Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR; **price mismatch + messier demo chats (added 29 Oct)** | Real call once, cached after; clicking Arif shows his 2 messages + a QR; the wrong price mention shows "Check: buyer mentioned ..., menu says ..."; the new expected-orders.json scored against Gemini's real reply, saved as the demo cache. **You: holdout chats + expected answers saved** |
+| Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give the totals in the updated expected-orders.json (was 7 orders / RM 387.00 before Step 7) |
 | Tue 3 Nov (2 h) | Step 9: timeout, retry, backup, counter | "AI calls left" shown; quota 0 → friendly "AI busy" message |
-| Wed 4 Nov (2 h) | Step 10: ready-to-send messages + reminders | Every invoiced buyer has a copyable message with the real total + link |
+| Wed 4 Nov (2 h) | Step 10: ready-to-send messages + reminders; **"Copy question" on unclear rows (added 29 Oct)** | Every invoiced buyer has a copyable message with the real total + link; Priya's row copies "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" with prices from the menu |
 | Thu 5 Nov (2 h) | Step 11: deploy to Render | **Full flow works on the hosted URL** |
 | Fri 6 Nov (2 h) | 7 PM: **user test with your friend (10 min)** → LEARNING.md; then Step 12: non-AI fallback parser | Test notes saved; app works with `AI_MODE=off` |
 | Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins = the 2 judge accounts); **video script draft** (from the Section 13 storyboard); **save a Devpost draft**. **You: create 2 sandbox buyer accounts just for judges**, in English so judges can read the payment page (if one gets locked or its password changed, judges use the other) | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved; both judge logins work |
-| Sun 8 Nov (5 h) | **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green | All RULES.md build items ticked |
+| Sun 8 Nov (5 h) | **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green. **Polish (added 29 Oct): a soft "cha-ching" when a payment arrives**, made in code with the Web Audio API (no sound file, no copyright), **plus the Paid total counting up**. Only after the seller has clicked something on the page (browsers block sound before that), with a mute toggle; with reduced motion, no count-up animation (the number just changes) | All RULES.md build items ticked; a sandbox payment plays the sound once; mute silences it; reduced motion shows no animation |
 | Mon 9 Nov (2 h) | **First: test paying with an English-language sandbox buyer account** (one of the judge accounts), then record the video | Payment page in English; video under 3 min, no copyrighted music/logos |
 | Tue 10 Nov (2 h) | Video upload, GitHub public + MIT in About, Devpost details | All links work in a private window |
 | Wed 11 Nov (2 h) | "final check", then **submit (evening)** | Devpost shows Submitted |
@@ -293,6 +314,8 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 Hard deadline: 13 Nov 2026, 4:00 AM MYT. Hosted demo and sandbox logins must keep working until 16 Dec 2026.
 
 **Tightest part:** Mon 2 – Fri 6 Nov has ~11 h of work in 10 h, and Fri 6 Nov has two jobs. If it slips, it spills into the buffer hour on 7 or 8 Nov. If that isn't enough, cut in this order: 3 first, then 2, then 1, keeping 5 and 4.
+
+**Added 29 Oct:** Steps 10b and 10c go into the evenings freed by finishing Steps 5-6 early (Fri 30 Oct, Sat 31 Oct), so the Mon-Fri crunch doesn't grow. Step 7 also grew (price mismatch, messier chats); Sun 1 Nov's buffer hour covers it. If anything slips, **Step 10c (Pickup scan) is dropped first**, before the Top 5 cuts above. Feature freeze stays Sun 8 Nov.
 
 ### After submission (12 Nov – 16 Dec)
 
@@ -376,7 +399,7 @@ In suggested order:
 2. ✅ **Judge-first screen:** a 3-step guide, a "Load demo" button and money summary cards (orders, invoiced, paid). (Guide + cards built in the design rounds; Load demo built 28 Oct: fills the chat box, Read orders still reads.) It helps the Design and Presentation scores.
 3. **Quick-fix buttons for unclear rows,** e.g. "Classic" / "Cheese" for "which brownies?".
 4. **README trust signals** + a GitHub Actions test badge.
-5. **Screenshot input:** a picture of the seller's own plain chat text only (no app logos). It costs AI quota.
+5. ~~**Screenshot input:** a picture of the seller's own plain chat text only (no app logos). It costs AI quota.~~ **Rejected 29 Oct** (accuracy, AI quota, app logos in the video; see DECISIONS.md). Listed under "What's next" in the Devpost draft.
 6. **Already planned as stretch:**
    - PayPal `remind` endpoint.
    - Webhooks.
@@ -484,20 +507,21 @@ Jasper's reasons: round 1 "the original design is too simple"; round 2 "no perso
 
 ## 13. Video storyboard (Jasper, 28 Oct)
 
-Drafted by Jasper on Wed 28 Oct. The words come later: video script on Sat 7 Nov, recording on Mon 9 Nov.
+Drafted by Jasper on Wed 28 Oct; **table replaced on Thu 29 Oct** (signature moments: changes and price mismatch, Copy question, cha-ching, Kitchen list, Pickup scan). The words come later: video script on Sat 7 Nov, recording on Mon 9 Nov.
 
 **Video rules:** under 3:00; captions on every scene (judges may watch muted); no copyrighted music; no third-party logos (no WhatsApp/Instagram); sandbox accounts only. Also from RULES.md: public on YouTube, shows the app working end to end.
 
 | # | Time | On screen | Caption | Moment the app must have | Built in step |
 |---|---|---|---|---|---|
-| 1 | 0:00-0:15 | A day of messy order chats (our own plain text, no app logos) | "Small sellers take orders by chat, then copy them into Excel by hand." | `data/demo-chats.txt` shown as plain text | ✅ Step 1 |
-| 2 | 0:15-0:30 | Paste the chats, set the Chat date | "ChatChing: paste a day of chats." | Chat box + Chat date | ✅ Step 4 |
-| 3 | 0:30-1:00 | Read orders -> 9 buyers, Danish cancelled, Priya amber | "AI reads the language. The code supplies the facts." | Read orders, cancelled + unclear rows, summary cards | ✅ Step 4 (real AI: Step 7) |
-| 4 | 1:00-1:20 | Open Priya's drawer, see what she wrote, fix it | "Unclear orders are never guessed. The seller decides." | Drawer edit ✅ Step 2; **her own message in the drawer** = buyer panel (#1) | Step 7 |
-| 5 | 1:20-1:50 | Send invoices -> links + Copy, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, payer links, Copy, double-invoice guard | ✅ Step 5 |
-| 6 | 1:50-2:15 | Buyer pays in the PayPal sandbox -> row turns green; record one cash payment | "See who paid, live." | Polling + Paid flash + record cash | Step 6 |
-| 7 | 2:15-2:30 | Pickup QR + ready-to-send reminder | "Pickup and reminders, ready to send." | Pickup QR (#3b) Step 7; reminders (#2) Step 10 | Steps 7 + 10 |
-| 8 | 2:30-2:45 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests passing | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |
-| 9 | 2:45-2:50 | Logo | "ChatChing: from chat to cha-ching." | The logo mark | ✅ Step 2 |
+| 1 | 0:00-0:12 | Messy order chats (our own plain text, no app logos) | "Small sellers take orders by chat, then copy them into Excel by hand." | The messier `data/demo-chats.txt` shown as plain text | Step 7b (messier chats) |
+| 2 | 0:12-0:25 | Paste the chats, Chat date | "ChatChing: paste a day of chats." | Chat box + Chat date (+ Load demo) | ✅ Step 4 |
+| 3 | 0:25-0:55 | Read orders: a change of quantity, "same as Lina", a cancellation, the price mismatch in amber | "AI reads the language. The code supplies the facts." | Real Gemini reply cached; amber "Check: buyer mentioned RM 15.00, menu says RM 18.00." | Step 7 (7a + 7b) |
+| 4 | 0:55-1:10 | Priya amber -> Copy question | "Unclear? Ask the buyer in one tap." | "Copy question" with names, items and prices filled by the code | Step 10 |
+| 5 | 1:10-1:35 | Send invoices with the progress bar, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, progress bar, "All invoices sent", double-invoice guard | ✅ Step 5 |
+| 6 | 1:35-1:55 | Buyer pays in the sandbox -> cha-ching, the row turns green | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | Sun 8 Nov polish |
+| 7 | 1:55-2:10 | Kitchen list | "Know what to bake, per day." | Kitchen list per date + Copy | Step 10b |
+| 8 | 2:10-2:30 | Phone scans the buyer's QR -> Paid -> Collected | "Hand over only when paid." | Pickup scan on the Render URL (HTTPS) | Step 10c |
+| 9 | 2:30-2:45 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |
+| 10 | 2:45-2:50 | Logo | "ChatChing: from chat to cha-ching." | The logo mark | ✅ Step 2 |
 
-Notes (Claude): the captions add up to 2:50, leaving 10 s of margin under 3:00. Scene 6 needs a sandbox buyer login (the judge accounts, Sat 7 Nov) and English payment pages (Mon 9 Nov). Scene 1 shows our own plain-text chats, never a chat app's screen.
+Notes (Claude): the scenes add up to 2:50, leaving 10 s of margin under 3:00. Scene 6 needs a sandbox buyer login (the judge accounts, Sat 7 Nov) and English payment pages (Mon 9 Nov); its sound must be our own Web Audio tone (no copyrighted audio). Scene 8 needs a real phone on the Render URL. **If Step 10c is dropped,** scene 8 shows the pickup QR in the buyer panel + "Record cash" instead (both already planned or built). Scene 1 shows our own plain-text chats, never a chat app's screen.
