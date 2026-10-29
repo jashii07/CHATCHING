@@ -6,6 +6,9 @@
 // Lives in scripts/, not test/, because node --test would run every .js file under test/ as a test.
 import { toSen, fromSen } from "../src/money.js";
 
+// A tiny valid PNG (1 x 1 px) standing in for PayPal's QR picture.
+export const QR_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 const json = (status, body) => new Response(body == null ? null : JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json" },
 });
@@ -38,6 +41,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       : pathname === "/v2/invoicing/search-invoices" ? "search"
       : pathname.endsWith("/send") ? "send"
       : pathname.endsWith("/payments") ? "payment"
+      : pathname.endsWith("/generate-qr-code") ? "qr"
       : "get";
     calls.push({ kind, method, path: pathname, body });
 
@@ -92,6 +96,13 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       invoice.status = "MARKED_AS_PAID";
       invoice.payments = { transactions: [{ payment_id: `PAY-${id}`, method: body.method, payment_date: body.payment_date, amount: body.amount }] };
       return json(200, { payment_id: `PAY-${id}` });
+    }
+    if (kind === "qr") {
+      // Like the sandbox (25 Oct): multipart/form-data, the Base64 PNG in a part named "image".
+      if (invoice.status === "DRAFT") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INVALID_INVOICE_STATUS", description: "The invoice must be sent first." }] });
+      const boundary = "fakeBoundary123";
+      const part = [`--${boundary}`, 'Content-Disposition: form-data; name="image"', "Content-Type: text/plain", "", QR_PNG, `--${boundary}--`, ""].join("\r\n");
+      return new Response(part, { status: 200, headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` } });
     }
     if (kind === "send") {
       if (invoice.status !== "DRAFT") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "CANNOT_SEND_INVOICE" }] });

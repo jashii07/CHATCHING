@@ -12,6 +12,7 @@ import { createPayPal, NOT_CONFIGURED, PayPalError } from "./paypal.js";
 import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
+import { buyerPanel } from "./panel.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
@@ -68,6 +69,7 @@ export function createApp(config, {
   const invoicer = createInvoicer({ store, paypal, menu, log });
   const status = createStatusChecker({ store, paypal, now, log });
   const payments = createPaymentRecorder({ store, paypal, menu, now });
+  const qrCodes = new Map(); // invoice id -> Base64 PNG (a QR code never changes)
   let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
 
   // What the table, cards and slim bar need: the same shape after every change.
@@ -206,6 +208,34 @@ export function createApp(config, {
       if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ error: err.message });
       if (err instanceof PayPalError) return res.json({ failed: err.message, ...table() });
       throw err;
+    }
+  });
+
+  // The buyer panel (Step 7, #1 "Show your work"): the AI's note + the buyer's own messages with the
+  // parts that mattered marked (src/panel.js), and which invoice (if sent) has a QR code. No AI, no PayPal.
+  app.get("/api/buyers/:id/panel", (req, res) => {
+    const row = store.find(req.params.id);
+    if (!row) return res.status(404).json({ error: `No order row "${req.params.id}".` });
+    const rows = store.rows().filter((other) => other.buyer.trim().toLowerCase() === row.buyer.trim().toLowerCase());
+    const sent = rows.find((other) => other.invoiceId && other.payerLink && other.invoiceStatus !== "Draft");
+    res.json({ ...buyerPanel(rows, store.source(), menu), qrInvoiceId: sent?.invoiceId ?? null });
+  });
+
+  // The invoice's QR code from PayPal (#3b), as Base64 PNG in JSON so the page can show it (and a PayPal
+  // problem is friendly words, not a red console error). Only for invoices in this table that were sent.
+  // A QR code never changes, so each is asked for once and kept in memory.
+  app.get("/api/invoices/:id/qr", async (req, res) => {
+    const row = store.rows().find((other) => other.invoiceId === req.params.id);
+    if (!row || !row.payerLink || row.invoiceStatus === "Draft") {
+      return res.status(404).json({ error: "No sent invoice with that id in this table." });
+    }
+    if (!config.paypalConfigured) return res.json({ notice: NOT_CONFIGURED });
+    try {
+      if (!qrCodes.has(row.invoiceId)) qrCodes.set(row.invoiceId, (await paypal.qrCode(row.invoiceId)).toString("base64"));
+      res.json({ invoiceId: row.invoiceId, png: qrCodes.get(row.invoiceId) });
+    } catch (err) {
+      if (!(err instanceof PayPalError)) throw err;
+      res.json({ notice: `The QR code could not be loaded (${err.message})` });
     }
   });
 

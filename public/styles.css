@@ -1350,3 +1350,70 @@ button.ghost.small {
 .edit-card .keep-price {
   margin-top: 12px;
 }
+
+/* Step 7: the buyer panel in the drawer. Three parts (chat, items, QR) that keep the drawer's one column. */
+.drawer-part {
+  display: contents;
+}
+
+.ai-note {
+  line-height: 1.5;
+}
+
+.ai-note-label {
+  font-weight: 600;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+  box-shadow: inset 2px 0 0 var(--neutral-tint);
+}
+
+.chat-when {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.chat-text {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* A message the AI did not use for the order: shown, but quieter. */
+.chat-msg.is-unused .chat-text {
+  color: var(--ink-2);
+}
+
+/* The parts that mattered: a neutral warm tint (not blue: not clickable; not green: not money). */
+mark.hl {
+  padding: 1px 4px;
+  border-radius: 6px;
+  background: #f3ece1;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* A price the buyer wrote that differs from the menu: amber = check this. */
+mark.hl-price-check {
+  background: var(--amber-tint);
+  box-shadow: inset 0 -2px 0 var(--amber);
+}
+
+.qr-image {
+  display: block;
+  width: 180px;
+  height: 180px;
+}

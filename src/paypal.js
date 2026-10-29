@@ -76,12 +76,28 @@ export function invoiceDraft({ buyer, rows, menu, number }) {
   };
 }
 
+// PayPal's generate-qr-code reply -> the PNG bytes, or null. The docs only say "a PNG image in Base64";
+// the sandbox sent multipart/form-data with the Base64 text in a part named "image" (smoke test, 25 Oct).
+// Every Base64 PNG starts with "iVBORw0KGgo" (the encoded PNG signature), so it is read from there.
+// The bytes are checked for the PNG signature, so a changed format gives null, never a broken image.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+export function pngFromQrReply(bytes) {
+  const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes ?? ""));
+  if (buffer.subarray(0, 8).equals(PNG_SIGNATURE)) return buffer;
+  const text = buffer.toString("utf8");
+  const start = text.indexOf("iVBORw0KGgo");
+  if (start < 0) return null;
+  const png = Buffer.from(text.slice(start).match(/^[A-Za-z0-9+/=\r\n]+/)[0].replace(/\s/g, ""), "base64");
+  return png.subarray(0, 8).equals(PNG_SIGNATURE) ? png : null;
+}
+
 export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, fetch = globalThis.fetch, now = Date.now, timeoutMs = 30_000 }) {
   if (baseUrl !== SANDBOX_BASE) throw new Error(`ChatChing only talks to the PayPal sandbox (${SANDBOX_BASE}), not ${baseUrl}.`);
   let cached = null; // { token, expiresAt }
   let pending = null; // a token request in flight, shared by everyone who asks meanwhile
 
-  async function request(path, init) {
+  // raw: the reply is not JSON (the QR code) -> body is the bytes, json is PayPal's error (if any).
+  async function request(path, init, raw = false) {
     let res;
     try {
       res = await fetch(`${baseUrl}${path}`, { ...init, signal: AbortSignal.timeout(timeoutMs) });
@@ -90,6 +106,14 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
         throw new PayPalError(`PayPal took too long to answer (over ${timeoutMs / 1000} s). Please try again.`, { status: 504 });
       }
       throw new PayPalError(`Can't reach PayPal (${err?.cause?.code ?? err?.message ?? "network error"}). Check the internet connection.`);
+    }
+    if (raw) {
+      const bytes = Buffer.from(await res.arrayBuffer());
+      let json = null;
+      try {
+        json = JSON.parse(bytes.toString("utf8"));
+      } catch {}
+      return { status: res.status, ok: res.ok, bytes, body: json };
     }
     let body = null;
     try {
@@ -123,13 +147,13 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
 
   // An API call with the token. A 401 means the token went stale (e.g. app permissions changed):
   // drop it and try once more with a fresh one.
-  async function api(method, path, body, headers = {}) {
+  async function api(method, path, body, headers = {}, raw = false) {
     for (let attempt = 1; ; attempt++) {
       const reply = await request(path, {
         method,
         headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", ...headers },
         body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      }, raw);
       if (reply.status !== 401 || attempt > 1) return reply;
       cached = null;
     }
@@ -162,6 +186,16 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
     const reply = await api("POST", `/v2/invoicing/invoices/${encodeURIComponent(id)}/payments`, { method, payment_date: date, amount, note });
     if (!reply.ok) throw refused(`record the payment for invoice ${id}`, reply);
     return reply.body;
+  }
+
+  // The invoice's QR code (Step 7, PLAN.md Section 10 #3b) as PNG bytes. It opens the invoice for paying;
+  // the invoice must be sent first. (What the code holds: PLAN.md Step 10c, scripts/decode-qr.mjs.)
+  async function qrCode(id, size = 300) {
+    const reply = await api("POST", `/v2/invoicing/invoices/${encodeURIComponent(id)}/generate-qr-code`, { width: size, height: size, action: "pay" }, {}, true);
+    if (!reply.ok) throw refused(`make the QR code for invoice ${id}`, reply);
+    const png = pngFromQrReply(reply.bytes);
+    if (!png) throw new PayPalError(`PayPal's QR code reply for invoice ${id} had no picture in it.`);
+    return png;
   }
 
   // The invoice with exactly this number (full details), or null.
@@ -214,5 +248,5 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
     return { invoiceId: invoice.id, invoiceNumber: number, status, payerLink, reused };
   }
 
-  return { token, getInvoice, createDraft, sendInvoice, findByNumber, invoiceBuyer, recordPayment };
+  return { token, getInvoice, createDraft, sendInvoice, findByNumber, invoiceBuyer, recordPayment, qrCode };
 }

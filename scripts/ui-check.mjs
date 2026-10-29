@@ -215,6 +215,48 @@ try {
     check(await isUnclear(junWei) && junText.includes("Check: buyer mentioned RM 15.00, menu says RM 18.00."), `Jun Wei's wrong price is amber: "${junText}"`);
     await goToBuyer(page, "Priya");
 
+    // Step 7: the buyer panel. Arif's drawer shows the AI's note and his 2 messages with the parts marked.
+    await goToBuyer(page, "Arif");
+    await rowOf(page, "Arif").click();
+    await page.waitForSelector("#drawer.is-open .chat-card .chat-msg");
+    await page.waitForTimeout(400);
+    const chat = await page.$eval("#drawer .chat-card", (card) => ({
+      title: card.querySelector(".edit-title").innerText.trim(),
+      note: card.querySelector(".ai-note")?.innerText.trim() ?? "",
+      messages: [...card.querySelectorAll(".chat-msg")].map((li) => li.innerText.replace(/\s+/g, " ").trim()),
+      marks: [...card.querySelectorAll("mark.hl")].map((m) => `${m.className.replace("hl hl-", "")}:${m.textContent}`),
+      first: card.parentElement.firstElementChild === card,
+    }));
+    check(chat.first && chat.title === "What Arif wrote" && chat.note === "", `the drawer starts with what Arif wrote (Gemini wrote no note for him: "${chat.note}")`);
+    check(chat.messages.length === 2 && chat.messages[0].startsWith("Message 6, Wed 28 Oct, 10:30") && chat.messages[1].includes("will pick up tomorrow afternoon"),
+      `his 2 messages, with their time: ${chat.messages.join(" | ")}`);
+    check(["qty:2 packs", "fulfilment:pick up", "day:tomorrow"].every((m) => chat.marks.includes(m)), `the parts that mattered are marked: ${chat.marks.join(", ")}`);
+    const markStyle = await page.$eval("#drawer mark.hl", (m) => getComputedStyle(m).backgroundColor);
+    check(markStyle === "rgb(243, 236, 225)", `marks use the neutral warm tint, not blue/green (${markStyle})`);
+    check(!(await page.$("#drawer .qr-card")), "no QR card before the invoice is sent");
+    const drawerFits = await page.$eval("#drawer", (el) => el.scrollWidth <= el.clientWidth);
+    check(drawerFits, "the messages fit the drawer (no sideways scroll)");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-panel-arif.png` });
+    await page.keyboard.press("Escape");
+    // Lina: the AI's own note, as plain text.
+    await goToBuyer(page, "Lina");
+    await rowOf(page, "Lina").click();
+    await page.waitForSelector("#drawer.is-open .chat-card .chat-msg");
+    await page.waitForTimeout(400); // let the drawer finish sliding in before the screenshot
+    const linaNote = plain(await page.$eval("#drawer .ai-note", (el) => el.innerText).catch(() => ""));
+    check(linaNote === "AI note: Changed classic brownies quantity from 2 to 3 boxes in message 4.", `Lina's drawer shows the AI's note: "${linaNote}"`);
+    check((await page.$$eval("#drawer .chat-msg", (els) => els.length)) === 3, "and her 3 messages (order, change, payment-link request)");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-panel-lina.png` });
+    await page.keyboard.press("Escape");
+    // Jun Wei's wrong price is marked amber in his own message.
+    await goToBuyer(page, "Jun Wei");
+    await rowOf(page, "Jun Wei").click();
+    await page.waitForSelector("#drawer.is-open .chat-card .chat-msg");
+    const junMark = await page.$eval("#drawer mark.hl-price-check", (m) => ({ text: m.textContent, bg: getComputedStyle(m).backgroundColor })).catch(() => null);
+    check(junMark?.text === "RM15" && junMark.bg === "rgb(252, 239, 214)", `Jun Wei's "RM15" is marked amber in his message (${JSON.stringify(junMark)})`);
+    await page.keyboard.press("Escape");
+    await goToBuyer(page, "Priya");
+
     if (viewport.name === "phone") {
       await priya.click();
       await page.waitForSelector("#drawer.is-open");
@@ -288,6 +330,8 @@ try {
   const junSub = plain(await page.$eval("#drawer-sub", (el) => el.textContent));
   check(junSub === "2 items, RM 62.00 in total" && !(await page.locator(".keep-price").count()) && !(await page.$("#drawer-body .check-text")),
     `after Keep menu price: Jun Wei is clear at the MENU price: "${junSub}"`);
+  await page.waitForSelector("#drawer mark.hl-price");
+  check(!(await page.$("#drawer mark.hl-price-check")), "and his RM15 is no longer marked amber (a plain price mark now)");
   await page.keyboard.press("Escape");
 
   const afterFix = async (label) => {

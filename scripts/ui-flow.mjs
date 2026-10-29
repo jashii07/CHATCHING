@@ -257,6 +257,26 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6-sent.png`, fullPage: true });
 
+    // Step 7: once sent, Arif's drawer shows his messages AND the invoice's QR code from PayPal.
+    await goToBuyerPage(page, "Arif");
+    const qrBefore = fake.count("qr");
+    await page.locator(ROWS, { hasText: "Arif" }).click();
+    await page.waitForSelector("#drawer.is-open #qr-image", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const qrShown = await page.$eval("#qr-image", (img) => img.complete && img.naturalWidth > 0 && img.getBoundingClientRect().width === 180).catch(() => false);
+    const qrCard = plain(await page.$eval("#drawer .qr-card", (el) => el.innerText).catch(() => ""));
+    check(qrShown && qrCard.startsWith("QR code for this invoice") && fake.count("qr") === qrBefore + 1, `Arif's drawer shows the PayPal QR code (one PayPal call): "${qrCard}"`);
+    check(await page.$eval("#drawer .chat-card", (el) => el.innerText.includes("What Arif wrote")), "and still starts with what he wrote");
+    await page.$eval("#drawer .qr-card", (el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6b-qr.png` });
+    await page.keyboard.press("Escape");
+    await page.locator(ROWS, { hasText: "Arif" }).click();
+    await page.waitForSelector("#drawer.is-open #qr-image");
+    check(fake.count("qr") === qrBefore + 1, "opening his drawer again asks PayPal for nothing new (the QR code is kept)");
+    await page.keyboard.press("Escape");
+    await goToBuyerPage(page, "Lina");
+
     // Clicking again creates nothing new: the button has nothing left to send, and the server agrees.
     check(await sendButton.evaluate((el) => el.disabled) && plain(await sendButton.innerText()) === "All invoices sent", `nothing left to send: "${plain(await sendButton.innerText())}" (disabled)`);
     const creates = fake.count("create");

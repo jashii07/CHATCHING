@@ -7,7 +7,7 @@ import { toSen, fromSen, formatMoney } from "./money.js";
 
 // The ways a buyer may write the menu's currency: its code ("MYR") and its symbol, taken from Intl
 // (the same narrowSymbol money.js shows), so no currency is hard-coded here.
-function currencyWords(currency) {
+export function currencyWords(currency) {
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return [];
   const symbol = new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol" })
     .formatToParts(0).find((part) => part.type === "currency")?.value;

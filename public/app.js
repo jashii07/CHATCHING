@@ -510,6 +510,14 @@ function editCard(row) {
   return card;
 }
 
+// The drawer has three parts, so a slow panel or QR code never redraws (and unfocuses) the edit fields:
+// what the buyer wrote, the items to edit (+ record payment), and the invoice's QR code.
+// display: contents (styles.css), so their cards still sit in the drawer's one column.
+const drawerChat = el("div", "drawer-part");
+const drawerItems = el("div", "drawer-part");
+const drawerQr = el("div", "drawer-part");
+$("drawer-body").append(drawerChat, drawerItems, drawerQr);
+
 function renderDrawer() {
   const data = buyerRows().find((row) => row.id === openGroupId);
   if (!data) return closeDrawer();
@@ -518,9 +526,97 @@ function renderDrawer() {
   $("drawer-sub").textContent = data.cancelled ? "Cancelled order"
     : data.total == null ? "Needs a check before it can be invoiced"
     : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total${data.payerLink ? `. Invoice: ${data.status}` : ""}`;
-  $("drawer-body").replaceChildren(...data.rows.map(editCard));
+  drawerItems.replaceChildren(...data.rows.map(editCard));
   const pay = payCard(data);
-  if (pay) $("drawer-body").append(pay);
+  if (pay) drawerItems.append(pay);
+}
+
+// ---- The buyer panel (Step 7, "Show your work"): the AI's note + what the buyer wrote ----
+
+let panel = null; // { id, data } for the open drawer, from GET /api/buyers/:id/panel
+const qrCodes = new Map(); // invoice id -> { png } or { notice } (a QR code never changes)
+
+const MARK_NAMES = { item: "menu item", qty: "quantity", day: "day", fulfilment: "pickup or delivery", change: "change", price: "price", "price-check": "price to check" };
+
+// The buyer's messages as text segments (never HTML): the marked parts sit in <mark> elements.
+function chatCard(data) {
+  const card = el("section", "edit-card chat-card");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon("message-circle"));
+  name.append(circle, `What ${data.buyer} wrote`);
+  title.append(name);
+  card.append(title);
+  if (data.note) {
+    const note = el("p", "ai-note");
+    note.append(el("span", "ai-note-label", "AI note: "), data.note);
+    card.append(note);
+  }
+  if (!data.messages.length) card.append(el("p", "hint", "The chats for this order were not saved."));
+  const list = el("ol", "chat-list");
+  for (const msg of data.messages) {
+    const item = el("li", `chat-msg${msg.used ? "" : " is-unused"}`);
+    item.append(el("span", "chat-when", `Message ${msg.n}, ${msg.when}${msg.used ? "" : " (not used for this order)"}`));
+    const text = el("p", "chat-text");
+    for (const part of msg.parts) {
+      if (!part.mark) text.append(part.text);
+      else text.append(Object.assign(el("mark", `hl hl-${part.mark}`, part.text), { title: MARK_NAMES[part.mark] ?? "" }));
+    }
+    item.append(text);
+    list.append(item);
+  }
+  if (data.messages.length) card.append(list);
+  return card;
+}
+
+// The invoice's QR code from PayPal (#3b): it opens the invoice for paying.
+function qrCard(invoiceId) {
+  const card = el("section", "edit-card qr-card");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon("qr-code"));
+  name.append(circle, "QR code for this invoice");
+  title.append(name);
+  card.append(title);
+  const qr = qrCodes.get(invoiceId);
+  if (!qr) card.append(el("p", "hint", "Loading the QR code from PayPal..."));
+  else if (qr.notice) card.append(el("p", "hint", qr.notice));
+  else {
+    card.append(Object.assign(document.createElement("img"), {
+      className: "qr-image", id: "qr-image", src: `data:image/png;base64,${qr.png}`, width: 180, height: 180,
+      alt: "QR code that opens this PayPal invoice",
+    }));
+    card.append(el("p", "hint", "Scanning it opens this PayPal invoice to pay. Show it at pickup, or send it with the payment message."));
+  }
+  return card;
+}
+
+function renderPanel() {
+  const data = panel?.id === openGroupId ? panel.data : null;
+  drawerChat.replaceChildren(...(data ? [chatCard(data)] : []));
+  drawerQr.replaceChildren(...(data?.qrInvoiceId ? [qrCard(data.qrInvoiceId)] : []));
+}
+
+async function loadPanel(id = openGroupId) {
+  try {
+    const res = await fetch(`/api/buyers/${encodeURIComponent(id)}/panel`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    if (id !== openGroupId) return; // the seller opened someone else meanwhile
+    panel = { id, data };
+    renderPanel();
+    const invoiceId = data.qrInvoiceId;
+    if (invoiceId && !qrCodes.get(invoiceId)?.png) {
+      const qrRes = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/qr`);
+      const qr = await qrRes.json();
+      qrCodes.set(invoiceId, qrRes.ok ? qr : { notice: qr.error ?? `The QR code could not be loaded (HTTP ${qrRes.status}).` });
+      if (id === openGroupId) renderPanel();
+    }
+  } catch (err) {
+    if (id === openGroupId) drawerChat.replaceChildren(el("p", "hint", `The messages could not be loaded (${err.message}).`));
+  }
 }
 
 function openDrawer(id) {
@@ -528,6 +624,8 @@ function openDrawer(id) {
   returnFocus = document.activeElement;
   hideError("drawer-error");
   renderDrawer();
+  renderPanel();
+  loadPanel(id);
   $("scrim").hidden = false;
   $("drawer").hidden = false;
   document.body.classList.add("drawer-open");
@@ -591,6 +689,7 @@ async function keepMenuPrice(button) {
   button.disabled = true;
   await putRow(button.dataset.row, { keepMenuPrice: true });
   $(`edit-${button.dataset.row}-itemId`)?.focus();
+  loadPanel(); // the buyer's price is no longer marked "to check"
 }
 
 // Keep Tab inside the open drawer, and Escape closes it.
