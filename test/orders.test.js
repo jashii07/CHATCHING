@@ -38,6 +38,7 @@ test("a row has the Section 5 shape, with the price taken from the menu", () => 
     unitPrice: "18.00", lineTotal: "54.00",
     deliveryDate: "2026-10-31", fulfilment: "delivery",
     unclear: false, reason: "", note: "Changed from 2 to 3 boxes in message 4.", sourceMsgs: [1, 4],
+    priceCheck: null,
     invoiceId: null, invoiceNumber: null, payerLink: null, invoiceStatus: "Draft",
   });
 });

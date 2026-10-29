@@ -500,6 +500,13 @@ function editCard(row) {
   if (cancelled) card.append(el("p", "hint", "This order was cancelled in the chat, so it can't be changed."));
   else if (invoiced) card.append(el("p", "hint", "The invoice is sent, so this order can't be changed any more."));
   else if (row.unclear) card.append(el("p", "check-text", `Check: ${row.reason}`));
+  // Step 7a: the buyer wrote a price that isn't the menu's. The seller has seen it; the invoice always
+  // uses the menu price, so this only clears the check.
+  if (!cancelled && !invoiced && row.priceCheck && !row.priceCheck.kept) {
+    const keep = Object.assign(el("button", "ghost small keep-price", "Keep menu price"), { type: "button", id: `keep-${row.id}` });
+    keep.dataset.row = row.id;
+    card.append(keep);
+  }
   return card;
 }
 
@@ -552,11 +559,17 @@ async function saveField(control) {
     $(`edit-${id}-${name}`)?.focus();
     return;
   }
+  await putRow(id, { [name]: value });
+  $(`edit-${id}-${name}`)?.focus();
+}
+
+// PUT one row's change; the server's reply updates the drawer, the table and the cards.
+async function putRow(id, change) {
   try {
     const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [name]: value }),
+      body: JSON.stringify(change),
     });
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
@@ -571,7 +584,13 @@ async function saveField(control) {
   refreshTable();
   showSummary();
   renderDrawer();
-  $(`edit-${id}-${name}`)?.focus();
+}
+
+// "Keep menu price": clears the price check; focus moves to the item's dropdown (the button is gone).
+async function keepMenuPrice(button) {
+  button.disabled = true;
+  await putRow(button.dataset.row, { keepMenuPrice: true });
+  $(`edit-${button.dataset.row}-itemId`)?.focus();
 }
 
 // Keep Tab inside the open drawer, and Escape closes it.
@@ -1036,6 +1055,7 @@ $("scrim").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("keydown", drawerKeys);
 $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest("#record-payment")) recordPayment(event.target.closest("#record-payment"));
+  if (event.target.closest(".keep-price")) keepMenuPrice(event.target.closest(".keep-price"));
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);

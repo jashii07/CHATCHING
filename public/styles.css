@@ -1345,3 +1345,8 @@ button.ghost.small {
     font-size: 1.15rem;
   }
 }
+
+/* Step 7a: "Keep menu price" under a price check in the drawer. */
+.edit-card .keep-price {
+  margin-top: 12px;
+}

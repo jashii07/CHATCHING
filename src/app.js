@@ -121,7 +121,13 @@ export function createApp(config, {
     if (invoicer.isBusy()) return res.status(409).json({ error: SENDING });
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
-    const updated = store.replace(recalcRow({ ...row, ...changes }, menu));
+    const { keepMenuPrice, ...fields } = changes;
+    const next = { ...row, ...fields };
+    if (keepMenuPrice) {
+      if (!row.priceCheck || row.priceCheck.kept) return res.status(400).json({ error: "This item has no price to check." });
+      next.priceCheck = { ...row.priceCheck, kept: true }; // the invoice uses the menu price, as always
+    }
+    const updated = store.replace(recalcRow(next, menu));
     res.json({ row: updated, totals: totals(store.rows()), summary: summary(store.rows()), groups: buyerGroups(store.rows()) });
   });
 

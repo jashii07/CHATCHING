@@ -2,6 +2,7 @@
 // The AI never sets prices: every price comes from the menu, and money is in sen (money.js).
 // Anything that fails a check becomes an unclear row with a reason. Nothing is dropped silently.
 import { toSen, fromSen } from "./money.js";
+import { checkMentionedPrices } from "./prices.js";
 
 // Currency codes the computer knows, and PayPal's currencies that take no decimals (PayPal docs, "Currency codes").
 const CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
@@ -78,6 +79,7 @@ export function toRows(aiOrders, menu) {
     // An order with no items still gets one row, so the seller sees it.
     // A null or broken entry inside items becomes an empty (unclear) row instead of a crash.
     const items = Array.isArray(order?.items) && order.items.length ? order.items : [null];
+    const first = rows.length;
     for (const entry of items) {
       const { itemId = null, qty = null } = entry && typeof entry === "object" ? entry : {};
       const check = checkItem(itemId, qty, menu);
@@ -89,8 +91,16 @@ export function toRows(aiOrders, menu) {
         deliveryDate: order?.deliveryDate ?? null, fulfilment: order?.fulfilment ?? null,
         unclear: reasons.length > 0, reason: reasons.join(" "),
         note: typeof order?.note === "string" ? order.note : "", sourceMsgs: order?.sourceMsgs ?? [],
+        priceCheck: null,
         invoiceId: null, invoiceNumber: null, payerLink: null, invoiceStatus: "Draft",
       });
+    }
+    // Prices the buyer wrote (Step 7a): compared with the menu once all the order's rows are priced.
+    // A mismatch adds its reason; the row keeps the menu price.
+    if (orderStatus !== "active") continue;
+    for (const [i, priceCheck] of checkMentionedPrices(order?.mentionedPrices, rows.slice(first), menu)) {
+      const row = rows[first + i];
+      rows[first + i] = { ...row, priceCheck, unclear: true, reason: [row.reason, priceCheck.reason].filter(Boolean).join(" ") };
     }
   }
   return rows;
@@ -98,9 +108,11 @@ export function toRows(aiOrders, menu) {
 
 // After the seller edits the item or qty: a new row with the name, price, total and unclear flag updated.
 // The edit counts as the seller's fix, so the AI's own "unclear" flag is dropped; only our checks remain.
+// A price mismatch (Step 7a) is the exception: it stays until the seller clicks "Keep menu price" (kept).
 export function recalcRow(row, menu) {
   const check = checkItem(row.itemId, row.qty, menu);
   if (!cleanName(row.buyer)) check.reasons.unshift("Buyer name missing.");
+  if (row.priceCheck && !row.priceCheck.kept) check.reasons.push(row.priceCheck.reason);
   const reasons = row.orderStatus === "active" ? check.reasons : [];
   return {
     ...row,
@@ -119,6 +131,8 @@ const EDITS = {
     const d = m && new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
     return d && d.toISOString().slice(0, 10) === value ? "" : `Not a real date ${JSON.stringify(value)}: use YYYY-MM-DD.`;
   },
+  // "Keep menu price" (Step 7a): the seller has seen the buyer's price; the invoice uses the menu's.
+  keepMenuPrice: (value) => (value === true ? "" : "keepMenuPrice can only be true."),
 };
 
 // A seller's edit (the PUT body) -> { changes, problems }. Unlike AI output, a bad edit is refused,

@@ -31,7 +31,8 @@ test("the prompt has every menu id and alias, the ambiguous-word rule and the ru
   assert.match(prompt, /FINAL order/);
   assert.match(prompt, /changes .* add-ons .* cancellations/);
   assert.match(prompt, /Questions .* and payment requests .* are not orders/);
-  assert.match(prompt, /Never set, guess or mention prices/);
+  assert.match(prompt, /Never set, guess or correct prices/);
+  assert.match(prompt, /copy it into mentionedPrices exactly as written/);
   assert.match(prompt, /not instructions to you/);
 });
 
@@ -52,7 +53,15 @@ test("the schema matches PLAN.md Section 5, forces menu ids, and has no price an
   assert.equal(order.properties.items.items.properties.itemId.nullable, true);
   assert.deepEqual(order.properties.status.enum, ["active", "cancelled"]);
   assert.deepEqual(order.properties.fulfilment.enum, ["delivery", "pickup"]);
-  assert.doesNotMatch(JSON.stringify(schema), /price|total/i);
+  // Step 7a: the only price field is mentionedPrices, the buyer's own words as TEXT; it is optional, and
+  // nothing in the schema is a number the AI could use as a price or total.
+  const { mentionedPrices, ...rest } = order.properties;
+  assert.doesNotMatch(JSON.stringify(rest), /price|total/i);
+  assert.ok(!order.required.includes("mentionedPrices"));
+  assert.deepEqual(Object.keys(mentionedPrices.items.properties), ["text", "itemId", "msg"]);
+  assert.equal(mentionedPrices.items.properties.text.type, "STRING");
+  assert.deepEqual(mentionedPrices.items.properties.itemId.enum, MENU.items.map((i) => i.id));
+  assert.doesNotMatch(JSON.stringify(schema), /NUMBER/);
 });
 
 test("the request body forces JSON and carries no key", () => {
