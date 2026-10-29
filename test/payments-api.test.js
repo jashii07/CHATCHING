@@ -88,8 +88,9 @@ test("two clicks at the same moment: one payment is recorded, the other is refus
   const app = await start();
   const id = idOf(app.sent, "Lina");
   const release = app.fake.hold("payment");
+  const held = app.fake.waiting("payment");
   const first = app.record(id, { method: "CASH" });
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await held; // the first click is really waiting for PayPal
   const second = await app.record(id, { method: "CASH" });
   release();
   assert.equal((await first).status, 200);

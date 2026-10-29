@@ -68,8 +68,9 @@ test("a failed buyer doesn't stop the others: 6 of 7 sent, the failed one says w
 test("a double click on the same buyer still makes ONE invoice; a buyer already sent is skipped, nothing new", async () => {
   const app = await start();
   const release = app.fake.hold();
+  const held = app.fake.waiting("create");
   const first = app.sendOne("Lina");
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await held;
   const second = await app.sendOne("Lina");
   release();
   assert.deepEqual(second.body.skipped, [{ buyer: "Lina", reason: "Being invoiced right now." }]);

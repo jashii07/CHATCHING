@@ -18,6 +18,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
   let tokenCount = 0;
   let idCount = 0;
   const gates = {}; // kind -> a promise: while set, calls of that kind wait (to test locks)
+  const waiters = []; // { kind, resolve }: told when a call of that kind starts waiting at its gate
   const delays = {}; // kind -> ms: calls of that kind take this long (so the browser check sees progress)
   let wrongTotal = false;
 
@@ -58,7 +59,11 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       return json(401, { name: "AUTHENTICATION_FAILURE", message: "Authentication failed due to invalid authentication credentials." });
     }
 
-    if (gates[kind]) await gates[kind];
+    if (gates[kind]) {
+      const gate = gates[kind];
+      for (let i = waiters.length - 1; i >= 0; i--) if (waiters[i].kind === kind) waiters.splice(i, 1)[0].resolve();
+      await gate;
+    }
     if (delays[kind]) await new Promise((resolve) => setTimeout(resolve, delays[kind]));
     if (kind === "create") {
       const number = body.detail?.invoice_number;
@@ -113,6 +118,8 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       gates[kind] = new Promise((resolve) => (release = resolve));
       return () => { delete gates[kind]; release(); };
     },
+    // Resolves once a call of this kind is waiting at its hold() gate (no guessing with sleeps).
+    waiting: (kind) => new Promise((resolve) => waiters.push({ kind, resolve })),
     // Calls of this kind take ms milliseconds from now on (0 = no delay).
     slow: (kind, ms) => (delays[kind] = ms),
     // A buyer pays (or PayPal changes the status some other way).

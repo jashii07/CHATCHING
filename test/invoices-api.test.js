@@ -97,9 +97,10 @@ test("clicking again creates NOTHING new: every buyer is already invoiced", asyn
 test("two Send requests at the same moment (a double-click) still give ONE invoice per buyer", async () => {
   const app = await start();
   const release = app.fake.hold();
+  const held = app.fake.waiting("create");
   const first = app.send();
   const second = app.send();
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await held; // the first send is really waiting for PayPal
   release();
   const [a, b] = await Promise.all([first, second]);
   assert.equal(app.fake.invoices.size, 7);
@@ -182,8 +183,9 @@ test("after any invoice is sent, Read orders is refused (by the server) and the 
 test("Read orders and New batch wait while invoices are being sent", async () => {
   const app = await start();
   const release = app.fake.hold();
+  const held = app.fake.waiting("create");
   const sending = app.send();
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await held;
   assert.deepEqual((await app.parse()).body, { notice: "Invoices are being sent right now. Please wait for that to finish." });
   assert.deepEqual((await app.newBatch()).body, { notice: "Invoices are being sent right now. Please wait for that to finish." });
   release();

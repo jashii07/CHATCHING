@@ -1,6 +1,7 @@
 // Tests for POST /api/invoices/refresh (Step 6, Part 1): ask PayPal for each open invoice's status and
 // save it. A 10-second cache (and one shared round at a time) means many tabs polling can't flood PayPal.
-// PayPal is the FAKE in scripts/fake-paypal.mjs; the clock is ours, so no test waits 10 real seconds.
+// PayPal is the FAKE in scripts/fake-paypal.mjs; the clock is ours, so no test waits 10 real seconds,
+// and no test sleeps: "wait for PayPal" tests wait for the fake to say a call is held (fake.waiting).
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -120,8 +121,9 @@ test("many tabs at the same moment share ONE round of PayPal calls", async () =>
   app.tick(11_000);
   const gets = getsOf(app.fake);
   const release = app.fake.hold("get");
+  const held = app.fake.waiting("get");
   const tabs = [app.refresh(), app.refresh(), app.refresh()];
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await held; // the round is really waiting for PayPal
   release();
   const replies = await Promise.all(tabs);
   assert.ok(replies.every((r) => r.status === 200));
@@ -149,8 +151,9 @@ test("a New batch while a check is waiting for PayPal: the old statuses never la
   app.fake.pay(invoiceOf(sent, "Lina"));
   app.tick(11_000);
   const release = app.fake.hold("get");
+  const held = app.fake.waiting("get");
   const checking = app.refresh();
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await held; // the check is really waiting for PayPal
   assert.equal((await app.call("/api/new-batch", "POST", {})).status, 200);
   await app.call("/api/parse", "POST", { text: DEMO, chatDate: "2026-10-28" }); // new rows r1.. with the same ids
   release();

@@ -79,8 +79,9 @@ test("after Reset the demo starts over: Read orders works again (even after invo
 test("Reset waits while invoices are being sent", async () => {
   const app = await start();
   const release = app.fake.hold();
+  const held = app.fake.waiting("create");
   const sending = app.call("/api/invoices", "POST", {});
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await held;
   assert.deepEqual((await app.reset()).body, { notice: "Invoices are being sent right now. Please wait for that to finish." });
   release();
   await sending;

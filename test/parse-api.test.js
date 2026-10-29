@@ -156,7 +156,7 @@ test("a saved reply that can't be read (not JSON, no orders list) -> a friendly 
 test("never more than one parse at a time: a second request while one is reading gets a notice", async () => {
   let release;
   let started;
-  const isReading = new Promise((resolve) => (started = resolve));
+  let isReading = new Promise((resolve) => (started = resolve));
   const slowAi = {
     async parse() {
       started();
@@ -172,8 +172,9 @@ test("never more than one parse at a time: a second request while one is reading
   release();
   assert.equal((await first).status, 200);
   // Finished: the next one is read again (the lock is released).
+  isReading = new Promise((resolve) => (started = resolve));
   const third = parse({ text: DEMO, chatDate: CHAT });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await isReading; // the third read has really started
   release();
   assert.equal((await third).status, 200);
 });
