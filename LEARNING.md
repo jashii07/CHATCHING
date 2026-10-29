@@ -64,3 +64,12 @@
 - **Buyer panel ("show your work"):** opening a buyer shows the AI's note and that buyer's own messages, with the parts that mattered marked (items, quantities, days, pickup/delivery, changes, prices). A wrong price is marked amber right in the buyer's words. Once the invoice is sent, the panel also shows PayPal's QR code.
 - **What the QR holds:** decoded from two real sandbox QR codes: `https://www.sandbox.paypal.com/invoice/payerView/details/INV2-…?qr=1`. The full invoice id is inside, so Step 10c's pickup scan can find the invoice straight from the code.
 - **What looking caught:** a phone screenshot looked see-through. It had just been taken while the drawer was still sliding in, so it was the check, not the app. The fake QR shows as a purple square, because the fake PayPal sends a 1-pixel image; the real one was checked separately on the sandbox.
+
+### 2026-10-29, Step 10b: Kitchen list (summary by Claude)
+
+- **What was built:** a **Kitchen list** button above the table opens the list in the drawer: one card per day (earliest first, "No date yet" last), how many of each item to make in menu order, and an amber "+2 orders still to check" where orders aren't clear yet. **Copy** puts it on the clipboard as plain text, one line per item, ready for a notes app or chat.
+- **Why pure code:** it's counting. `src/kitchen.js` reuses `groupByBuyer()`, so "one order = one buyer" means the same thing here as on the invoices: a buyer with any unclear item is one order to check and none of their items is counted yet, so the seller never bakes a guess. Cancelled orders are left out; paid and invoiced orders still count, because they still have to be made.
+- **Why it can't go stale:** the server adds the list to every reply that already carries the totals (`/api/state`, Read orders, each edit, "Keep menu price"). Choosing Priya's brownies makes Saturday go from 6 to 8 boxes and from "+2" to "+1" with no extra request.
+- **Demo numbers:** Thu 29 Oct 2 bahulu; Fri 30 Oct 1 cheesecake; Sat 31 Oct 6 classic (Lina 3 + Aisyah's "same as Lina" 3), 1 cheese, 1 cheesecake, 2 cookies, +2 to check (Priya, Jun Wei); Sun 1 Nov 6 bahulu.
+- **What testing and looking caught:** the browser check said the copied text was wrong, but only because the Windows clipboard turns line breaks into `
+`; the app's text was exactly right, so the check now ignores that difference. Measuring the phone toolbar showed Export CSV and Kitchen list missed sharing one row by 1 px; a slightly smaller gap on phones fixed it.

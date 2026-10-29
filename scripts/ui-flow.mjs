@@ -11,6 +11,7 @@
 //           at the end, Reset demo -> an empty table, with no call to PayPal.
 //   Load demo: refused like Read orders while invoices exist; after Reset demo it fills the chat box and
 //           date, reads nothing by itself, and Read orders then gives the 10 buyers.
+//   Step 10b: Kitchen list opens in the drawer, its numbers match the demo, and Copy gives the plain text.
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
@@ -443,6 +444,30 @@ try {
     await page.waitForTimeout(500);
     check((await allBuyers(page)).length === 10 && (await cards(page)).includes("Expected RM 366.00"), "Read orders after Load demo: 10 buyers, RM 366.00 expected");
     check(fake.calls.length === parseBefore, "Load demo + Read orders made no PayPal call");
+
+    // ---- Step 10b: Kitchen list -> the numbers match the demo -> Copy gives the plain text ----
+    await page.click("#kitchen-list");
+    await page.waitForSelector("#drawer.is-open");
+    await page.waitForTimeout(300); // the slide-in
+    const days = await page.$$eval(".kitchen-day", (cards) => cards.map((card) => card.innerText.replace(/\s+/g, " ").trim()));
+    check(plain(await page.$eval("#drawer-title", (el) => el.textContent)) === "Kitchen list", "Kitchen list opens in the drawer");
+    check(days.length === 4 && days[0] === "Thu 29 Oct 2 × Kuih bahulu (pack of 20)" && days[1] === "Fri 30 Oct 1 × Burnt cheesecake 6-inch"
+      && days[2] === "Sat 31 Oct 6 × Classic brownies (box of 6) 1 × Cheese brownies (box of 6) 1 × Burnt cheesecake 6-inch 2 × Choc chip cookies (jar) +2 orders still to check"
+      && days[3] === "Sun 1 Nov 6 × Kuih bahulu (pack of 20)", `kitchen numbers match the demo: ${JSON.stringify(days)}`);
+    const drawerFits = await page.$eval("#drawer", (el) => el.scrollWidth <= el.clientWidth && document.documentElement.scrollWidth <= innerWidth);
+    check(drawerFits, "the kitchen list fits the screen (no sideways scroll)");
+    check(await page.evaluate(() => document.activeElement?.id === "copy-kitchen"), "focus starts on Copy");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-11-kitchen.png` });
+    await page.click("#copy-kitchen");
+    await page.waitForTimeout(200);
+    // Windows' clipboard stores line breaks as \r\n; the app copies \n (both paste the same).
+    const kitchenText = (await page.evaluate(() => navigator.clipboard.readText())).replaceAll("\r\n", "\n");
+    const kitchenWant = (await (await fetch(`${base}/api/state`)).json()).kitchen.text;
+    check(kitchenText === kitchenWant && kitchenText.startsWith("Kitchen list\n\nThu 29 Oct\n2 x Kuih bahulu (pack of 20)\n")
+      && kitchenText.includes("\n+2 orders still to check\n"), `Copy puts the kitchen list on the clipboard as plain text${kitchenText === kitchenWant ? "" : `: ${JSON.stringify(kitchenText)}`}`);
+    check(plain(await page.$eval("#copy-kitchen", (el) => el.innerText)) === "Copied", "the button says Copied");
+    await page.keyboard.press("Escape");
+    check(await page.$eval("#drawer", (el) => el.hidden), "Escape closes the kitchen list");
 
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();

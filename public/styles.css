@@ -1176,6 +1176,11 @@ button.ghost.small {
 
 /* ---- Phone (<= 640 px): everything stacked, cards for buyers, a full-screen drawer. ---- */
 @media (max-width: 640px) {
+  /* Export CSV and Kitchen list share one row at 390 px. */
+  .table-tools {
+    column-gap: 8px;
+  }
+
   /* Phones: Send invoices sits in the sticky total bar instead. */
   #send-invoices {
     display: none;
@@ -1416,4 +1421,51 @@ mark.hl-price-check {
   display: block;
   width: 180px;
   height: 180px;
+}
+
+/* Step 10b: the kitchen list in the drawer. One card per day; the quantity leads each line. */
+.copy-kitchen {
+  align-self: flex-start;
+}
+
+.kitchen-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kitchen-items li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.kitchen-qty {
+  flex: none;
+  min-width: 3ch;
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Orders not counted yet: amber = check this, as in the table. */
+.kitchen-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--amber-tint);
+  box-shadow: inset 3px 0 0 var(--amber);
+  font-weight: 600;
+}
+
+.kitchen-check .lucide {
+  flex: none;
+  width: 18px;
+  height: 18px;
 }

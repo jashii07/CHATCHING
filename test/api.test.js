@@ -48,7 +48,7 @@ test("GET /api/state -> menu, demo orders + totals, AI mode, placeholder counter
   const res = await call("/api/state");
   assert.equal(res.status, 200);
   const state = JSON.parse(res.text);
-  assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "batch", "geminiConfigured", "groups", "menu", "orders", "paypalConfigured", "source", "summary", "totals"]);
+  assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "batch", "geminiConfigured", "groups", "kitchen", "menu", "orders", "paypalConfigured", "source", "summary", "totals"]);
   assert.deepEqual(state.menu, MENU);
   assert.equal(state.orders.length, 12); // the demo: one row per item
   assert.deepEqual(state.totals, { orders: 7, total: "366.00" });

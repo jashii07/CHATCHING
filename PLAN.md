@@ -67,7 +67,7 @@ Only one new package is planned: **express**.
 | `POST /api/messages` | ready-to-send message per invoiced buyer (#2) | 1 call, or template |
 | `POST /api/reminders` | reminders for all unpaid buyers, same design as messages | 1 call, or template |
 | `POST /api/reset` | Reset demo: empty the table (the saved orders) so the demo starts over; sent invoices are saved to `batches/` first; nothing in PayPal is deleted or cancelled (changed 28 Oct, Step 6) | **0 calls** |
-| `GET /api/kitchen` | (Step 10b, planned) kitchen list: per date, how many of each item to make | **Never** |
+| *(no route)* | (Step 10b, done 29 Oct) kitchen list: per date, how many of each item to make. Sent as `kitchen` in `/api/state` and every edit reply instead of its own route | **Never** |
 | `GET /api/pickup/:ref` | (Step 10c, planned) look up a scanned or typed invoice id/number in the store, then ask PayPal for its live status | **Never** |
 | `POST /api/invoices/:id/collected` | (Step 10c, planned) mark an order Collected: our own status, never sent to PayPal | **Never** |
 
@@ -253,7 +253,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 9. Timeout, retry, backup model, daily counter, "AI calls left".
 10. **Ready-to-send messages + reminders (#2)**: one batched call each, placeholders, checks, English templates, Copy.
    - **Ask the buyer (added 29 Oct):** every unclear row gets a **"Copy question"** button. The code builds the question from the menu and the reason it is unclear, e.g. "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" The AI may only write wording with placeholders (same design and checks as #2: no money, no links); **the code fills in names, items and prices**. Template when there is no AI. Open for Step 10: whether the AI wording rides in one batched call for all unclear rows or the template is enough.
-10b. **Kitchen list (new, 29 Oct; pure code, no AI):** per date, how many of each item to make, from **active clear orders only**. Cancelled orders are left out; unclear orders are not counted but shown separately as "+1 order still to check". A **Copy** button copies the list as plain text. Tests: cancelled excluded, unclear shown apart, several dates, an empty day.
+10b. ✅ (done early, Thu 29 Oct; `src/kitchen.js`, the list rides along in `/api/state` and every edit reply as `kitchen`, no separate route; 297 tests) **Kitchen list (new, 29 Oct; pure code, no AI):** per date, how many of each item to make, from **active clear orders only**. Cancelled orders are left out; unclear orders are not counted but shown separately as "+1 order still to check". A **Copy** button copies the list as plain text. Tests: cancelled excluded, unclear shown apart, several dates, an empty day.
 10c. **Pickup scan (new, 29 Oct; the feature we drop first if time is tight):** on a phone, the seller scans the buyer's PayPal invoice QR with the camera.
    - The app finds the invoice id in the QR, checks it is in our store, and asks PayPal for the **live** status.
    - Paid: a big green "Paid: Lina, 3 x Classic brownies". Not paid: an amber "Not paid yet: RM 54.00".

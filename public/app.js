@@ -29,6 +29,8 @@ let source = null; // the chats the rows came from: { text, chatDate, messages }
 let rowsById = new Map(); // the order rows (one per item), as the server last confirmed them
 let groups = []; // buyer groups from the server: { buyer, rowIds, items, total, cancelled }
 let openGroupId = null; // the buyer shown in the drawer (its first row id)
+let kitchen = { days: [], text: "" }; // the kitchen list from the server (src/kitchen.js)
+let kitchenOpen = false; // the drawer shows the kitchen list instead of a buyer
 let onlyNeedsCheck = false; // the Needs check card filters the table to buyers that need a check
 let chatDate = null; // for the CSV file name
 let returnFocus = null;
@@ -519,8 +521,10 @@ const drawerQr = el("div", "drawer-part");
 $("drawer-body").append(drawerChat, drawerItems, drawerQr);
 
 function renderDrawer() {
+  if (kitchenOpen) return renderKitchen();
   const data = buyerRows().find((row) => row.id === openGroupId);
   if (!data) return closeDrawer();
+  $("drawer-foot").textContent = "Changes save as you make them. Prices and totals come from your menu.";
   $("drawer-avatar").textContent = initials(data.buyer);
   $("drawer-title").textContent = data.buyer || "No name";
   $("drawer-sub").textContent = data.cancelled ? "Cancelled order"
@@ -621,20 +625,78 @@ async function loadPanel(id = openGroupId) {
 
 function openDrawer(id) {
   openGroupId = id;
+  kitchenOpen = false;
   returnFocus = document.activeElement;
   hideError("drawer-error");
   renderDrawer();
   renderPanel();
   loadPanel(id);
+  showDrawer();
+  ($("drawer-body").querySelector("select:not(:disabled), input:not(:disabled)") ?? $("drawer-close")).focus();
+}
+
+function showDrawer() {
   $("scrim").hidden = false;
   $("drawer").hidden = false;
   document.body.classList.add("drawer-open");
   requestAnimationFrame(() => $("drawer").classList.add("is-open"));
-  ($("drawer-body").querySelector("select:not(:disabled), input:not(:disabled)") ?? $("drawer-close")).focus();
+}
+
+// ---- The kitchen list (Step 10b): per date, how many of each item to make. The server counts. ----
+
+function kitchenDay(day) {
+  const card = el("section", "edit-card kitchen-day");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon(day.date ? "calendar" : "calendar-x"));
+  name.append(circle, day.label);
+  title.append(name);
+  card.append(title);
+  if (day.items.length) {
+    const list = el("ul", "kitchen-items");
+    for (const item of day.items) {
+      const line = el("li", "");
+      line.append(el("span", "kitchen-qty", `${item.qty} ×`), el("span", "", item.name));
+      list.append(line);
+    }
+    card.append(list);
+  }
+  if (day.toCheck) {
+    const check = el("p", "kitchen-check");
+    check.append(icon("triangle-alert"), `+${plural(day.toCheck, "order")} still to check`);
+    card.append(check);
+  }
+  return card;
+}
+
+function renderKitchen() {
+  $("drawer-avatar").replaceChildren(icon("chef-hat"));
+  $("drawer-title").textContent = "Kitchen list";
+  $("drawer-sub").textContent = "What to make, per day";
+  $("drawer-foot").textContent = "Counts clear orders only, paid or not. Cancelled orders are left out.";
+  drawerChat.replaceChildren();
+  drawerQr.replaceChildren();
+  const copy = Object.assign(el("button", "copy-kitchen", ""), { type: "button", id: "copy-kitchen", disabled: !kitchen.days.length });
+  copy.append(icon("copy"), "Copy");
+  copy.setAttribute("aria-label", "Copy the kitchen list as text");
+  const days = kitchen.days.length ? kitchen.days.map(kitchenDay) : [el("p", "hint", "Nothing to make yet. Read some orders first.")];
+  drawerItems.replaceChildren(copy, ...days);
+}
+
+function openKitchen() {
+  openGroupId = null;
+  kitchenOpen = true;
+  returnFocus = document.activeElement;
+  hideError("drawer-error");
+  renderDrawer();
+  showDrawer();
+  ($("copy-kitchen").disabled ? $("drawer-close") : $("copy-kitchen")).focus();
 }
 
 function closeDrawer() {
   openGroupId = null;
+  kitchenOpen = false;
   $("drawer").classList.remove("is-open");
   $("drawer").hidden = true;
   $("scrim").hidden = true;
@@ -675,6 +737,7 @@ async function putRow(id, change) {
     totals = reply.totals;
     summary = reply.summary;
     groups = reply.groups;
+    kitchen = reply.kitchen;
     hideError("drawer-error");
   } catch (err) {
     showError(`That change was not saved (${err.message}).`, "drawer-error");
@@ -763,6 +826,7 @@ function showOrders(state) {
   source = state.source;
   chatDate = state.source?.chatDate ?? null;
   groups = state.groups;
+  kitchen = state.kitchen;
   rowsById = new Map(state.orders.map((row) => [row.id, row]));
   showSummary();
   showSource();
@@ -773,7 +837,7 @@ function showOrders(state) {
     refreshTable();
   }
   showSendButtons();
-  if (openGroupId) renderDrawer();
+  if (openGroupId || kitchenOpen) renderDrawer();
 }
 
 async function loadState() {
@@ -1104,21 +1168,31 @@ async function resetDemo() {
   }
 }
 
-// Copy a payer link for the chat. The clipboard API needs a secure page (https or localhost);
+// Copy text for a chat or notes app. The clipboard API needs a secure page (https or localhost);
 // elsewhere the older copy command is the fallback.
-async function copyLink(button) {
-  const link = button.dataset.link;
+async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(link);
+    await navigator.clipboard.writeText(text);
   } catch {
-    const box = Object.assign(document.createElement("textarea"), { value: link });
+    const box = Object.assign(document.createElement("textarea"), { value: text });
     document.body.append(box);
     box.select();
     document.execCommand("copy");
     box.remove();
   }
+}
+
+async function copyLink(button) {
+  await copyText(button.dataset.link);
   button.textContent = "Copied";
   setTimeout(() => (button.textContent = "Copy link"), 2000);
+}
+
+// The kitchen list as plain text, built by the server (one line per item), so it pastes cleanly.
+async function copyKitchen(button) {
+  await copyText(kitchen.text);
+  button.replaceChildren(icon("check"), "Copied");
+  setTimeout(() => button.isConnected && button.replaceChildren(icon("copy"), "Copy"), 2000);
 }
 
 $("chat-date").value = todayLocal();
@@ -1147,6 +1221,7 @@ $("filter-clear").addEventListener("click", () => {
 });
 $("search").addEventListener("input", (event) => grid?.setGridOption("quickFilterText", event.target.value));
 $("export-csv").addEventListener("click", exportCsv);
+$("kitchen-list").addEventListener("click", openKitchen);
 $("page-prev").addEventListener("click", () => grid?.paginationGoToPreviousPage());
 $("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
 $("drawer-close").addEventListener("click", closeDrawer);
@@ -1155,6 +1230,7 @@ $("drawer").addEventListener("keydown", drawerKeys);
 $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest("#record-payment")) recordPayment(event.target.closest("#record-payment"));
   if (event.target.closest(".keep-price")) keepMenuPrice(event.target.closest(".keep-price"));
+  if (event.target.closest("#copy-kitchen")) copyKitchen(event.target.closest("#copy-kitchen"));
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);

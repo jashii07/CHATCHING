@@ -13,6 +13,7 @@ import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
 import { buyerPanel } from "./panel.js";
+import { kitchenList } from "./kitchen.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
@@ -72,10 +73,10 @@ export function createApp(config, {
   const qrCodes = new Map(); // invoice id -> Base64 PNG (a QR code never changes)
   let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
 
-  // What the table, cards and slim bar need: the same shape after every change.
+  // What the table, cards, slim bar and kitchen list need: the same shape after every change.
   const table = () => {
     const rows = store.rows();
-    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), source: store.source(), batch: store.batch() };
+    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), source: store.source(), batch: store.batch() };
   };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
@@ -130,7 +131,8 @@ export function createApp(config, {
       next.priceCheck = { ...row.priceCheck, kept: true }; // the invoice uses the menu price, as always
     }
     const updated = store.replace(recalcRow(next, menu));
-    res.json({ row: updated, totals: totals(store.rows()), summary: summary(store.rows()), groups: buyerGroups(store.rows()) });
+    const rows = store.rows();
+    res.json({ row: updated, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu) });
   });
 
   // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
