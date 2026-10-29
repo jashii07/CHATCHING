@@ -64,7 +64,7 @@ test("Reset never deletes or cancels anything in PayPal; sent invoices are kept 
   const dir = join(dirname(app.storeFile), "batches");
   assert.deepEqual(readdirSync(dir), [`${sent.batch}.json`]);
   const archived = JSON.parse(readFileSync(join(dir, `${sent.batch}.json`), "utf8"));
-  assert.equal(archived.rows.filter((row) => row.payerLink).length, 10);
+  assert.equal(archived.rows.filter((row) => row.payerLink).length, 8);
 });
 
 test("after Reset the demo starts over: Read orders works again (even after invoices were sent)", async () => {
@@ -72,8 +72,8 @@ test("after Reset the demo starts over: Read orders works again (even after invo
   await app.call("/api/invoices", "POST", {});
   await app.reset();
   const read = (await app.call("/api/parse", "POST", { text: DEMO, chatDate: "2026-10-28" })).body;
-  assert.equal(read.groups.length, 9);
-  assert.deepEqual(read.totals, { orders: 7, total: "387.00" });
+  assert.equal(read.groups.length, 10);
+  assert.deepEqual(read.totals, { orders: 7, total: "366.00" });
 });
 
 test("Reset waits while invoices are being sent", async () => {

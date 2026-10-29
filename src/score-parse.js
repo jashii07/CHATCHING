@@ -2,6 +2,7 @@
 // EVERY difference in plain words. Pure: no files, no network. Used by scripts/spike-parse.mjs (Step 3b)
 // and, later, scripts/accuracy.mjs (Step 8).
 // A cancelled order is scored on its status only: its items, date and flags no longer matter.
+import { readPrice } from "./prices.js";
 
 const key = (buyer) => String(buyer ?? "").trim().toLowerCase();
 const show = (value) => (value === undefined ? "missing" : JSON.stringify(value));
@@ -16,8 +17,20 @@ function itemList(order, withQty) {
 
 const listText = (list) => (list.length ? list.join(", ") : "none");
 
+// Prices the buyer mentioned (Step 7a), as comparable text: "classic_brownies RM15 @17". The amount is read
+// the same way the app reads it (src/prices.js), so "RM15" and "RM 15" are the same mention.
+function priceList(order, currency) {
+  return (Array.isArray(order?.mentionedPrices) ? order.mentionedPrices : [])
+    .map((p) => {
+      const sen = readPrice(p?.text, currency);
+      return `${p?.itemId ?? "order"} ${sen == null ? JSON.stringify(p?.text ?? null) : (sen / 100).toFixed(2)} @${p?.msg ?? "?"}`;
+    })
+    .sort();
+}
+
 // AI orders + expected orders -> { scores: [{ name, ok, total }], differences: [string], perfect }.
-export function scoreParse(aiOrders, expectedOrders) {
+// currency (the menu's) is only needed to read mentioned prices.
+export function scoreParse(aiOrders, expectedOrders, { currency = null } = {}) {
   const differences = [];
   const ai = new Map();
   for (const order of Array.isArray(aiOrders) ? aiOrders : []) {
@@ -50,6 +63,7 @@ export function scoreParse(aiOrders, expectedOrders) {
       ["dates", show(got.deliveryDate ?? null), show(want.deliveryDate)],
       ["unclear", show(Boolean(got.unclear)), show(want.unclear)],
       ["fulfilment", show(got.fulfilment ?? null), show(want.fulfilment)],
+      ["prices", listText(priceList(got, currency)), listText(priceList(want, currency))],
     ];
     for (const [name, gotText, wantText] of fields) {
       score(name, gotText === wantText);
@@ -62,7 +76,7 @@ export function scoreParse(aiOrders, expectedOrders) {
     if (!expectedKeys.has(k)) differences.push(`${order?.buyer}: an extra order the answers don't have (${order?.status}, items ${listText(itemList(order, true))}).`);
   }
 
-  const order = ["buyers", "cancellations", "items", "qty", "dates", "unclear", "fulfilment"];
+  const order = ["buyers", "cancellations", "items", "qty", "dates", "unclear", "fulfilment", "prices"];
   const scores = order.filter((name) => counts[name]).map((name) => ({ name, ...counts[name] }));
   return { scores, differences, perfect: differences.length === 0 };
 }

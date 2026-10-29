@@ -14,7 +14,7 @@ import { fakePayPal } from "../scripts/fake-paypal.mjs";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id-123", PAYPAL_CLIENT_SECRET: "fake-secret-456" };
 const JSON_HEADERS = { "Content-Type": "application/json" };
-const CLEAR_BUYERS = ["Lina", "Hafiz", "Mei Ling", "Arif", "Sarah", "Kak Ros", "Jun Wei"];
+const CLEAR_BUYERS = ["Lina", "Hafiz", "Mei Ling", "Aisyah", "Arif", "Sarah", "Kak Ros"];
 
 const servers = [];
 after(() => servers.forEach((server) => (server.closeAllConnections(), server.close())));

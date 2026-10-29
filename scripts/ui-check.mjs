@@ -3,7 +3,8 @@
 // The browser check (design round 3): opens the page at laptop, iPad and phone widths, takes screenshots,
 // and fails on any console error or warning. It checks one row per buyer, 6 buyers per page, the hero
 // card and the icon circles, then fixes Priya IN THE DRAWER (item -> Classic brownies, qty -> 1), checks
-// a refused change (qty 0) shows an error and is undone, reloads, and checks the fix survived.
+// a refused change (qty 0) shows an error and is undone, clicks "Keep menu price" for Jun Wei (Step 7a),
+// reloads, and checks both fixes survived.
 // Run: npm run ui-check (uses the installed Google Chrome, no download).
 // It starts its own server on a free port with its own store file in tmp/, so your saved orders
 // in data/runtime/ are never touched. Screenshots go to tmp/screenshots/ (git-ignored).
@@ -103,7 +104,7 @@ try {
     const step = await page.$eval(".steps li.current", (el) => el.innerText.replace(/\s+/g, " ").trim());
     check(step.endsWith("Review orders"), `guide shows the current step: "${step}"`);
     const cards = plain(await page.$eval(".summary", (el) => el.innerText));
-    check(cards.includes("Expected RM 387.00") && cards.includes("Orders 8") && cards.includes("Paid RM 0.00") && cards.includes("Needs check 1"),
+    check(cards.includes("Expected RM 366.00") && cards.includes("Orders 9") && cards.includes("Paid RM 0.00") && cards.includes("Needs check 2"),
       `summary cards: "${cards}"`);
     const hero = await page.$eval("#stat-expected", (el) => getComputedStyle(el).backgroundImage);
     check(hero.includes("gradient") && hero.includes("38, 48, 122"), "Expected is the deep indigo hero card (gradient)");
@@ -116,7 +117,7 @@ try {
     check(headerTop === 0, "header stays at the top when scrolling (sticky)");
     await page.evaluate(() => scrollTo(0, 0));
     const bar = plain(await page.$eval("#chat-bar", (el) => (el.hidden ? "" : el.innerText)));
-    check(bar.startsWith("15 messages read") && bar.endsWith("Edit"), `chats folded into a slim bar: "${bar}"`);
+    check(bar.startsWith("18 messages read") && bar.endsWith("Edit"), `chats folded into a slim bar: "${bar}"`);
     const setup = plain(await page.$eval("footer", (el) => el.innerText));
     check(setup.includes("PayPal keys: missing"), `setup details in the quiet footer: "${setup}"`);
 
@@ -124,11 +125,11 @@ try {
     const page1 = await bodyRows(page);
     check(page1.length === 6, `page 1 shows 6 buyers (${page1.length})`);
     check(plain(await page.$eval("#page-text", (el) => el.textContent)) === "Page 1 of 2", "page arrows say Page 1 of 2");
-    const hafiz = page1.filter((text) => text.includes("Hafiz"));
-    check(hafiz.length === 1 && hafiz[0].includes("1 × Burnt cheesecake 6-inch") && hafiz[0].includes("1 × Choc chip cookies") && hafiz[0].includes("RM 70.00"),
-      `Hafiz is ONE row with both item chips and his total: "${hafiz[0]}"`);
-    const chipIcons = await rowOf(page, "Hafiz").locator(".chip svg.lucide").count();
-    check(chipIcons === 2, `food icons on Hafiz's item chips (${chipIcons})`);
+    const meiLing = page1.filter((text) => text.includes("Mei Ling"));
+    check(meiLing.length === 1 && meiLing[0].includes("1 × Cheese brownies") && meiLing[0].includes("2 × Choc chip cookies") && meiLing[0].includes("RM 72.00"),
+      `Mei Ling is ONE row with both item chips and her total: "${meiLing[0]}"`);
+    const chipIcons = await rowOf(page, "Mei Ling").locator(".chip svg.lucide").count();
+    check(chipIcons === 2, `food icons on Mei Ling's item chips (${chipIcons})`);
 
     // Background shapes: 3 soft blurred shapes, never darker than the page (grey text keeps >= 4.66:1).
     const shapes = await page.$$eval(".backdrop span", (els, contrast) => els.map((el) => {
@@ -138,15 +139,15 @@ try {
     check(shapes.length === 3 && shapes.every((s) => s.blur && s.ratio >= 4.66),
       `background: 3 blurred shapes; grey text contrast on them ${shapes.map((s) => s.ratio.toFixed(2)).join(", ")} (>= 4.66)`);
 
-    // CLICK the Needs check card: only Priya; click again: everyone.
+    // CLICK the Needs check card: only Priya and Jun Wei; click again: everyone.
     const card = page.locator("#stat-check");
     check(await card.evaluate((el) => el.tagName === "BUTTON" && !el.disabled), "Needs check card is a button");
     await card.click();
     await page.waitForTimeout(300);
     let shown = await bodyRows(page);
     const note = plain(await page.$eval("#filter-note", (el) => (el.hidden ? "" : el.innerText)));
-    check(shown.length === 1 && shown[0].includes("Priya") && (await card.getAttribute("aria-pressed")) === "true" && note.startsWith("Showing 1 buyer that needs a check"),
-      `clicking Needs check shows only Priya (${shown.length} row; note "${note}")`);
+    check(shown.length === 2 && shown[0].includes("Priya") && shown[1].includes("Jun Wei") && (await card.getAttribute("aria-pressed")) === "true" && note.startsWith("Showing 2 buyers that need a check"),
+      `clicking Needs check shows only Priya and Jun Wei (${shown.length} rows; note "${note}")`);
     check(await page.$eval("#pager", (el) => el.hidden), "one page of results: the page arrows hide");
     await card.click();
     await page.waitForTimeout(300);
@@ -161,7 +162,7 @@ try {
       return (await bodyRows(page)).map((row) => row.split(" ").slice(1, 3).join(" "));
     };
     let found = await search("cookies");
-    check(found.length === 2 && found.join().includes("Hafiz") && found.join().includes("Mei Ling"), `search "cookies" finds Hafiz and Mei Ling (${found.join(" | ")})`);
+    check(found.length === 1 && found.join().includes("Mei Ling"), `search "cookies" finds only Mei Ling: Hafiz cancelled his (${found.join(" | ")})`);
     found = await search("priya");
     check(found.length === 1 && found[0].includes("Priya"), `search "priya" finds Priya, even on page 2 (${found.join(" | ")})`);
     found = await search("pizza");
@@ -174,19 +175,19 @@ try {
     if (viewport.name !== "ipad") {
       const { name, text } = await exportedCsv(page);
       const lines = text.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
-      const hafizLine = lines.find((line) => line.includes("Hafiz")) ?? "";
+      const meiLine = lines.find((line) => line.includes("Mei Ling")) ?? "";
       check(name === "chatching-orders-2026-10-28.csv", `Export CSV downloads ${name}`);
       check(text.startsWith("\uFEFF"), "the CSV starts with a byte-order mark (Excel reads it as UTF-8)");
       check(lines[0] === '"Buyer","Items","Date","Total (MYR)","Status"', `CSV header: ${lines[0]}`);
-      check(lines.length === 10, `CSV has all 9 buyers, not just one page (${lines.length - 1} rows)`);
-      check(hafizLine.includes("1 × Burnt cheesecake 6-inch; 1 × Choc chip cookies (jar)") && hafizLine.includes('"70.00"'), `CSV Hafiz row: ${hafizLine}`);
+      check(lines.length === 11, `CSV has all 10 buyers, not just one page (${lines.length - 1} rows)`);
+      check(meiLine.includes("1 × Cheese brownies (box of 6); 2 × Choc chip cookies (jar)") && meiLine.includes('"72.00"'), `CSV Mei Ling row: ${meiLine}`);
     }
 
     if (viewport.name === "phone") {
       const headerHeight = await page.$eval(".ag-header", (el) => el.getBoundingClientRect().height);
       check(headerHeight <= 1 && (await page.$$(".card-row")).length === 6, `phone: buyers are stacked cards, no table header (header ${headerHeight} px)`);
       const sticky = plain(await page.$eval("#phone-sum", (el) => el.innerText));
-      check(sticky === "Total: 7 orders ready RM 387.00", `sticky bar: "${sticky}"`);
+      check(sticky === "Total: 7 orders ready RM 366.00", `sticky bar: "${sticky}"`);
     } else {
       const expected = viewport.name === "ipad" ? "Buyer,Items,Total,Status" : "Buyer,Items,Date,Total,Status";
       check(cols.join() === expected, `columns: ${cols.join(", ")}`);
@@ -195,19 +196,24 @@ try {
         check(lina === "L Lina 1 item, Sat 31 Oct", `iPad: the date sits under the name: "${lina}"`);
       }
       const pinned = plain(await pinnedText(page));
-      check(pinned.includes("7 orders ready") && pinned.includes("RM 387.00"), `pinned totals row: "${pinned}"`);
+      check(pinned.includes("7 orders ready") && pinned.includes("RM 366.00"), `pinned totals row: "${pinned}"`);
     }
 
     await goToPage(page, 2);
     const page2 = await bodyRows(page);
-    check(page2.length === 3 && plain(await page.$eval("#page-text", (el) => el.textContent)) === "Page 2 of 2", `page 2 shows the other 3 buyers (${page2.length})`);
+    check(page2.length === 4 && plain(await page.$eval("#page-text", (el) => el.textContent)) === "Page 2 of 2", `page 2 shows the other 4 buyers (${page2.length})`);
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-page2.png`, fullPage: true });
     const priyaPage = await goToBuyer(page, "Priya");
     const priya = rowOf(page, "Priya");
     check(await isUnclear(priya), `Priya's row is amber (unclear), on page ${priyaPage}`);
     const priyaText = plain(await priya.innerText());
-    // The demo is Gemini's real reply (Step 3b), so the reason is in the AI's own words.
-    check(priyaText.includes("Check:") && priyaText.includes("Cannot determine items"), `Priya's row says why: "${priyaText}"`);
+    // The demo is Gemini's real reply (Step 7), so the reason is in the AI's own words.
+    check(priyaText.includes("Check:") && priyaText.includes("Which brownies: classic or cheese?"), `Priya's row says why: "${priyaText}"`);
+    const junWei = rowOf(page, "Jun Wei");
+    await goToBuyer(page, "Jun Wei");
+    const junText = plain(await junWei.innerText());
+    check(await isUnclear(junWei) && junText.includes("Check: buyer mentioned RM 15.00, menu says RM 18.00."), `Jun Wei's wrong price is amber: "${junText}"`);
+    await goToBuyer(page, "Priya");
 
     if (viewport.name === "phone") {
       await priya.click();
@@ -238,8 +244,9 @@ try {
   await page.selectOption(`#edit-${PRIYA}-itemId`, "classic_brownies");
   console.log(`      PUT itemId -> ${(await reply).status()}`);
   await page.waitForTimeout(200);
-  const midCheck = plain(await page.$eval("#drawer-body", (el) => el.innerText));
-  check(midCheck.includes("Check: Quantity missing."), "after the item: the drawer still says the quantity is missing");
+  // Priya wrote "2 boxes": the quantity was known, so choosing the item is the whole fix.
+  const midSub = plain(await page.$eval("#drawer-sub", (el) => el.textContent));
+  check(midSub === "1 item, RM 36.00 in total" && !(await page.$("#drawer-body .check-text")), `after the item: Priya is clear: "${midSub}"`);
 
   reply = putReply(page);
   await page.fill(`#edit-${PRIYA}-qty`, "1");
@@ -263,6 +270,26 @@ try {
   check((await page.inputValue(`#edit-${PRIYA}-qty`)) === "1", "and the quantity goes back to 1");
   await page.keyboard.press("Escape");
 
+  // Step 7a: Jun Wei wrote "Classic is RM15 right?". The seller keeps the menu price.
+  console.log("\nJun Wei's price check: Keep menu price");
+  await rowOf(page, "Jun Wei").click();
+  await page.waitForSelector("#drawer.is-open");
+  await page.waitForTimeout(400);
+  const junDrawer = plain(await page.$eval("#drawer-body", (el) => el.innerText));
+  check(junDrawer.includes("Check: buyer mentioned RM 15.00, menu says RM 18.00.") && (await page.locator(".keep-price").count()) === 1,
+    "his drawer shows the price check and ONE Keep menu price button");
+  const keepBox = await page.locator(".keep-price").boundingBox();
+  check(keepBox.height >= 44, `the button is at least 44 px tall (${keepBox.height} px)`);
+  await page.screenshot({ path: `${OUT}1280-laptop-price-check.png` });
+  reply = putReply(page);
+  await page.click(".keep-price");
+  console.log(`      PUT keepMenuPrice -> ${(await reply).status()}`);
+  await page.waitForTimeout(200);
+  const junSub = plain(await page.$eval("#drawer-sub", (el) => el.textContent));
+  check(junSub === "2 items, RM 62.00 in total" && !(await page.locator(".keep-price").count()) && !(await page.$("#drawer-body .check-text")),
+    `after Keep menu price: Jun Wei is clear at the MENU price: "${junSub}"`);
+  await page.keyboard.press("Escape");
+
   const afterFix = async (label) => {
     await goToBuyer(page, "Priya");
     const row = rowOf(page, "Priya");
@@ -272,8 +299,10 @@ try {
     console.log(`      ${label}: row "${text}"; totals "${pinned}"`);
     check(!(await isUnclear(row)) && !text.includes("Check:"), `${label}: Priya's row is clear (no amber, no Check words)`);
     check(text.includes("1 × Classic brownies") && text.includes("RM 18.00"), `${label}: her chip and total come from the server (RM 18.00)`);
-    check(pinned.includes("8 orders ready") && pinned.includes("RM 405.00"), `${label}: totals updated to 8 orders, RM 405.00`);
-    check(cards.includes("Expected RM 405.00") && cards.includes("Needs check 0"), `${label}: summary cards updated`);
+    check(pinned.includes("9 orders ready") && pinned.includes("RM 446.00"), `${label}: totals updated to 9 orders, RM 446.00`);
+    check(cards.includes("Expected RM 446.00") && cards.includes("Needs check 0"), `${label}: summary cards updated`);
+    await goToBuyer(page, "Jun Wei");
+    check(!(await isUnclear(rowOf(page, "Jun Wei"))), `${label}: Jun Wei's row is clear`);
     check(!(await page.$eval("#stat-check", (el) => el.classList.contains("is-check"))), `${label}: Needs check card is no longer amber`);
     check(await page.$eval("#stat-check", (el) => el.disabled && el.getAttribute("aria-pressed") === "false" && document.getElementById("filter-note").hidden),
       `${label}: nothing to check, so the filter switched itself off and the card is not clickable`);

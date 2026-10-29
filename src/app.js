@@ -59,7 +59,7 @@ export function errorHandler(log) {
 export function createApp(config, {
   log = console.log,
   storeFile = STORE_FILE,
-  ai = createAi({ mode: config.aiMode }),
+  ai = createAi({ mode: config.aiMode, apiKey: config.gemini.apiKey, log }),
   paypal = createPayPal({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, baseUrl: config.paypalBaseUrl }),
   now = Date.now, // the clock for the status cache (tests pass their own)
 } = {}) {
@@ -150,7 +150,7 @@ export function createApp(config, {
     reading = true;
     let rows;
     try {
-      const reply = await ai.parse({ text, chatDate, messages });
+      const reply = await ai.parse({ text, chatDate, messages, menu });
       if (reply.notice) return res.json({ notice: reply.notice });
       rows = toRows(checkOrders(reply.orders, messages), menu);
     } catch (err) {

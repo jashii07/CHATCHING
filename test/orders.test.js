@@ -16,9 +16,9 @@ const order = (itemId, qty, extra = {}) => ({
   deliveryDate: "2026-10-31", fulfilment: null, unclear: false, reason: "", note: "", ...extra,
 });
 
-test("expected-orders.json -> 7 clear orders worth RM 387.00", () => {
+test("expected-orders.json -> 7 clear orders worth RM 366.00", () => {
   const rows = toRows(expected.orders, menu);
-  assert.deepEqual(totals(rows), { orders: 7, total: "387.00" });
+  assert.deepEqual(totals(rows), { orders: 7, total: "366.00" });
 });
 
 test("every buyer's invoice total matches expected-orders.json", () => {
@@ -57,12 +57,12 @@ test("a price sent by the AI is ignored; only the menu sets prices", () => {
   assert.equal(row.lineTotal, "25.00");
 });
 
-test("Priya (items not stated) -> unclear row, kept, not invoiceable", () => {
+test("Priya (\"brownies\", no type) -> unclear row, kept, not invoiceable", () => {
   const rows = toRows(expected.orders, menu);
   const priya = rows.filter((r) => r.buyer === "Priya");
   assert.equal(priya.length, 1);
   assert.equal(priya[0].unclear, true);
-  assert.match(priya[0].reason, /Same order as last week/);
+  assert.match(priya[0].reason, /Which brownies: classic or cheese\?/);
   assert.equal(priya[0].lineTotal, null);
   assert.equal(groupByBuyer(rows).find((g) => g.buyer === "Priya").invoiceable, false);
 });
@@ -219,9 +219,9 @@ test("currency is one setting: the same orders with USD show \"$\" and give the 
   const myr = toRows(expected.orders, menu);
   const usd = toRows(expected.orders, usdMenu);
   assert.deepEqual(totals(usd), totals(myr));
-  assert.deepEqual(totals(usd), { orders: 7, total: "387.00" });
-  assert.equal(formatMoney(totals(usd).total, usdMenu.currency), "$387.00");
-  assert.equal(formatMoney(totals(myr).total, menu.currency).replace(/\u00a0/g, " "), "RM 387.00");
+  assert.deepEqual(totals(usd), { orders: 7, total: "366.00" });
+  assert.equal(formatMoney(totals(usd).total, usdMenu.currency), "$366.00");
+  assert.equal(formatMoney(totals(myr).total, menu.currency).replace(/\u00a0/g, " "), "RM 366.00");
   for (const row of usd.filter((r) => r.lineTotal)) assert.match(formatMoney(row.lineTotal, usdMenu.currency), /^\$\d/);
 });
 

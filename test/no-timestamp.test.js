@@ -46,10 +46,10 @@ test("a bad Chat date is refused with a clear error (the page always sends one)"
   assert.throws(() => splitMessages(PASTE, "28/10/2026"), /Not a valid chat date/);
 });
 
-test("the demo chats (one timestamp per line) -> 15 messages, numbered like sourceMsgs", () => {
+test("the demo chats (one timestamp per line) -> 18 messages, numbered like sourceMsgs", () => {
   const demo = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
   const messages = splitMessages(demo, CHAT_DATE);
-  assert.equal(messages.length, 15);
+  assert.equal(messages.length, 18);
   assert.ok(messages.every((m, i) => m.n === i + 1 && m.date === CHAT_DATE && !m.warning));
   assert.equal(messages[3].text, "Lina: oh wait, make it 3 boxes, my friend wants some too");
 });

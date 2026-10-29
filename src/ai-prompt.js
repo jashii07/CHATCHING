@@ -80,7 +80,7 @@ export function buildParsePrompt({ paste, chatDate, menu }) {
     ...ambiguousLines(menu),
     "",
     "RULES:",
-    "1. Return one order per buyer: their FINAL order after all their messages. Apply changes (\"make it 3 boxes\"), add-ons (\"add 1 jar cookies\") and cancellations (\"cancel pls\") from later messages.",
+    "1. Return one order per buyer: their FINAL order after all their messages. Apply changes (\"make it 3 boxes\"), add-ons (\"add 1 jar cookies\") and cancellations (\"cancel pls\") from later messages. A cancelled add-on (\"skip the cookies\") removes only that item. \"Same as Lina\" means that buyer's final items (copy them; the date and pickup or delivery are this buyer's own).",
     "2. A cancelled order has status \"cancelled\". Every other order has status \"active\".",
     "3. Questions (\"do you still have bahulu?\") and payment requests (\"send me the payment link\") are not orders. A buyer who only asks questions or asks for payment gets no order. List such a message in sourceMsgs only if it belongs to a real order.",
     "4. Never set, guess or correct prices. Quantities are whole numbers from 1 to 99. If the buyer writes a price (\"is it RM15?\", \"2 boxes for RM30\"), copy it into mentionedPrices exactly as written, with the item it is about (or null) and its message number. Do not check it or fix it, and do not mention it in the note or reason.",

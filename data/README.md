@@ -11,7 +11,7 @@
 
 The demo's fixed chat date is `chatDate: "2026-10-28"` in `expected-orders.json`, so the dates are the same on any day. Date words in the chats, counted from Wed 28 Oct 2026: "tomorrow" = Thu 29 Oct, "Friday" = Fri 30 Oct, "Saturday" = Sat 31 Oct, "this Sunday" = Sun 1 Nov.
 
-Expected result: 7 clear orders worth RM 387.00, 1 unclear (Priya), 1 cancelled (Danish), and 1 message that is not an order (Lina's payment-link request).
+Expected result (Step 7, 18 messages): 7 clear orders worth RM 366.00; 2 that need a check (Priya wrote plain "brownies"; Jun Wei wrote "Classic is RM15 right?" but the menu says RM 18.00); 1 cancelled (Danish); and 2 messages that are not orders (Arif's question, Lina's payment-link request). It also has a quantity change (Lina, Kak Ros), "same as Lina" (Aisyah), a cancelled add-on (Hafiz's cookies) and a correct price mention (Mei Ling's RM72).
 
 ## Holdout chats: privacy checklist
 

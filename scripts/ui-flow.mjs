@@ -1,6 +1,6 @@
 // The browser check for the whole flow so far, at laptop and phone widths, from an EMPTY table:
 //   Step 4: random text -> the friendly mock notice; the demo chats -> loading message, button disabled,
-//           table fills, chats fold into the slim bar, summary cards update, Priya amber.
+//           table fills, chats fold into the slim bar, summary cards update, Priya and Jun Wei amber.
 //   Step 5: Send invoices, one buyer at a time with a real progress bar ("Sending invoice 3 of 7...");
 //           one buyer fails (amber "Error:" on that row), the others go on, "6 of 7 sent, 1 needs a retry";
 //           retry; the button then says "All invoices sent"; payer links + Copy appear; clicking again
@@ -10,7 +10,7 @@
 //           Lina in her drawer -> Paid (cash/bank) -> Refresh keeps it; polling pauses after 30 minutes;
 //           at the end, Reset demo -> an empty table, with no call to PayPal.
 //   Load demo: refused like Read orders while invoices exist; after Reset demo it fills the chat box and
-//           date, reads nothing by itself, and Read orders then gives the 9 buyers.
+//           date, reads nothing by itself, and Read orders then gives the 10 buyers.
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
@@ -33,7 +33,7 @@ const WIDTHS = [
   { name: "phone", width: 390, height: 844 },
 ];
 const ROWS = ".ag-grid-scrolling-container > .ag-row";
-const MOCK_NOTICE = "Mock mode only knows the demo chats - the real AI comes in Step 7.";
+const MOCK_NOTICE = "Mock mode only knows the demo chats. Set AI_MODE=real to read other chats with Gemini.";
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -145,21 +145,21 @@ try {
     check(!(await page.$eval("#read-orders", (el) => el.disabled)), "the button works again afterwards");
 
     const buyers = await allBuyers(page);
-    check(buyers.length === 9, `the table filled: 9 buyers (${buyers.length})`);
+    check(buyers.length === 10, `the table filled: 10 buyers (${buyers.length})`);
     const summary = await cards(page);
-    check(summary.includes("Expected RM 387.00") && summary.includes("Orders 8") && summary.includes("Needs check 1"), `summary cards: "${summary}"`);
+    check(summary.includes("Expected RM 366.00") && summary.includes("Orders 9") && summary.includes("Needs check 2"), `summary cards: "${summary}"`);
     check(await page.$eval("#stat-check", (el) => el.classList.contains("is-check")), "the Needs check card is amber");
     const bar = plain(await page.$eval("#chat-bar", (el) => (el.hidden ? "" : el.innerText)));
     const barDate = viewport.name === "phone" || bar.includes("from 28 Oct"); // phones hide the date on purpose (styles.css)
-    check(bar.startsWith("15 messages read") && barDate && bar.endsWith("Edit"), `chats folded into the slim bar: "${bar}"`);
+    check(bar.startsWith("18 messages read") && barDate && bar.endsWith("Edit"), `chats folded into the slim bar: "${bar}"`);
     check(await page.$eval("#chats", (el) => el.hidden), "the chat box is folded away");
     const step = plain(await page.$eval(".steps li.current", (el) => el.innerText));
     check(step.endsWith("Review orders"), `guide moved to step 2: "${step}"`);
     if (viewport.name === "phone") {
-      check(plain(await page.$eval("#phone-sum", (el) => el.innerText)) === "Total: 7 orders ready RM 387.00", "phone: the sticky total bar updated");
+      check(plain(await page.$eval("#phone-sum", (el) => el.innerText)) === "Total: 7 orders ready RM 366.00", "phone: the sticky total bar updated");
     } else {
       const pinned = plain(await page.$eval(".ag-grid-pinned-bottom-rows", (el) => el.innerText));
-      check(pinned.includes("7 orders ready") && pinned.includes("RM 387.00"), `pinned totals row: "${pinned}"`);
+      check(pinned.includes("7 orders ready") && pinned.includes("RM 366.00"), `pinned totals row: "${pinned}"`);
     }
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-4-read.png`, fullPage: true });
@@ -170,7 +170,7 @@ try {
     const priya = page.locator(ROWS, { hasText: "Priya" });
     const priyaText = plain(await priya.innerText());
     check(await priya.evaluate((el) => el.classList.contains("row-unclear")), "Priya's row is amber (unclear)");
-    check(priyaText.includes("Needs a check") && priyaText.includes("Check: Cannot determine items"), `Priya needs a check: "${priyaText}"`);
+    check(priyaText.includes("Needs a check") && priyaText.includes("Check: Which brownies: classic or cheese?"), `Priya needs a check: "${priyaText}"`);
     const stripe = await priya.evaluate((el) => {
       const style = getComputedStyle(el);
       const before = getComputedStyle(el, "::before");
@@ -188,8 +188,8 @@ try {
     let invoicePosts = 0;
     page.on("request", (req) => req.url().endsWith("/api/invoices") && req.method() === "POST" && invoicePosts++);
     fake.slow("send", 300); // each invoice takes a moment, so the bar can be seen moving
-    // Arif (4th in the table) fails once at PayPal; the others must carry on.
-    fake.failNext("create", 500, { name: "INTERNAL_SERVER_ERROR", message: "Try again later." }, ({ body }) => body?.detail?.invoice_number?.endsWith("-04"));
+    // Arif (5th in the table) fails once at PayPal; the others must carry on.
+    fake.failNext("create", 500, { name: "INTERNAL_SERVER_ERROR", message: "Try again later." }, ({ body }) => body?.detail?.invoice_number?.endsWith("-05"));
     const progress = async () => page.$eval("#send-progress", (el) => ({
       hidden: el.hidden, now: Number(el.getAttribute("aria-valuenow")), max: Number(el.getAttribute("aria-valuemax")),
       width: el.querySelector("span").getBoundingClientRect().width / el.getBoundingClientRect().width,
@@ -210,7 +210,7 @@ try {
     await page.waitForTimeout(500);
     const done = await progress();
     const doneText = plain(await page.$eval("#send-message", (el) => el.textContent));
-    check(doneText === "6 of 7 sent, 1 needs a retry. Not sent: Priya (needs a check first).", `one failure doesn't stop the others: "${doneText}"`);
+    check(doneText === "6 of 7 sent, 1 needs a retry. Not sent: Priya, Jun Wei (need a check first).", `one failure doesn't stop the others: "${doneText}"`);
     check(done.now === 7 && done.width > 0.98, `the bar still finishes (${done.now} of ${done.max})`);
     check(invoicePosts === 7 && fake.invoices.size === 6, `one request per buyer, the extra click sent nothing (requests ${invoicePosts}, invoices ${fake.invoices.size})`);
     await goToBuyerPage(page, "Arif");
@@ -232,7 +232,7 @@ try {
     await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("1 of 1 sent"), null, { timeout: 10000 });
     await page.waitForTimeout(500);
     const sentMessage = plain(await page.$eval("#send-message", (el) => el.textContent));
-    check(sentMessage === "1 of 1 sent. Copy each payer link into the chat. Not sent: Priya (needs a check first).", `the retry: "${sentMessage}"`);
+    check(sentMessage === "1 of 1 sent. Copy each payer link into the chat. Not sent: Priya, Jun Wei (need a check first).", `the retry: "${sentMessage}"`);
     check(fake.invoices.size === 7 && !plain(await page.locator(ROWS, { hasText: "Arif" }).innerText()).includes("Error:"), "Arif is sent and his Error: is gone (7 invoices at PayPal)");
     check(fake.calls.filter((c) => c.kind === "send").every((c) => c.body.send_to_recipient === false), "sent without emailing anyone");
     fake.slow("send", 0);
@@ -276,7 +276,7 @@ try {
     const flashing = (buyer) => page.locator(ROWS, { hasText: buyer }).locator(".ag-cell-data-changed, .ag-cell-data-changed-animation").count();
     check((await flashing("Hafiz")) > 0, "Hafiz's status flashes green once");
     const paidCard = plain(await page.$eval("#stat-paid", (el) => el.innerText));
-    check(paidCard.includes("RM 70.00") && await page.$eval("#stat-paid", (el) => el.classList.contains("is-paid")), `the Paid card turned green: "${paidCard}"`);
+    check(paidCard.includes("RM 45.00") && await page.$eval("#stat-paid", (el) => el.classList.contains("is-paid")), `the Paid card turned green: "${paidCard}"`);
     const paidTag = await page.locator(ROWS, { hasText: "Hafiz" }).locator(".badge").evaluate((el) => getComputedStyle(el).backgroundColor);
     check(paidTag === "rgb(220, 242, 227)", `the Paid tag is the green tint #DCF2E3 (${paidTag}); Sent stays neutral`);
     // Mei Ling pays; Refresh status asks at once.
@@ -351,7 +351,7 @@ try {
     check((await page.inputValue("#chat")).trim() === DEMO.trim(), "Edit opens the chats again, filled with what was read");
     await page.click("#read-orders");
     await page.waitForFunction((text) => document.getElementById("read-message").textContent === text, INVOICED);
-    check((await readMessage(page)) === INVOICED && (await allBuyers(page)).length === 9, `Read orders is refused: "${await readMessage(page)}"`);
+    check((await readMessage(page)) === INVOICED && (await allBuyers(page)).length === 10, `Read orders is refused: "${await readMessage(page)}"`);
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-7-read-refused.png`, fullPage: true });
     await page.fill("#chat", "kept as it is");
@@ -376,7 +376,7 @@ try {
     await page.click("#read-orders");
     await page.waitForSelector(ROWS);
     await page.waitForTimeout(500);
-    check((await allBuyers(page)).length === 9 && plain(await sendButton.innerText()) === "Send 7 invoices", "the new batch reads the chats again: 9 buyers, 7 to send");
+    check((await allBuyers(page)).length === 10 && plain(await sendButton.innerText()) === "Send 7 invoices", "the new batch reads the chats again: 10 buyers, 7 to send");
     check(fake.invoices.size === 7, "and no invoice was made by reading");
 
     // ---- Reset demo (with sent invoices in the table) ----
@@ -415,13 +415,13 @@ try {
     const loaded = await readMessage(page);
     check((await page.inputValue("#chat")) === DEMO && (await page.inputValue("#chat-date")) === "2026-10-28",
       "Load demo fills the chat box with the demo chats and the Chat date 2026-10-28");
-    check(loaded === "Demo chats loaded: 15 messages from Wed 28 Oct. Click Read orders." && (await cards(page)).includes("Orders 0"),
+    check(loaded === "Demo chats loaded: 18 messages from Wed 28 Oct. Click Read orders." && (await cards(page)).includes("Orders 0"),
       `it reads nothing by itself: "${loaded}"`);
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-10-demo-loaded.png`, fullPage: true });
     await page.click("#read-orders");
     await page.waitForSelector(ROWS);
     await page.waitForTimeout(500);
-    check((await allBuyers(page)).length === 9 && (await cards(page)).includes("Expected RM 387.00"), "Read orders after Load demo: 9 buyers, RM 387.00 expected");
+    check((await allBuyers(page)).length === 10 && (await cards(page)).includes("Expected RM 366.00"), "Read orders after Load demo: 10 buyers, RM 366.00 expected");
     check(fake.calls.length === parseBefore, "Load demo + Read orders made no PayPal call");
 
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);

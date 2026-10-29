@@ -37,7 +37,7 @@ after(() => servers.forEach((server) => (server.closeAllConnections(), server.cl
 test("first start loads the demo and saves it to the store file", async () => {
   const { body } = await call("/api/state");
   assert.equal(body.orders.length, 12);
-  assert.deepEqual(body.totals, { orders: 7, total: "387.00" });
+  assert.deepEqual(body.totals, { orders: 7, total: "366.00" });
   assert.equal(JSON.parse(readFileSync(file, "utf8")).rows.length, 12);
   assert.equal(priya.unclear, true);
   assert.equal(body.orders.find((row) => row.buyer === "Danish").orderStatus, "cancelled");
@@ -48,16 +48,19 @@ test("PUT item then qty: Priya's row becomes clear, price and totals come from t
   assert.equal(res.status, 200);
   assert.equal(res.body.row.itemName, "Classic brownies (box of 6)");
   assert.equal(res.body.row.unitPrice, "18.00");
-  assert.equal(res.body.row.unclear, true, "qty is still missing");
-  assert.equal(res.body.row.reason, "Quantity missing.");
+  // Priya wrote "2 boxes of brownies": the qty is known, so choosing the item is the whole fix.
+  assert.equal(res.body.row.lineTotal, "36.00");
+  assert.equal(res.body.row.unclear, false);
+  assert.equal(res.body.row.reason, "");
+  assert.deepEqual(res.body.totals, { orders: 8, total: "402.00" });
 
   res = await call(`/api/orders/${priya.id}`, put(priya.id, { qty: 1 }));
   assert.equal(res.status, 200);
   assert.equal(res.body.row.lineTotal, "18.00");
   assert.equal(res.body.row.unclear, false);
-  assert.equal(res.body.row.reason, "");
-  assert.deepEqual(res.body.totals, { orders: 8, total: "405.00" });
-  assert.deepEqual(res.body.summary, { orders: 8, ready: 8, expected: "405.00", paidOrders: 0, paid: "0.00", needsCheck: 0 });
+  assert.deepEqual(res.body.totals, { orders: 8, total: "384.00" });
+  // Jun Wei still needs a check (his price mention).
+  assert.deepEqual(res.body.summary, { orders: 9, ready: 8, expected: "384.00", paidOrders: 0, paid: "0.00", needsCheck: 1 });
 });
 
 test("PUT a date: saved as-is; null clears it", async () => {
@@ -74,7 +77,7 @@ test("the edit survives a restart: a new server on the same file sees it", async
   const row = body.orders.find((r) => r.id === priya.id);
   assert.equal(row.itemId, "classic_brownies");
   assert.equal(row.qty, 1);
-  assert.deepEqual(body.totals, { orders: 8, total: "405.00" });
+  assert.deepEqual(body.totals, { orders: 8, total: "384.00" });
 });
 
 test("bad input -> 400 with a clear message, and the row is unchanged", async () => {
@@ -136,10 +139,10 @@ test("a broken store file never stops the server: it logs a warning and loads th
   }
 });
 
-test("the store remembers which chats the rows came from (demo: 15 messages, Chat date 28 Oct)", async () => {
+test("the store remembers which chats the rows came from (demo: 18 messages, Chat date 28 Oct)", async () => {
   const { body } = await call("/api/state");
-  assert.equal(body.source.messages, 15);
+  assert.equal(body.source.messages, 18);
   assert.equal(body.source.chatDate, "2026-10-28");
   assert.match(body.source.text, /^\[28\/10 9:02 AM\] Lina:/);
-  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).source.messages, 15);
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).source.messages, 18);
 });

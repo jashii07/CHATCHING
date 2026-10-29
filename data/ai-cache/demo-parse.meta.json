@@ -1,23 +1,23 @@
 {
-  "what": "Gemini's raw generateContent reply for data/demo-chats.txt, saved unchanged in demo-parse.json (Step 3b).",
+  "what": "Gemini's raw generateContent reply for data/demo-chats.txt, saved unchanged in demo-parse.json (Step 3b; new chats in Step 7).",
   "model": "gemini-3.6-flash",
   "modelVersion": "gemini-3.6-flash",
-  "savedAt": "2026-10-27T08:29:08.848Z",
+  "savedAt": "2026-10-29T09:53:29.648Z",
   "chatDate": "2026-10-28",
-  "inputHash": "f8fbecea3d5cdc6a6a85a7f97338ef38d35e3aea7a45ef893db91574afdec7d2",
-  "seconds": 17.6,
-  "replyBytes": 15686,
+  "inputHash": "138f925bcce29ad67a5b973e509d26766d6630815aac38be8ab74a4d00067362",
+  "seconds": 21,
+  "replyBytes": 20697,
   "usage": {
-    "promptTokenCount": 1590,
-    "candidatesTokenCount": 617,
-    "totalTokenCount": 5683,
+    "promptTokenCount": 1829,
+    "candidatesTokenCount": 1436,
+    "totalTokenCount": 7019,
     "promptTokensDetails": [
       {
         "modality": "TEXT",
-        "tokenCount": 1590
+        "tokenCount": 1829
       }
     ],
-    "thoughtsTokenCount": 3476,
+    "thoughtsTokenCount": 3754,
     "serviceTier": "standard"
   },
   "finishReason": "STOP"

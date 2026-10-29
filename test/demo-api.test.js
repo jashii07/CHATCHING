@@ -42,13 +42,13 @@ test("Load demo -> the demo chats and their Chat date (2026-10-28), unchanged; n
   const before = (await app.call("/api/state")).body;
   const { status, body } = await app.call("/api/demo");
   assert.equal(status, 200);
-  assert.deepEqual(body, { text: DEMO, chatDate: "2026-10-28", messages: 15 });
+  assert.deepEqual(body, { text: DEMO, chatDate: "2026-10-28", messages: 18 });
   assert.equal(app.aiCalls(), 0);
   assert.equal(app.fake.calls.length, 0);
   assert.deepEqual((await app.call("/api/state")).body, before); // the table stays empty until Read orders
 });
 
-test("the loaded demo, read as-is, is the saved Gemini reply: 9 buyers, RM 387.00 (0 real AI calls)", async () => {
+test("the loaded demo, read as-is, is the saved Gemini reply: 10 buyers, RM 366.00 (0 real AI calls)", async () => {
   const server = createApp(loadConfig({}), { log: () => {}, storeFile: join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json") }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
@@ -56,8 +56,8 @@ test("the loaded demo, read as-is, is the saved Gemini reply: 9 buyers, RM 387.0
   const demo = await (await fetch(`${base}/api/demo`)).json();
   const res = await fetch(`${base}/api/parse`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ text: demo.text, chatDate: demo.chatDate }) });
   const read = await res.json();
-  assert.equal(read.groups.length, 9);
-  assert.deepEqual(read.totals, { orders: 7, total: "387.00" });
+  assert.equal(read.groups.length, 10);
+  assert.deepEqual(read.totals, { orders: 7, total: "366.00" });
 });
 
 test("invoices already sent -> Load demo follows the batch rule (the notice, no chats); after New batch it works again", async () => {

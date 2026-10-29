@@ -64,10 +64,10 @@ test("a bracketed stamp we can't read still starts a message, with a reason (\"[
   assert.equal(messages[1].text, "Lina: bye");
 });
 
-test("readPaste: the demo chats -> 15 messages, no notice", () => {
+test("readPaste: the demo chats -> 18 messages, no notice", () => {
   const { messages, notice } = readPaste(DEMO, CHAT);
   assert.equal(notice, "");
-  assert.equal(messages.length, 15);
+  assert.equal(messages.length, 18);
 });
 
 test("readPaste: the real-style order with no timestamp -> one message on the Chat date", () => {

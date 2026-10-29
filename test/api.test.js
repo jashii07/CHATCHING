@@ -51,11 +51,11 @@ test("GET /api/state -> menu, demo orders + totals, AI mode, placeholder counter
   assert.deepEqual(Object.keys(state).sort(), ["aiCallsLeft", "aiMode", "batch", "geminiConfigured", "groups", "menu", "orders", "paypalConfigured", "source", "summary", "totals"]);
   assert.deepEqual(state.menu, MENU);
   assert.equal(state.orders.length, 12); // the demo: one row per item
-  assert.deepEqual(state.totals, { orders: 7, total: "387.00" });
-  assert.equal(state.groups.length, 9); // 8 active buyers + Danish (cancelled)
-  assert.deepEqual(state.groups.find((g) => g.buyer === "Hafiz"), { buyer: "Hafiz", rowIds: ["r2", "r3"], items: 2, total: "70.00", cancelled: false });
-  assert.deepEqual({ ...state.source, text: undefined }, { text: undefined, chatDate: "2026-10-28", messages: 15 });
-  assert.deepEqual(state.summary, { orders: 8, ready: 7, expected: "387.00", paidOrders: 0, paid: "0.00", needsCheck: 1 });
+  assert.deepEqual(state.totals, { orders: 7, total: "366.00" });
+  assert.equal(state.groups.length, 10); // 9 active buyers + Danish (cancelled)
+  assert.deepEqual(state.groups.find((g) => g.buyer === "Mei Ling"), { buyer: "Mei Ling", rowIds: ["r3", "r4"], items: 2, total: "72.00", cancelled: false });
+  assert.deepEqual({ ...state.source, text: undefined }, { text: undefined, chatDate: "2026-10-28", messages: 18 });
+  assert.deepEqual(state.summary, { orders: 9, ready: 7, expected: "366.00", paidOrders: 0, paid: "0.00", needsCheck: 2 });
   assert.equal(state.aiMode, "mock");
   assert.equal(typeof state.aiCallsLeft, "number");
   assert.equal(state.paypalConfigured, true);

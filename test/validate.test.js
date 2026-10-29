@@ -18,12 +18,12 @@ const order = (extra = {}) => ({
 });
 const one = (extra, msgs = messages) => checkOrders([order(extra)], msgs)[0];
 
-test("Gemini's real demo reply passes every check unchanged: 7 clear orders, RM 387.00, only Priya unclear", () => {
+test("Gemini's real demo reply passes every check unchanged; Priya (which brownies) and Jun Wei (price) unclear", () => {
   const ai = mockParse();
   const checked = checkOrders(ai, messages);
   assert.deepEqual(checked, ai);
   const rows = toRows(checked, menu);
-  assert.deepEqual([...new Set(rows.filter((r) => r.unclear).map((r) => r.buyer))], ["Priya"]);
+  assert.deepEqual([...new Set(rows.filter((r) => r.unclear).map((r) => r.buyer))], ["Priya", "Jun Wei"]);
 });
 
 test("a clear order stays clear, and the input is not changed", () => {
@@ -36,7 +36,7 @@ test("a clear order stays clear, and the input is not changed", () => {
 test("a message number that doesn't exist -> unclear, naming it; the real numbers are kept", () => {
   const checked = one({ sourceMsgs: [1, 99, 0] });
   assert.equal(checked.unclear, true);
-  assert.match(checked.reason, /Message 99, 0 is not in the chat \(it has 15 messages\)\./);
+  assert.match(checked.reason, /Message 99, 0 is not in the chat \(it has 18 messages\)\./);
   assert.deepEqual(checked.sourceMsgs, [1]);
 });
 

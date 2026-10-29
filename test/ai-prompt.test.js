@@ -38,9 +38,9 @@ test("the prompt has every menu id and alias, the ambiguous-word rule and the ru
 
 test("each message gets its full date and weekday from dates.js; the calendar covers 15 days", () => {
   const { prompt, messages } = buildParsePrompt(INPUT);
-  assert.equal(messages.length, 15);
+  assert.equal(messages.length, 18);
   assert.ok(prompt.includes("1. [Wed 28 Oct 2026, 09:02] Lina: hi! can i order 2 boxes of classic brownies, deliver on saturday?"));
-  assert.ok(prompt.includes("15. [Wed 28 Oct 2026, 21:30] Lina: pls send me the payment link later"));
+  assert.ok(prompt.includes("18. [Wed 28 Oct 2026, 21:30] Lina: pls send me the payment link later"));
   assert.ok(prompt.includes("Sat 31 Oct 2026 = 2026-10-31"));
   assert.ok(prompt.includes("Wed 11 Nov 2026 = 2026-11-11") && !prompt.includes("2026-11-12"));
 });
@@ -80,10 +80,10 @@ test("replyToOrders reads the JSON text out of a raw reply, skipping thought par
 });
 
 test("scoreParse: the expected answers score perfectly against themselves", () => {
-  const result = scoreParse(EXPECTED.orders, EXPECTED.orders);
+  const result = scoreParse(EXPECTED.orders, EXPECTED.orders, { currency: MENU.currency });
   assert.equal(result.perfect, true);
   assert.deepEqual(result.scores.map((s) => `${s.name} ${s.ok}/${s.total}`),
-    ["buyers 9/9", "cancellations 9/9", "items 8/8", "qty 8/8", "dates 8/8", "unclear 8/8", "fulfilment 8/8"]);
+    ["buyers 10/10", "cancellations 10/10", "items 9/9", "qty 9/9", "dates 9/9", "unclear 9/9", "fulfilment 9/9", "prices 9/9"]);
 });
 
 test("scoreParse names every difference", () => {
@@ -94,17 +94,19 @@ test("scoreParse names every difference", () => {
   ai.find((o) => o.buyer === "Hafiz").buyer = " hafiz "; // same buyer, other spelling: still matched
   ai.push({ buyer: "Lina", status: "active", items: [] }); // a duplicate
   ai.push({ buyer: "Zara", status: "active", items: [{ itemId: "cookies", qty: 1 }] }); // invented
-  const { scores, differences, perfect } = scoreParse(ai, EXPECTED.orders);
+  ai.find((o) => o.buyer === "Jun Wei").mentionedPrices = []; // missed the price mention
+  const { scores, differences, perfect } = scoreParse(ai, EXPECTED.orders, { currency: MENU.currency });
   assert.equal(perfect, false);
   assert.deepEqual(differences.sort(), [
     "Arif: fulfilment null, expected \"pickup\".",
     "Danish: status \"active\", expected \"cancelled\".",
+    "Jun Wei: prices none, expected classic_brownies 15.00 @17.",
     "Lina: qty 2 × classic_brownies, expected 3 × classic_brownies.",
     "Lina: the AI returned more than one order for this buyer (only the first is scored).",
     "Priya: missing from the AI reply (expected active).",
     "Zara: an extra order the answers don't have (active, items 1 × cookies).",
   ]);
-  assert.equal(scores.find((s) => s.name === "buyers").ok, 8);
+  assert.equal(scores.find((s) => s.name === "buyers").ok, 9);
 });
 
 test("structureChecks: unknown message numbers, impossible or far dates, long notes", () => {
@@ -125,13 +127,13 @@ test("structureChecks: unknown message numbers, impossible or far dates, long no
   ]);
 });
 
-test("mock mode returns Gemini's saved real reply: 9 orders, 7 ready, RM 387.00 through toRows()", async () => {
+test("mock mode returns Gemini's saved real reply: 10 orders, 7 ready, RM 366.00 through toRows()", async () => {
   const { mockParse } = await import("../src/ai.js");
   const { toRows, totals } = await import("../src/orders.js");
   const orders = mockParse();
-  assert.equal(orders.length, 9);
-  assert.deepEqual(scoreParse(orders, EXPECTED.orders).differences, []); // the saved reply scored perfectly
-  assert.deepEqual(totals(toRows(orders, MENU)), { orders: 7, total: "387.00" });
+  assert.equal(orders.length, 10);
+  assert.deepEqual(scoreParse(orders, EXPECTED.orders, { currency: MENU.currency }).differences, []); // the saved reply scored perfectly
+  assert.deepEqual(totals(toRows(orders, MENU)), { orders: 7, total: "366.00" });
 });
 
 test("mock mode: a missing or broken saved reply is a clear error, never made-up data", async () => {

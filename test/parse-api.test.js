@@ -46,17 +46,17 @@ function aiWith(replies) {
 }
 const geminiReply = (orders) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ orders }) }] } }] });
 
-test("the demo chats -> Gemini's saved reply: 9 buyers, 7 ready worth RM 387.00, Priya needs a check", async () => {
+test("the demo chats -> Gemini's saved reply: 10 buyers, 7 ready worth RM 366.00, Priya and Jun Wei need a check", async () => {
   const { parse, call } = await start();
   const { status, body } = await parse({ text: DEMO, chatDate: CHAT });
   assert.equal(status, 200);
   assert.equal(body.notice, undefined);
-  assert.equal(body.groups.length, 9);
+  assert.equal(body.groups.length, 10);
   assert.equal(body.orders.length, 12);
-  assert.deepEqual(body.totals, { orders: 7, total: "387.00" });
-  assert.deepEqual(body.summary, { orders: 8, ready: 7, expected: "387.00", paidOrders: 0, paid: "0.00", needsCheck: 1 });
-  assert.deepEqual(body.orders.filter((r) => r.unclear).map((r) => r.buyer), ["Priya"]);
-  assert.deepEqual({ ...body.source, text: undefined }, { text: undefined, chatDate: CHAT, messages: 15 });
+  assert.deepEqual(body.totals, { orders: 7, total: "366.00" });
+  assert.deepEqual(body.summary, { orders: 9, ready: 7, expected: "366.00", paidOrders: 0, paid: "0.00", needsCheck: 2 });
+  assert.deepEqual(body.orders.filter((r) => r.unclear).map((r) => r.buyer), ["Priya", "Jun Wei"]); // Jun Wei: only his classic row
+  assert.deepEqual({ ...body.source, text: undefined }, { text: undefined, chatDate: CHAT, messages: 18 });
   // Saved: the page reload shows the same rows and source.
   const state = (await call("/api/state")).body;
   assert.deepEqual(state.orders, body.orders);
@@ -67,7 +67,7 @@ test("the same demo chats with Windows line endings, blank lines and trailing sp
   const { parse } = await start();
   const messy = `\r\n${DEMO.replace(/\n/g, "  \r\n\r\n")}`;
   const { body } = await parse({ text: messy, chatDate: CHAT });
-  assert.deepEqual(body.totals, { orders: 7, total: "387.00" });
+  assert.deepEqual(body.totals, { orders: 7, total: "366.00" });
 });
 
 test("any other text in mock mode -> the friendly mock notice (200, not an error), rows unchanged", async () => {
@@ -78,7 +78,7 @@ test("any other text in mock mode -> the friendly mock notice (200, not an error
     assert.equal(status, 200);
     assert.deepEqual(body, { notice: MOCK_UNKNOWN });
   }
-  assert.equal(MOCK_UNKNOWN, "Mock mode only knows the demo chats - the real AI comes in Step 7.");
+  assert.equal(MOCK_UNKNOWN, "Mock mode only knows the demo chats. Set AI_MODE=real to read other chats with Gemini.");
   assert.deepEqual((await call("/api/state")).body, before);
 });
 
@@ -179,11 +179,12 @@ test("never more than one parse at a time: a second request while one is reading
   assert.equal((await third).status, 200);
 });
 
-test("other AI modes (real, off) are not built yet -> a friendly notice, not a crash", async () => {
-  for (const mode of ["real", "off"]) {
-    const { parse } = await start({ ai: createAi({ mode }) });
-    const { status, body } = await parse({ text: DEMO, chatDate: CHAT });
-    assert.equal(status, 200);
-    assert.match(body.notice, mode === "real" ? /Step 7/ : /Step 12/);
-  }
+test("AI_MODE=off is not built yet -> a friendly notice, not a crash; real mode reads the demo from its saved reply", async () => {
+  const off = await start({ ai: createAi({ mode: "off" }) });
+  const { status, body } = await off.parse({ text: DEMO, chatDate: CHAT });
+  assert.equal(status, 200);
+  assert.match(body.notice, /Step 12/);
+  // Real mode without a key: the demo still works (saved reply, 0 calls); test/ai-real.test.js has the rest.
+  const real = await start({ ai: createAi({ mode: "real", apiKey: "" }) });
+  assert.deepEqual((await real.parse({ text: DEMO, chatDate: CHAT })).body.totals, { orders: 7, total: "366.00" });
 });

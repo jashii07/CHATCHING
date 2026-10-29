@@ -68,12 +68,12 @@ test("record cash for Lina: PayPal gets the FULL invoice total; the row becomes 
   assert.deepEqual((await app.state()).orders, body.orders); // saved
 });
 
-test("bank transfer for Hafiz (2 rows, one invoice): 70.00, both rows paid", async () => {
+test("bank transfer for Mei Ling (2 rows, one invoice): 72.00, both rows paid", async () => {
   const app = await start();
-  const { body } = await app.record(idOf(app.sent, "Hafiz"), { method: "BANK_TRANSFER" });
-  assert.deepEqual(body.recorded, { buyer: "Hafiz", method: "BANK_TRANSFER", amount: "70.00" });
+  const { body } = await app.record(idOf(app.sent, "Mei Ling"), { method: "BANK_TRANSFER" });
+  assert.deepEqual(body.recorded, { buyer: "Mei Ling", method: "BANK_TRANSFER", amount: "72.00" });
   assert.equal(payments(app.fake)[0].body.note, "Bank transfer recorded in ChatChing.");
-  assert.deepEqual(rowsOf(body, "Hafiz").map((row) => row.invoiceStatus), ["Paid (cash/bank)", "Paid (cash/bank)"]);
+  assert.deepEqual(rowsOf(body, "Mei Ling").map((row) => row.invoiceStatus), ["Paid (cash/bank)", "Paid (cash/bank)"]);
 });
 
 test("recording twice is refused by the server: 409, no second payment at PayPal", async () => {
