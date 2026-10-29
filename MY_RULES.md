@@ -64,6 +64,7 @@ A step is done only when ALL of these are true:
 - TEST HONESTLY. Add simple checks for core logic and edge cases (empty input, bad input, API failure). Report failures plainly. Never say something works unless you ran it.
 - NO MAKING THINGS UP. If unsure about a library, API, or flag, say so and check the docs (especially the PayPal developer docs). Flag every assumption.
 - If the same error repeats 3 times, stop, summarize what we tried, and suggest a different approach.
+- REAL CHATS. Real chats from a seller (the holdout set) stay in `data/holdout/`, which is git-ignored. Before any real chat is committed, names and phone numbers must be replaced and the seller must agree. The holdout accuracy run happens ONCE (Sat 7 Nov), and its result is never used to tune the prompt afterwards.
 - Never call `python` on this machine (it can hang on Windows). Use Node for all scripts.
 - Don't overbuild. If something breaks the plan or time budget, say so and suggest the cheaper option.
 - If something I say seems wrong or unclear, tell me kindly before acting.

@@ -1,0 +1,16 @@
+{
+ "candidates": [
+  {
+   "content": {
+    "role": "model",
+    "parts": [
+     {
+      "text": "{\"orders\":[{\"buyer\":\"Lina\",\"status\":\"active\",\"sourceMsgs\":[1,4],\"items\":[{\"itemId\":\"classic_brownies\",\"qty\":3}],\"deliveryDate\":\"2026-10-31\",\"fulfilment\":\"delivery\",\"unclear\":false,\"reason\":\"\",\"note\":\"Changed from 2 to 3 boxes in message 4.\"},{\"buyer\":\"Hafiz\",\"status\":\"active\",\"sourceMsgs\":[2,11,15],\"items\":[{\"itemId\":\"burnt_cheesecake\",\"qty\":1}],\"deliveryDate\":\"2026-10-30\",\"fulfilment\":null,\"unclear\":false,\"reason\":\"\",\"note\":\"Cookies added in message 11, then removed in message 15.\"},{\"buyer\":\"Mei Ling\",\"status\":\"active\",\"sourceMsgs\":[3,12],\"items\":[{\"itemId\":\"cheese_brownies\",\"qty\":1},{\"itemId\":\"cookies\",\"qty\":2}],\"deliveryDate\":\"2026-10-31\",\"fulfilment\":null,\"unclear\":false,\"reason\":\"\",\"note\":\"Delivery date given in message 12.\",\"mentionedPrices\":[{\"text\":\"RM72\",\"itemId\":null,\"msg\":3}]},{\"buyer\":\"Aisyah\",\"status\":\"active\",\"sourceMsgs\":[5],\"items\":[{\"itemId\":\"classic_brownies\",\"qty\":3}],\"deliveryDate\":\"2026-10-31\",\"fulfilment\":\"pickup\",\"unclear\":false,\"reason\":\"\",\"note\":\"Same as Lina's final order (3 classic brownies).\"},{\"buyer\":\"Arif\",\"status\":\"active\",\"sourceMsgs\":[6,7],\"items\":[{\"itemId\":\"bahulu\",\"qty\":2}],\"deliveryDate\":\"2026-10-29\",\"fulfilment\":\"pickup\",\"unclear\":false,\"reason\":\"\",\"note\":\"Message 6 is only a question; pickup, not delivery.\"},{\"buyer\":\"Priya\",\"status\":\"active\",\"sourceMsgs\":[8],\"items\":[{\"itemId\":null,\"qty\":2}],\"deliveryDate\":\"2026-10-31\",\"fulfilment\":null,\"unclear\":true,\"reason\":\"Which brownies: classic or cheese?\",\"note\":\"Asked for brownies without saying which.\"},{\"buyer\":\"Danish\",\"status\":\"cancelled\",\"sourceMsgs\":[9,14],\"items\":[],\"deliveryDate\":null,\"fulfilment\":null,\"unclear\":false,\"reason\":\"\",\"note\":\"Cancelled in message 14.\"},{\"buyer\":\"Sarah\",\"status\":\"active\",\"sourceMsgs\":[10],\"items\":[{\"itemId\":\"burnt_cheesecake\",\"qty\":1}],\"deliveryDate\":\"2026-10-31\",\"fulfilment\":null,\"unclear\":false,\"reason\":\"\",\"note\":\"Conditional on the cheesecake being 6-inch, which matches the menu.\"},{\"buyer\":\"Kak Ros\",\"status\":\"active\",\"sourceMsgs\":[13,16],\"items\":[{\"itemId\":\"bahulu\",\"qty\":6}],\"deliveryDate\":\"2026-11-01\",\"fulfilment\":null,\"unclear\":false,\"reason\":\"\",\"note\":\"Changed from 5 to 6 packs in message 16.\"},{\"buyer\":\"Jun Wei\",\"status\":\"active\",\"sourceMsgs\":[17],\"items\":[{\"itemId\":\"cheese_brownies\",\"qty\":1},{\"itemId\":\"classic_brownies\",\"qty\":1}],\"deliveryDate\":\"2026-10-31\",\"fulfilment\":null,\"unclear\":false,\"reason\":\"\",\"note\":\"\",\"mentionedPrices\":[{\"text\":\"RM15\",\"itemId\":\"classic_brownies\",\"msg\":17}]}]}"
+     }
+    ]
+   },
+   "finishReason": "STOP"
+  }
+ ],
+ "modelVersion": "fixture"
+}

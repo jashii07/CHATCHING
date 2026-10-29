@@ -1,36 +1,59 @@
 // Scores the AI's orders against known answers (data/expected-orders.json), field by field, and lists
 // EVERY difference in plain words. Pure: no files, no network. Used by scripts/spike-parse.mjs (Step 3b)
-// and, later, scripts/accuracy.mjs (Step 8).
+// and scripts/accuracy.mjs (Step 8), through src/accuracy.js.
 // A cancelled order is scored on its status only: its items, date and flags no longer matter.
+import { fromSen, formatMoney } from "./money.js";
 import { readPrice } from "./prices.js";
 
 const key = (buyer) => String(buyer ?? "").trim().toLowerCase();
 const show = (value) => (value === undefined ? "missing" : JSON.stringify(value));
 
-// Items as comparable text, ignoring empty placeholders ({ itemId: null, qty: null }).
-function itemList(order, withQty) {
-  return (Array.isArray(order?.items) ? order.items : [])
-    .filter((i) => i && (i.itemId != null || i.qty != null))
-    .map((i) => (withQty ? `${i.qty ?? "?"} × ${i.itemId ?? "?"}` : `${i.itemId ?? "?"}`))
-    .sort();
+// The labels printed next to each score (the internal names stay short).
+const LABELS = {
+  buyers: "buyers", cancellations: "cancellations", items: "items", qty: "quantities", dates: "dates",
+  unclear: "unclear flags", fulfilment: "pickup/delivery", prices: "prices",
+};
+
+// Plain-English words for the differences. Item ids become the menu's names without the pack size
+// ("Classic brownies (box of 6)" -> "Classic brownies"); without a menu the id is shown.
+function wordsFor(menu) {
+  const names = new Map((menu?.items ?? []).map((i) => [i.id, String(i.name).replace(/\s*\([^)]*\)$/, "")]));
+  const name = (id) => (id == null ? "an unclear item" : names.get(id) ?? id);
+  const currency = menu?.currency ?? null;
+  const money = (sen) => (currency ? formatMoney(fromSen(sen), currency).replace(/\s/g, " ") : (sen / 100).toFixed(2));
+  const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return {
+    name,
+    item: (i) => `${i.qty ?? "?"} x ${name(i.itemId)}`,
+    date: (d) => (d == null ? "no date" : /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) ? `${WEEKDAY[new Date(`${d}T00:00:00Z`).getUTCDay()]} ${d}` : JSON.stringify(d)),
+    unclear: (u) => (u ? "needs a check" : "clear"),
+    fulfilment: (f) => (f == null ? "not stated" : String(f)),
+    price: (p, sen) => `${sen == null ? `${JSON.stringify(p?.text ?? null)} (unreadable)` : money(sen)} for ${p?.itemId == null ? "the whole order" : name(p.itemId)} (message ${p?.msg ?? "?"})`,
+  };
+}
+
+// An order's real items (empty placeholders like { itemId: null, qty: null } skipped).
+const itemsOf = (order) => (Array.isArray(order?.items) ? order.items : []).filter((i) => i && (i.itemId != null || i.qty != null));
+
+// Item ids, or "qty x id", as sorted text, so two orders compare by value.
+const idList = (order, withQty) => itemsOf(order).map((i) => (withQty ? `${i.qty ?? "?"} x ${i.itemId ?? "?"}` : `${i.itemId ?? "?"}`)).sort();
+
+// Prices the buyer mentioned (Step 7a). The amount is read the same way the app reads it
+// (src/prices.js), so "RM15" and "RM 15" are the same mention.
+function prices(order, currency) {
+  return (Array.isArray(order?.mentionedPrices) ? order.mentionedPrices : [])
+    .map((p) => ({ p, sen: readPrice(p?.text, currency) }))
+    .map(({ p, sen }) => ({ p, sen, id: `${p?.itemId ?? "order"} ${sen ?? JSON.stringify(p?.text ?? null)} @${p?.msg ?? "?"}` }))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 const listText = (list) => (list.length ? list.join(", ") : "none");
 
-// Prices the buyer mentioned (Step 7a), as comparable text: "classic_brownies RM15 @17". The amount is read
-// the same way the app reads it (src/prices.js), so "RM15" and "RM 15" are the same mention.
-function priceList(order, currency) {
-  return (Array.isArray(order?.mentionedPrices) ? order.mentionedPrices : [])
-    .map((p) => {
-      const sen = readPrice(p?.text, currency);
-      return `${p?.itemId ?? "order"} ${sen == null ? JSON.stringify(p?.text ?? null) : (sen / 100).toFixed(2)} @${p?.msg ?? "?"}`;
-    })
-    .sort();
-}
-
-// AI orders + expected orders -> { scores: [{ name, ok, total }], differences: [string], perfect }.
-// currency (the menu's) is only needed to read mentioned prices.
-export function scoreParse(aiOrders, expectedOrders, { currency = null } = {}) {
+// AI orders + expected orders -> { scores: [{ name, label, ok, total }], differences: [string], perfect }.
+// Every difference is one plain-English line, e.g. "Jun Wei: expected 2 x Cheese brownies, AI said 1."
+// menu gives item names and the currency (needed to read mentioned prices); { currency } alone still works.
+export function scoreParse(aiOrders, expectedOrders, { menu = null, currency = menu?.currency ?? null } = {}) {
+  const w = wordsFor(menu ?? { currency });
   const differences = [];
   const ai = new Map();
   for (const order of Array.isArray(aiOrders) ? aiOrders : []) {
@@ -48,36 +71,56 @@ export function scoreParse(aiOrders, expectedOrders, { currency = null } = {}) {
 
   for (const want of expectedOrders) {
     const got = ai.get(key(want.buyer));
+    const who = want.buyer;
     score("buyers", Boolean(got));
     if (!got) {
-      differences.push(`${want.buyer}: missing from the AI reply (expected ${want.status}).`);
+      differences.push(`${who}: expected ${want.status === "cancelled" ? "a cancelled" : "an active"} order, the AI missed this buyer.`);
       continue;
     }
     score("cancellations", got.status === want.status);
-    if (got.status !== want.status) differences.push(`${want.buyer}: status ${show(got.status)}, expected ${show(want.status)}.`);
+    if (got.status !== want.status) differences.push(`${who}: expected ${want.status}, AI said ${got.status ?? "no status"}.`);
     if (want.status === "cancelled") continue; // nothing else matters for a cancelled order
 
+    const sameItems = listText(idList(got, false)) === listText(idList(want, false));
+    score("items", sameItems);
+    if (!sameItems) differences.push(`${who}: items: expected ${listText(itemsOf(want).map(w.item))}; AI said ${listText(itemsOf(got).map(w.item))}.`);
+
+    const sameQty = listText(idList(got, true)) === listText(idList(want, true));
+    score("qty", sameQty);
+    if (!sameQty && sameItems) {
+      // Same items, other numbers: one line per item, e.g. "expected 2 x Cheese brownies, AI said 1".
+      const qtyOf = (order, id) => itemsOf(order).filter((i) => i.itemId === id).map((i) => i.qty ?? "?").join(" + ");
+      for (const id of [...new Set(itemsOf(want).map((i) => i.itemId))]) {
+        if (qtyOf(got, id) !== qtyOf(want, id)) differences.push(`${who}: expected ${qtyOf(want, id)} x ${w.name(id)}, AI said ${qtyOf(got, id)}.`);
+      }
+    }
+
     const fields = [
-      ["items", listText(itemList(got, false)), listText(itemList(want, false))],
-      ["qty", listText(itemList(got, true)), listText(itemList(want, true))],
-      ["dates", show(got.deliveryDate ?? null), show(want.deliveryDate)],
-      ["unclear", show(Boolean(got.unclear)), show(want.unclear)],
-      ["fulfilment", show(got.fulfilment ?? null), show(want.fulfilment)],
-      ["prices", listText(priceList(got, currency)), listText(priceList(want, currency))],
+      ["dates", "date", w.date(got.deliveryDate ?? null), w.date(want.deliveryDate ?? null)],
+      ["unclear", "unclear flag", w.unclear(Boolean(got.unclear)), w.unclear(Boolean(want.unclear))],
+      ["fulfilment", "pickup/delivery", w.fulfilment(got.fulfilment ?? null), w.fulfilment(want.fulfilment ?? null)],
     ];
-    for (const [name, gotText, wantText] of fields) {
+    for (const [name, what, gotText, wantText] of fields) {
       score(name, gotText === wantText);
-      if (gotText !== wantText) differences.push(`${want.buyer}: ${name} ${gotText}, expected ${wantText}.`);
+      if (gotText !== wantText) differences.push(`${who}: ${what}: expected ${wantText}, AI said ${gotText}.`);
+    }
+    const gotPrices = prices(got, currency);
+    const wantPrices = prices(want, currency);
+    const samePrices = listText(gotPrices.map((x) => x.id)) === listText(wantPrices.map((x) => x.id));
+    score("prices", samePrices);
+    if (!samePrices) {
+      const text = (list) => listText(list.map(({ p, sen }) => w.price(p, sen)));
+      differences.push(`${who}: prices: expected ${text(wantPrices)}, AI said ${text(gotPrices)}.`);
     }
   }
 
   const expectedKeys = new Set(expectedOrders.map((o) => key(o.buyer)));
   for (const [k, order] of ai) {
-    if (!expectedKeys.has(k)) differences.push(`${order?.buyer}: an extra order the answers don't have (${order?.status}, items ${listText(itemList(order, true))}).`);
+    if (!expectedKeys.has(k)) differences.push(`${order?.buyer}: the AI added an order the expected answers don't have (${order?.status}: ${listText(itemsOf(order).map(w.item))}).`);
   }
 
   const order = ["buyers", "cancellations", "items", "qty", "dates", "unclear", "fulfilment", "prices"];
-  const scores = order.filter((name) => counts[name]).map((name) => ({ name, ...counts[name] }));
+  const scores = order.filter((name) => counts[name]).map((name) => ({ name, label: LABELS[name], ...counts[name] }));
   return { scores, differences, perfect: differences.length === 0 };
 }
 

@@ -31,3 +31,7 @@ Thumbs.db
 
 # Runtime data (the current orders, saved by src/store.js)
 data/runtime/
+
+# Holdout chats (Step 8): REAL chats from a seller. Never committed until names and phone numbers are
+# replaced AND the seller agrees (MY_RULES.md, PLAN.md Section 10 #5).
+data/holdout/

@@ -95,16 +95,16 @@ test("scoreParse names every difference", () => {
   ai.push({ buyer: "Lina", status: "active", items: [] }); // a duplicate
   ai.push({ buyer: "Zara", status: "active", items: [{ itemId: "cookies", qty: 1 }] }); // invented
   ai.find((o) => o.buyer === "Jun Wei").mentionedPrices = []; // missed the price mention
-  const { scores, differences, perfect } = scoreParse(ai, EXPECTED.orders, { currency: MENU.currency });
+  const { scores, differences, perfect } = scoreParse(ai, EXPECTED.orders, { menu: MENU });
   assert.equal(perfect, false);
   assert.deepEqual(differences.sort(), [
-    "Arif: fulfilment null, expected \"pickup\".",
-    "Danish: status \"active\", expected \"cancelled\".",
-    "Jun Wei: prices none, expected classic_brownies 15.00 @17.",
-    "Lina: qty 2 × classic_brownies, expected 3 × classic_brownies.",
+    "Arif: pickup/delivery: expected pickup, AI said not stated.",
+    "Danish: expected cancelled, AI said active.",
+    "Jun Wei: prices: expected RM 15.00 for Classic brownies (message 17), AI said none.",
+    "Lina: expected 3 x Classic brownies, AI said 2.",
     "Lina: the AI returned more than one order for this buyer (only the first is scored).",
-    "Priya: missing from the AI reply (expected active).",
-    "Zara: an extra order the answers don't have (active, items 1 × cookies).",
+    "Priya: expected an active order, the AI missed this buyer.",
+    "Zara: the AI added an order the expected answers don't have (active: 1 x Choc chip cookies).",
   ]);
   assert.equal(scores.find((s) => s.name === "buyers").ok, 9);
 });

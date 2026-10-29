@@ -15,7 +15,7 @@ Expected result (Step 7, 18 messages): 7 clear orders worth RM 366.00; 2 that ne
 
 ## Holdout chats: privacy checklist
 
-`holdout-chats.txt` (added later) will hold REAL messages from a seller, anonymised, used once to test the AI on chats it was not tuned for. Before saving them, tick every box:
+The folder `data/holdout/` (git-ignored, added later) will hold REAL messages from a seller and their expected answers, used ONCE to test the AI on chats it was not tuned for (`scripts/accuracy.mjs --live --chats ...`). Nothing in it is committed until the names and phone numbers are replaced AND the seller agrees. Before committing, tick every box:
 
 - [ ] Names changed (buyers, the seller, anyone mentioned).
 - [ ] Phone numbers changed or removed.

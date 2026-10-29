@@ -43,8 +43,8 @@ public/styles.css
 data/menu.json            fixed menu (item -> price, aliases)
 data/demo-chats.txt       fictional English chats
 data/expected-orders.json correct answers for demo-chats.txt
-data/holdout-chats.txt    (by 1 Nov) real, anonymised chats from a seller, never used while tuning the prompt
-data/holdout-expected.json (by 1 Nov) correct answers for holdout-chats.txt, written by Jasper
+data/holdout/             (by 1 Nov; git-ignored) REAL chats from a seller + their expected answers (written by Jasper);
+                          never used while tuning the prompt; committed only once anonymised AND agreed (Section 10, #5)
 data/ai-cache/            saved AI results (key = hash of input); includes the preloaded demo
 test/                     node:test tests (built into Node, no package)
 scripts/                  smoke tests + accuracy.mjs
@@ -247,9 +247,12 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 7. ✅ (done early, Thu 29 Oct) Real Gemini call (one batched call, final order per buyer, JSON schema), cache. **Buyer panel with note + highlighted source messages (#1)**, **pickup QR in the panel (#3b)**. Real mode: saved demo reply first, then `data/runtime/ai-cache/` (git-ignored), then the main model, then the backup on 503/429/timeout (`src/ai.js`, `src/gemini.js`). Gemini's reply on the new chats: **perfect score in 21 s, 2 calls** (the 1st a 503). The panel marks items, quantities, days, pickup/delivery, changes and prices in the buyer's own messages (`src/panel.js`); the QR is shown for every sent invoice. 282 tests.
    - **a. Price mismatch (added 29 Oct):** the schema gets the optional `mentionedPrices` list (Section 5). The AI only reports what the buyer wrote; the code compares it with `menu.json`; a mismatch makes the row amber ("Check: buyer mentioned RM 15.00, menu says RM 18.00."). The invoice price always comes from the menu. Tests: match, mismatch, unreadable text, unknown item id.
    - **b. Messier demo chats for the video (added 29 Oct):** add a few realistic twists to `data/demo-chats.txt`: a change of quantity, "same as Lina", a cancelled add-on, and one price mention that is wrong. Update `data/expected-orders.json` to match (and the "7 orders / RM 387.00" numbers in Sections 5 and 9), then save Gemini's **real** reply as the new demo cache (`data/ai-cache/demo-parse.json`), scored with the Step 3b scorer. Fictional chats only (free-tier privacy).
-8. **`scripts/accuracy.mjs`**: compares AI output with `data/expected-orders.json` and prints a score for each of buyers, items, quantities, dates, unclear flags and cancellations.
-   - Mock mode by default; a real call only with `--real`.
-   - `--holdout` runs it on the holdout chats (only once, on 7 Nov).
+8. ✅ (done early, Thu 29 Oct; `src/accuracy.js` + `scripts/accuracy.mjs`, 310 tests) **`scripts/accuracy.mjs`**: compares an AI reply with an expected-orders file using the same scorer as Step 3b (`src/score-parse.js`), and prints a score for each of buyers, cancellations, items, quantities, dates, unclear flags, pickup/delivery and prices, plus every difference in plain English ("Jun Wei: expected 2 x Cheese brownies, AI said 1.").
+   - `--cached` (default): scores the saved reply, 0 calls. `npm run check` runs it and fails if the demo reply stops scoring perfectly. Saved demo reply: **74/74**.
+   - `--live`: ONE parse through the app's own AI code (main model, backup if it fails; at most 2 calls). Run with `node --env-file-if-exists=.env`. Writes `docs/accuracy.md` (date, model, seconds, scores, differences) for the demo; other chats' reports go to `tmp/`.
+   - Any chats: `--chats <file> --expected <file> --date <YYYY-MM-DD>` (default: the demo). This replaces the planned `--real` / `--holdout` flags.
+   - **Live demo run on 29 Oct: no score.** Both models answered 503 "high demand" (main after 43 s, backup after 4.3 s); 2 of 2 calls used; not retried. Run `--live` again on another day (2 calls max).
+   - No prompt tuning: the saved reply is already perfect on the demo, and tuning on the chats we score only polishes the demo number.
 9. Timeout, retry, backup model, daily counter, "AI calls left".
 10. **Ready-to-send messages + reminders (#2)**: one batched call each, placeholders, checks, English templates, Copy.
    - **Ask the buyer (added 29 Oct):** every unclear row gets a **"Copy question"** button. The code builds the question from the menu and the reason it is unclear, e.g. "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" The AI may only write wording with placeholders (same design and checks as #2: no money, no links); **the code fills in names, items and prices**. Template when there is no AI. Open for Step 10: whether the AI wording rides in one batched call for all unclear rows or the template is enough.
@@ -301,7 +304,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Sat 31 Oct (6 h) | ✅ **Step 6 DONE early (Wed 28 Oct)**: 239 tests, `npm run ui-flow` at 1280 + 390 px, one real cash payment. **Still on Sat 31 Oct: the first Render deploy (buffer hour).** Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank. **Buffer hour: FIRST DEPLOY to Render of whatever exists (walking skeleton)**, and check Render's free-tier rules (sleep after inactivity, monthly hours, whether it asks for a card; **if it asks for a card, stop and ask Jasper**) → note them in DECISIONS.md | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel; **the app loads from a Render URL** |
 | Sat 31 Oct (rest of the day) | **Step 10c: Pickup scan** (added 29 Oct, one session; the hours freed by finishing Step 6 early). It needs HTTPS, so it follows the first Render deploy and is tested there. **Dropped first if time is tight** | On a phone over the Render URL: scan a sandbox invoice QR → green "Paid: ..." or amber "Not paid yet: ..." → Collected; typing the invoice number works without a camera |
 | Sun 1 Nov (5 h) | ✅ **Step 7 DONE early (Thu 29 Oct)**: perfect score on the new chats, 21 s, 2 of 6 calls; 282 tests; ui-check + ui-flow at 1280/820/390. Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR; **price mismatch + messier demo chats (added 29 Oct)** | Real call once, cached after; clicking Arif shows his 2 messages + a QR; the wrong price mention shows "Check: buyer mentioned ..., menu says ..."; the new expected-orders.json scored against Gemini's real reply, saved as the demo cache. **You: holdout chats + expected answers saved** |
-| Mon 2 Nov (2 h) | Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give the totals in the updated expected-orders.json (was 7 orders / RM 387.00 before Step 7) |
+| Mon 2 Nov (2 h) | ✅ **Step 8 DONE early (Thu 29 Oct)**: `--cached` 74/74, 310 tests; the one live run got 503 from both models (no live score yet). Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give the totals in the updated expected-orders.json (was 7 orders / RM 387.00 before Step 7) |
 | Tue 3 Nov (2 h) | Step 9: timeout, retry, backup, counter | "AI calls left" shown; quota 0 → friendly "AI busy" message |
 | Wed 4 Nov (2 h) | Step 10: ready-to-send messages + reminders; **"Copy question" on unclear rows (added 29 Oct)** | Every invoiced buyer has a copyable message with the real total + link; Priya's row copies "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" with prices from the menu |
 | Thu 5 Nov (2 h) | Step 11: deploy to Render | **Full flow works on the hosted URL** |
@@ -384,9 +387,11 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
   - Only the change to Paid flashes, not every change.
 
 ### 5. Real-seller proof
-- **Holdout chats:** `data/holdout-chats.txt` holds your friend's real messages (names and phone numbers changed, with permission). `data/holdout-expected.json` holds the answers you write yourself.
+- **Holdout chats:** the folder `data/holdout/` (git-ignored) holds your friend's real messages and the answers you write yourself (e.g. `data/holdout/chats.txt` + `data/holdout/expected.json`).
+  - **Rule (29 Oct):** before any real chat is committed, names and phone numbers are replaced AND the seller agrees. Until then the folder stays git-ignored; `npm run check` fails if anything in it is tracked.
   - **You save both by Sun 1 Nov**, before prompt tuning (Mon 2 Nov). We don't open them while tuning.
-  - `accuracy.mjs --holdout --real` runs **once**, on Sat 7 Nov. The score is recorded as-is, even if it's low.
+  - `node --env-file-if-exists=.env scripts/accuracy.mjs --live --chats data/holdout/chats.txt --expected data/holdout/expected.json --date <YYYY-MM-DD>` runs **once**, on Sat 7 Nov. The score is recorded as-is, even if it's low.
+  - **The result is never used to tune the prompt afterwards.** Once we have seen the holdout mistakes, the set is no longer "unseen", so any later score on it would not be honest. Its report stays out of git (`tmp/`); only the score is quoted.
   - **Privacy:** Google's free-tier terms say "Do not submit sensitive, confidential, or personal information" and that "human reviewers may read" inputs. So also remove addresses, places and anything personal. Your friend's permission must cover a **public GitHub repo** and **Google's free tier**.
   - `data/README.md` gets a line saying the holdout chats are real but anonymised. Everything else stays fictional.
 - **User test:** Fri 6 Nov, 10 minutes, your friend on the hosted app.

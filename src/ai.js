@@ -17,7 +17,7 @@ import { BACKUP_MODEL, GeminiError, MAIN_MODEL, callGemini } from "./gemini.js";
 const DEMO_REPLY = fileURLToPath(new URL("../data/ai-cache/demo-parse.json", import.meta.url));
 const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
 const DEMO_ANSWERS = new URL("../data/expected-orders.json", import.meta.url);
-const RUNTIME_CACHE = fileURLToPath(new URL("../data/runtime/ai-cache/", import.meta.url));
+export const RUNTIME_CACHE = fileURLToPath(new URL("../data/runtime/ai-cache/", import.meta.url));
 export const PARSE_TIMEOUT_MS = 45_000; // Step 3b measured 17.6 s for 15 messages (DECISIONS.md, 27 Oct)
 
 export const MOCK_UNKNOWN = "Mock mode only knows the demo chats. Set AI_MODE=real to read other chats with Gemini.";

@@ -73,3 +73,12 @@
 - **Demo numbers:** Thu 29 Oct 2 bahulu; Fri 30 Oct 1 cheesecake; Sat 31 Oct 6 classic (Lina 3 + Aisyah's "same as Lina" 3), 1 cheese, 1 cheesecake, 2 cookies, +2 to check (Priya, Jun Wei); Sun 1 Nov 6 bahulu.
 - **What testing and looking caught:** the browser check said the copied text was wrong, but only because the Windows clipboard turns line breaks into `
 `; the app's text was exactly right, so the check now ignores that difference. Measuring the phone toolbar showed Export CSV and Kitchen list missed sharing one row by 1 px; a slightly smaller gap on phones fixed it.
+
+### 2026-10-29, Step 8: accuracy check (summary by Claude)
+
+- **What was built:** `scripts/accuracy.mjs` answers "how well does the AI read these chats?". It compares an AI reply with a file of correct answers and prints a score per field (buyers, cancellations, items, quantities, dates, unclear flags, pickup/delivery, prices) plus every difference in plain English, e.g. "Jun Wei: expected 2 x Cheese brownies, AI said 1."
+- **Why one scorer:** it reuses `src/score-parse.js`, the scorer from the Step 3b spike. Two scorers could quietly disagree, and then "perfect" in Step 7 and "perfect" in Step 8 would mean different things. The scorer's messages became plain English with menu names; it still compares item ids underneath.
+- **Two modes:** `--cached` scores the saved reply and costs nothing, so `npm run check` runs it every time. If someone edits the answer key or the demo reply and they stop matching, the check goes red. `--live` makes one real parse through the app's own AI code (main model, then the backup), so it measures what the seller would really get, wait time included.
+- **Why the holdout rules:** a score on chats the prompt was tuned on is like marking your own homework. The real chats go in a git-ignored folder (they are real people's messages), are run once on 7 Nov, and the prompt is never changed afterwards because of them. Otherwise the number stops being honest.
+- **What the live run showed:** Google answered "high demand" (503) on both models: the main one only after 43 s, close to our 45 s timeout. So there is no live score yet, and nothing was written up as if there were. It also tells Step 9 something useful: a busy Google can keep the seller waiting ~47 s before "AI busy".
+- **What testing caught:** the money text used a hidden non-breaking space ("RM 15.00"), which made two identical-looking lines unequal; plain-text output now uses a normal space. Shell quoting garbled a few regexes on the way, and the tests caught every one.

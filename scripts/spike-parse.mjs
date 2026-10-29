@@ -96,7 +96,7 @@ function scoreSaved(path = CACHE) {
   }
   console.log(`The AI returned ${aiOrders.length} orders: ${aiOrders.map((o) => `${o.buyer} (${o.status})`).join(", ")}`);
 
-  const { scores, differences, perfect } = scoreParse(aiOrders, expected.orders, { currency: menu.currency });
+  const { scores, differences, perfect } = scoreParse(aiOrders, expected.orders, { menu });
   console.log("\nSCORE (against data/expected-orders.json; cancelled orders are scored on status only)");
   console.log(`${pad("what", 15)}score`);
   for (const s of scores) console.log(`${pad(s.name, 15)}${s.ok}/${s.total}${s.ok === s.total ? "" : "   <-- miss"}`);
