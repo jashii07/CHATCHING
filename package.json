@@ -9,7 +9,8 @@
     "test": "node --test",
     "ui-check": "node scripts/ui-check.mjs",
     "ui-flow": "node scripts/ui-flow.mjs",
-    "ui-ai": "node scripts/ui-ai.mjs"
+    "ui-ai": "node scripts/ui-ai.mjs",
+    "ui-live": "node scripts/ui-live.mjs"
   },
   "repository": {
     "type": "git",

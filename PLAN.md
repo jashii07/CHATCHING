@@ -1,5 +1,7 @@
 # PLAN — ChatChing
 
+**Live app: https://chatching.onrender.com/** (first load can take up to a minute while the free server wakes up).
+
 Status: APPROVED 2026-10-25 (with changes). Standout features added 2026-10-25 (Sections 10-11). Build starts Mon 26 Oct, 7 PM MYT. **"Signature moments" added 2026-10-29** (Section 7: Steps 7, 10, 10b, 10c; Section 9: Sun 8 Nov polish; Section 13: new storyboard).
 
 ## 1. Problem
@@ -273,7 +275,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - Still to verify in 10c: how the buyer has the QR on pickup day (assumed: the seller sends the PayPal QR image with the payment message, or the buyer opens their invoice).
 11. Deploy to Render; end-to-end test on the hosted URL.
    - **Part 1 ✅ (done early, Fri 30 Oct; 370 tests):** the app is ready for Render's free plan: `PORT`/`RENDER`, no `.env` needed, `GET /api/health` (ok + version only), `npm ci --omit=dev`, Node 24, clean start with no runtime files, Google's daily-limit 429 marks a model used up, a per-visitor rate limit (`src/rate-limit.js`), the summary figures always fit their cards (part 0). Click-by-click guide for Jasper: `docs/deploy-render.md`.
-   - **Part 2 (next):** Jasper follows the guide and creates the service; then the end-to-end check on the hosted URL (read, send invoices, pay in sandbox, Refresh → Paid).
+   - **Part 2 ✅ (done early, Fri 30 Oct):** live at **https://chatching.onrender.com/** (first load can take up to a minute while the free server wakes up). `npm run ui-live` runs the whole flow on the hosted URL at 1280 + 390 px with real sandbox invoices: Load demo → Read orders → Send invoices → record cash → Refresh → Kitchen list → Reset demo. A buyer really paying in the sandbox stays a manual check (it needs a buyer login).
 12. **User test with a real seller (#5)**; ~~non-AI fallback parser~~ (built early in Step 10, 30 Oct).
 13. Edge-case tests, **holdout accuracy run (#5)**, README, video script, Devpost draft.
 14. Feature freeze: fixes from the user test, design polish, stretch only if all green; video; submit.
@@ -314,7 +316,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Mon 2 Nov (2 h) | ✅ **Step 8 DONE early (Thu 29 Oct)**: `--cached` 74/74, 310 tests; the one live run got 503 from both models (no live score yet). Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give the totals in the updated expected-orders.json (was 7 orders / RM 387.00 before Step 7) |
 | Tue 3 Nov (2 h) | ✅ **Step 9 DONE early (Fri 30 Oct)**: 323 tests, `npm run ui-ai` at 1280 + 390 px; the live run got Google busy again (no score). Step 9: timeout, retry, backup, counter | "AI calls left" shown; quota 0 → friendly "AI busy" message |
 | Wed 4 Nov (2 h) | ✅ **Step 10 DONE early (Fri 30 Oct)**: 345 tests; Read without AI (demo: 1 clear, 9 unclear), Copy message / reminder / question (code only), chips fixed. Step 10: ready-to-send messages + reminders; **"Copy question" on unclear rows (added 29 Oct)** | Every invoiced buyer has a copyable message with the real total + link; Priya's row copies "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" with prices from the menu |
-| Thu 5 Nov (2 h) | Step 11: deploy to Render (**part 1 done early, Fri 30 Oct**: app ready + `docs/deploy-render.md`; next: Jasper creates the service, then the end-to-end check) | **Full flow works on the hosted URL** |
+| Thu 5 Nov (2 h) | ✅ **Step 11 DONE early (Fri 30 Oct)**: live at https://chatching.onrender.com/, `npm run ui-live` at 1280 + 390 px. Step 11: deploy to Render | **Full flow works on the hosted URL** |
 | Fri 6 Nov (2 h) | 7 PM: **user test with your friend (10 min)** → LEARNING.md; then Step 12: ~~non-AI fallback parser~~ (done early in Step 10, 30 Oct) | Test notes saved; app works with `AI_MODE=off` (Read without AI) |
 | Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins = the 2 judge accounts); **video script draft** (from the Section 13 storyboard); **save a Devpost draft**. **You: create 2 sandbox buyer accounts just for judges**, in English so judges can read the payment page (if one gets locked or its password changed, judges use the other) | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved; both judge logins work |
 | Sun 8 Nov (5 h) | **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green. **Polish (added 29 Oct): a soft "cha-ching" when a payment arrives**, made in code with the Web Audio API (no sound file, no copyright), **plus the Paid total counting up**. Only after the seller has clicked something on the page (browsers block sound before that), with a mute toggle; with reduced motion, no count-up animation (the number just changes) | All RULES.md build items ticked; a sandbox payment plays the sound once; mute silences it; reduced motion shows no animation |

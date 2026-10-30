@@ -288,6 +288,20 @@ try {
       const over = part.getBoundingClientRect().right - part.closest(".ag-cell").getBoundingClientRect().right;
       if (over > 0.5) problems.push(`"${part.textContent}" runs ${Math.round(over)} px out of its column`);
     }
+    // The words must stay inside the tag too ("Paid (cash/bank)" ran out of its green pill at 1280 px: the
+    // pill fitted the column, its text didn't). The demo rows don't have the long statuses, so try them all.
+    for (const badge of document.querySelectorAll(`${rowsSelector} .badge`)) {
+      const words = badge.lastChild;
+      const shown = words.data;
+      for (const text of ["Paid (cash/bank)", "Cancelled/Refunded"]) {
+        words.data = text;
+        const range = document.createRange();
+        range.selectNodeContents(words);
+        const over = range.getBoundingClientRect().right - badge.getBoundingClientRect().right;
+        if (over > -1) problems.push(`"${text}" runs out of its status tag (${Math.round(over)} px)`);
+      }
+      words.data = shown;
+    }
     const cards = !!document.querySelector(`${rowsSelector} .card-row`);
     if (!cards) {
       for (const row of document.querySelectorAll(rowsSelector)) {

@@ -883,8 +883,9 @@ button:disabled {
   font-weight: 500;
   line-height: 1.5;
   /* A long tag ("Paid (cash/bank)", "Cancelled/Refunded") wraps inside a narrow Status column instead of
-     running out of it. */
+     running out of it. AG Grid's cells say nowrap, so the tag has to turn wrapping back on. */
   max-width: 100%;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
