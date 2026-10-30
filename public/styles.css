@@ -781,12 +781,15 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .chip {
@@ -798,10 +801,14 @@ button:disabled {
   background: var(--neutral-tint);
   font-size: 0.9375rem;
   line-height: 1.35;
-  white-space: nowrap; /* a chip never breaks inside; the list wraps between chips instead */
+  /* The list wraps between chips first; a chip wider than its column ("1 × Burnt cheesecake 6-inch" with the
+     chats open) wraps its own words instead of running into the Date column (Step 10). */
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .chip .lucide {
+  flex: none;
   width: 18px;
   height: 18px;
 }
@@ -1468,4 +1475,22 @@ mark.hl-price-check {
   flex: none;
   width: 18px;
   height: 18px;
+}
+
+/* Step 10: the ready-to-send texts in the drawer. Shown in full on the neutral tint, like a chat bubble,
+   so the seller reads exactly what Copy puts on the clipboard. */
+.text-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.message-text {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--neutral-tint);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }

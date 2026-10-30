@@ -111,6 +111,8 @@
           <button type="button" class="ghost" id="chat-hide" hidden>Hide chats</button>
         </div>
         <p id="read-message" class="hint" role="status"></p>
+        <!-- Step 10: offered only when the AI is busy, too slow or used up. The seller chooses; never automatic. -->
+        <button type="button" class="ghost" id="read-without-ai" hidden><i data-lucide="list-checks" aria-hidden="true"></i>Read without AI</button>
       </details>
 
       <section class="panel orders">
@@ -136,6 +138,10 @@
           <!-- Asks PayPal who has paid (the page also checks by itself every 20 s while invoices are open). -->
           <button type="button" class="ghost" id="refresh-status" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh status</button>
         </div>
+        <!-- Step 10: these rows were read without AI (simple rules), so every row deserves a look. -->
+        <p class="filter-note" id="fallback-note" role="status" hidden>
+          <span>Read without AI. Changes and cancellations may be missed, so please check every row.</span>
+        </p>
         <!-- Shown only when it matters: buyers are ready but the PayPal keys are missing. -->
         <p class="filter-note" id="send-warning" role="status" hidden>
           <span>PayPal is not configured, so invoices can't be sent yet. Add the sandbox keys to .env and restart.</span>

@@ -8,7 +8,7 @@
 //         still work (the saved reply, 0 calls).
 // It fails on any console error or warning. Run: npm run ui-ai (uses the installed Google Chrome).
 // Each width gets its own store and counter file in tmp/. Screenshots go to tmp/screenshots-ai/.
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { loadConfig } from "../src/config.js";
@@ -109,6 +109,7 @@ try {
     check(!(await page.$eval("#read-orders", (el) => el.disabled)), "the button works again");
     check(gemini.models.join(",") === [MAIN_MODEL, MAIN_MODEL, BACKUP_MODEL].join(","), `3 calls: ${gemini.models.join(", ")}`);
     check((await rowTexts(page)) === before, "the rows are unchanged");
+    check(await page.isVisible("#read-without-ai"), "the notice offers Read without AI (the seller chooses; nothing happens by itself)");
     check((await page.$eval("#error", (el) => el.hidden).catch(() => true)), "no red error box");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-3-busy.png`, fullPage: true });
 
@@ -122,15 +123,57 @@ try {
     check((await callsText(page)) === "AI calls left today: 0", `the top bar: "${await callsText(page)}"`);
     check(gemini.models.length === 3, "no call at 0");
     check((await rowTexts(page)) === before, "the rows are still unchanged");
+    check(await page.isVisible("#read-without-ai"), "used up: Read without AI is offered too");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-4-used-up.png`, fullPage: true });
 
+    // --- Step 10: Read without AI. The demo chats on ANOTHER Chat date are not the saved reply, so the AI is
+    //     asked (used up: no call); the seller clicks Read without AI: simple rules, careful, never a wrong total.
+    const demoText = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
+    await page.fill("#chat", demoText);
+    await page.fill("#chat-date", "2026-10-29");
+    await page.click("#read-orders");
+    await page.waitForFunction(() => document.getElementById("read-message").textContent.startsWith("Today's free"), null, { timeout: 5000 }).catch(() => {});
+    check(await page.isVisible("#read-without-ai"), "the demo chats on 29 Oct: used up, Read without AI offered");
+    check(await page.$eval("#fallback-note", (el) => el.hidden), "no banner before the seller chooses");
+    await page.click("#read-without-ai");
+    await page.waitForSelector("#fallback-note:not([hidden])", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const banner = plain(await page.$eval("#fallback-note", (el) => (el.hidden ? "" : el.innerText)));
+    check(banner === "Read without AI. Changes and cancellations may be missed, so please check every row.", `the amber banner above the table: "${banner}"`);
+    check(await page.$eval("#fallback-note", (el) => getComputedStyle(el).backgroundColor === "rgb(252, 239, 214)"), "the banner is amber");
+    const amber = await page.$$eval(ROWS, (els) => els.filter((el) => el.classList.contains("row-unclear")).length);
+    const shown = (await page.$$(ROWS)).length;
+    check(shown === 6 && amber === 5, `page 1: ${amber} of ${shown} rows amber (only Mei Ling is clear)`);
+    const meiLing = plain(await page.locator(ROWS, { hasText: "Mei Ling" }).innerText());
+    check(meiLing.includes("1 × Cheese brownies") && meiLing.includes("2 × Choc chip cookies") && meiLing.includes("RM 72.00") && !meiLing.includes("Check:"),
+      `Mei Ling read right and clear: "${meiLing}"`);
+    const lina = plain(await page.locator(ROWS, { hasText: "Lina" }).innerText());
+    check(lina.includes("Check: read without AI, this buyer changed their order."), `Lina says why: "${lina}"`);
+    const cardsText = plain(await page.$eval(".summary", (el) => el.innerText));
+    check(cardsText.includes("Expected RM 72.00") && cardsText.includes("Needs check 9"), `summary: RM 72.00 ready, 9 to check: "${cardsText}"`);
+    const footer = plain(await page.$eval("#setup", (el) => el.innerText));
+    check(footer.includes("AI mode: read without AI"), `footer: "${footer}"`);
+    check(gemini.models.length === 3, "Read without AI made no AI call");
+    check(!(await page.isVisible("#read-without-ai")) && (await readMessage(page)) === "", "the button and the notice are gone");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-5-without-ai.png`, fullPage: true });
+    // A reload keeps the rows and still says how they were read.
+    await page.reload();
+    await page.waitForSelector(ROWS);
+    await page.waitForTimeout(400);
+    check(!(await page.$eval("#fallback-note", (el) => el.hidden)) && plain(await page.$eval("#setup", (el) => el.innerText)).includes("AI mode: read without AI"),
+      "after a reload: still the banner and the footer note");
+    await page.click("#chat-edit");
+
     await page.click("#load-demo");
-    await page.waitForFunction(() => document.getElementById("chat").value.length > 200, null, { timeout: 5000 });
+    // The chat box already holds the demo text, so wait for Load demo's own Chat date.
+    await page.waitForFunction(() => document.getElementById("chat-date").value === "2026-10-28", null, { timeout: 5000 });
     await page.click("#read-orders");
     await page.waitForSelector("#chats[hidden]", { state: "attached", timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(400);
     check((await readMessage(page)) === "" && (await page.$$(ROWS)).length > 0, "at 0, Load demo + Read orders still fills the table (saved reply)");
     check(gemini.models.length === 3, "still no new call");
+    check(await page.$eval("#fallback-note", (el) => el.hidden) && plain(await page.$eval("#setup", (el) => el.innerText)).includes("AI mode: real"),
+      "an AI read again: no banner, the footer says AI mode: real");
 
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();

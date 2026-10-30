@@ -8,7 +8,7 @@
 // - Step 9: ONE time budget for the whole parse (60 s; the main model gets up to 35 s, the backup the
 //   rest), one short-wait retry on 503/429 only if a real read still fits, never more than 3 calls, and
 //   the daily counter (src/usage.js): every call is counted before it starts; at 0 nothing is called.
-//   The non-AI fallback comes in Step 12.
+//   When the AI fails, the page offers "Read without AI" (src/fallback-parse.js, Step 10); never automatic.
 // The key is passed in (from config), sent in a header by src/gemini.js, and never logged.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -35,7 +35,7 @@ export const NO_KEY = "The AI key is missing (GEMINI_API_KEY), so only the demo 
 export const AI_BUSY = "The AI is busy right now. Please try again in a minute, or click Load demo to see how it works.";
 export const AI_REFUSED = "The AI could not read these chats, so your orders were not changed.";
 export const usedUp = (ms) => `Today's free AI reads are used up. Try again after ${resetHourMalaysia(ms)} Malaysia time, or click Load demo.`;
-const NOT_BUILT = { off: "Reading without AI comes in Step 12. Set AI_MODE=mock to read the demo chats for now." };
+const NOT_BUILT = { off: "AI reading is switched off on this server (AI_MODE=off), so the chats can only be read without AI." };
 
 // The cache key for one parse: a hash of the Chat date + the chat text. Line endings, blank lines and
 // spaces at the ends of lines don't change it, so the same chats pasted again find the same saved reply.

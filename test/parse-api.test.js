@@ -76,7 +76,7 @@ test("any other text in mock mode -> the friendly mock notice (200, not an error
   for (const text of ["hello, are you open tomorrow?", FIXTURE, DEMO.replace("2 boxes", "4 boxes")]) {
     const { status, body } = await parse({ text, chatDate: CHAT });
     assert.equal(status, 200);
-    assert.deepEqual(body, { notice: MOCK_UNKNOWN });
+    assert.deepEqual(body, { notice: MOCK_UNKNOWN, readWithoutAi: true });
   }
   assert.equal(MOCK_UNKNOWN, "Mock mode only knows the demo chats. Set AI_MODE=real to read other chats with Gemini.");
   assert.deepEqual((await call("/api/state")).body, before);
@@ -84,7 +84,7 @@ test("any other text in mock mode -> the friendly mock notice (200, not an error
 
 test("the demo chats with ANOTHER Chat date are not the demo (the date is part of the key)", async () => {
   const { parse } = await start();
-  assert.deepEqual((await parse({ text: DEMO, chatDate: "2026-10-29" })).body, { notice: MOCK_UNKNOWN });
+  assert.deepEqual((await parse({ text: DEMO, chatDate: "2026-10-29" })).body, { notice: MOCK_UNKNOWN, readWithoutAi: true });
 });
 
 test("the limits: empty, no Chat date, 51 messages, 10,001 characters -> a friendly notice, rows unchanged", async () => {
@@ -146,7 +146,7 @@ test("a saved reply that can't be read (not JSON, no orders list) -> a friendly 
   for (const text of Object.keys(replies)) {
     const { status, body } = await parse({ text, chatDate: CHAT });
     assert.equal(status, 200);
-    assert.deepEqual(body, { notice: "The AI's answer could not be read, so your orders were not changed. Please try again." });
+    assert.deepEqual(body, { notice: "The AI's answer could not be read, so your orders were not changed. Please try again.", readWithoutAi: true });
   }
   assert.deepEqual((await call("/api/state")).body, before);
   assert.equal(logs.filter((line) => line.startsWith("Warning: the AI reply could not be read")).length, 3);
@@ -179,11 +179,12 @@ test("never more than one parse at a time: a second request while one is reading
   assert.equal((await third).status, 200);
 });
 
-test("AI_MODE=off is not built yet -> a friendly notice, not a crash; real mode reads the demo from its saved reply", async () => {
+test("AI_MODE=off -> a friendly notice offering Read without AI, not a crash; real mode reads the demo from its saved reply", async () => {
   const off = await start({ ai: createAi({ mode: "off" }) });
   const { status, body } = await off.parse({ text: DEMO, chatDate: CHAT });
   assert.equal(status, 200);
-  assert.match(body.notice, /Step 12/);
+  assert.match(body.notice, /AI_MODE=off/);
+  assert.equal(body.readWithoutAi, true);
   // Real mode without a key: the demo still works (saved reply, 0 calls); test/ai-real.test.js has the rest.
   const real = await start({ ai: createAi({ mode: "real", apiKey: "" }) });
   assert.deepEqual((await real.parse({ text: DEMO, chatDate: CHAT })).body.totals, { orders: 7, total: "366.00" });
@@ -216,7 +217,7 @@ test("Step 9: /api/parse/progress tells the page the stage (reading, then backup
   left = 37;
   assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "backup", aiCallsLeft: 37 });
   release();
-  assert.deepEqual(await reading, { status: 200, body: { notice: AI_BUSY } });
+  assert.deepEqual(await reading, { status: 200, body: { notice: AI_BUSY, readWithoutAi: true } });
   assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, aiCallsLeft: 37 });
   assert.equal((await call("/api/state")).body.orders.length, 12); // rows unchanged (the demo)
 });

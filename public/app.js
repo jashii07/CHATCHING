@@ -30,6 +30,7 @@ let rowsById = new Map(); // the order rows (one per item), as the server last c
 let groups = []; // buyer groups from the server: { buyer, rowIds, items, total, cancelled }
 let openGroupId = null; // the buyer shown in the drawer (its first row id)
 let kitchen = { days: [], text: "" }; // the kitchen list from the server (src/kitchen.js)
+let texts = new Map(); // buyer (lowercase) -> { message, reminder, question }: ready-to-send texts from the server (src/messages.js)
 let kitchenOpen = false; // the drawer shows the kitchen list instead of a buyer
 let onlyNeedsCheck = false; // the Needs check card filters the table to buyers that need a check
 let chatDate = null; // for the CSV file name
@@ -110,6 +111,8 @@ function buyerRows() {
     const payerLink = active.find((row) => row.payerLink)?.payerLink ?? null;
     return {
       sendError: sendErrors.get(String(group.buyer).trim().toLowerCase()) ?? "", // shown as amber "Error:"
+      key: String(group.buyer).trim().toLowerCase(),
+      texts: texts.get(String(group.buyer).trim().toLowerCase()) ?? {}, // what the Copy buttons copy
       payerLink, // set once the buyer's invoice is sent
       // Clear, not cancelled, and no sent invoice yet (a draft whose send failed is sent again).
       toSend: !group.cancelled && group.total != null && !active.some((row) => row.invoiceId && row.invoiceStatus !== "Draft"),
@@ -149,6 +152,27 @@ function payLink(data) {
   copy.dataset.link = data.payerLink;
   copy.setAttribute("aria-label", `Copy ${data.buyer}'s payer link`);
   line.append(link, copy);
+  if (data.texts.message) line.append(copyTextButton(data, "message"));
+  return line;
+}
+
+// Step 10: "Copy message" / "Copy reminder" / "Copy question". The words come from the server (src/messages.js):
+// names, items, money and links are filled in by code, never by the AI.
+const COPY_LABELS = { message: "Copy message", reminder: "Copy reminder", question: "Copy question" };
+function copyTextButton(data, kind, id = "") {
+  const button = Object.assign(el("button", "ghost small copy-text", COPY_LABELS[kind]), { type: "button" });
+  if (id) button.id = id;
+  button.dataset.buyer = data.key;
+  button.dataset.kind = kind;
+  button.setAttribute("aria-label", `${COPY_LABELS[kind]} for ${data.buyer || "this buyer"}`);
+  return button;
+}
+
+// The question for an unclear buyer, under the "Check:" words.
+function questionLine(data) {
+  if (data.cancelled || !data.texts.question) return null;
+  const line = el("span", "pay-link");
+  line.append(copyTextButton(data, "question"));
   return line;
 }
 const datesText = (data) => (data.dates.length ? data.dates.map((d) => formatDate(d)).join(", ") : "—");
@@ -203,6 +227,8 @@ function itemsCell(p) {
   cell.append(chips(p.data));
   const words = checkText(p.data);
   if (words) cell.append(el("span", "check-text", words));
+  const ask = questionLine(p.data);
+  if (ask) cell.append(ask);
   if (p.data.sendError) cell.append(el("span", "check-text", `Error: ${p.data.sendError}`));
   const link = payLink(p.data);
   if (link) cell.append(link);
@@ -233,6 +259,8 @@ function cardCell(p) {
   card.append(top, chips(data));
   const words = checkText(data);
   if (words) card.append(el("span", "check-text", words));
+  const ask = questionLine(data);
+  if (ask) card.append(ask);
   if (data.sendError) card.append(el("span", "check-text", `Error: ${data.sendError}`));
   const link = payLink(data);
   if (link) card.append(link);
@@ -408,10 +436,14 @@ function exportCsv() {
 }
 
 // Setup details for the developer and judges, in the quiet footer (not in the seller's way).
-function showSetup(state) {
+// Rows read without AI say so here too, for that batch (Step 10).
+let setup = null; // the setup facts from /api/state
+function showSetup() {
+  if (!setup) return;
+  const state = setup;
   const items = [
     `Menu: ${state.menu.items.length} items in ${currency}`,
-    `AI mode: ${state.aiMode}`,
+    `AI mode: ${source?.reader === "fallback" ? "read without AI" : state.aiMode}`,
     `PayPal keys: ${state.paypalConfigured ? "set" : "missing"}`,
     `Gemini key: ${state.geminiConfigured ? "set" : "missing"}`,
   ];
@@ -531,8 +563,32 @@ function renderDrawer() {
     : data.total == null ? "Needs a check before it can be invoiced"
     : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total${data.payerLink ? `. Invoice: ${data.status}` : ""}`;
   drawerItems.replaceChildren(...data.rows.map(editCard));
+  const ready = textCard(data);
+  if (ready) drawerItems.append(ready);
   const pay = payCard(data);
   if (pay) drawerItems.append(pay);
+}
+
+// Step 10: the texts for this buyer, shown in full so the seller sees exactly what they copy.
+const TEXT_TITLES = { question: "Question to ask", message: "Payment message", reminder: "Reminder (still unpaid)" };
+function textCard(data) {
+  const kinds = ["question", "message", "reminder"].filter((kind) => !data.cancelled && data.texts[kind]);
+  if (!kinds.length) return null;
+  const card = el("section", "edit-card text-card");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon("message-square-text"));
+  name.append(circle, `Ready to send to ${data.buyer || "this buyer"}`);
+  title.append(name);
+  card.append(title);
+  for (const kind of kinds) {
+    const block = el("div", "text-block");
+    block.append(el("span", "field-label", TEXT_TITLES[kind]), Object.assign(el("p", "message-text", data.texts[kind]), { id: `text-${kind}` }), copyTextButton(data, kind, `copy-${kind}`));
+    card.append(block);
+  }
+  card.append(el("p", "hint", "Written by the app from your menu and PayPal, not by the AI. Paste it into the chat."));
+  return card;
 }
 
 // ---- The buyer panel (Step 7, "Show your work"): the AI's note + what the buyer wrote ----
@@ -738,6 +794,7 @@ async function putRow(id, change) {
     summary = reply.summary;
     groups = reply.groups;
     kitchen = reply.kitchen;
+    texts = textMap(reply.texts);
     hideError("drawer-error");
   } catch (err) {
     showError(`That change was not saved (${err.message}).`, "drawer-error");
@@ -827,7 +884,10 @@ function showOrders(state) {
   chatDate = state.source?.chatDate ?? null;
   groups = state.groups;
   kitchen = state.kitchen;
+  texts = textMap(state.texts);
   rowsById = new Map(state.orders.map((row) => [row.id, row]));
+  $("fallback-note").hidden = source?.reader !== "fallback" || !state.orders.length;
+  showSetup();
   showSummary();
   showSource();
   foldChats(Boolean(source && state.orders.length));
@@ -848,7 +908,7 @@ async function loadState() {
     currency = state.menu.currency;
     menuItems = state.menu.items;
     paypalReady = state.paypalConfigured;
-    showSetup(state);
+    setup = state;
     showCallsLeft(state.aiCallsLeft);
     showOrders(state);
     if (hasOpenInvoices()) startPolling();
@@ -1014,7 +1074,9 @@ async function checkReading(say) {
 
 // "Read orders": the chats + Chat date go to the server, which replies with the new rows, or with a
 // friendly notice (too long, mock mode doesn't know these chats) that leaves the rows as they are.
-async function readOrders() {
+// A notice about the AI (busy, too slow, used up) offers "Read without AI" (Step 10): withoutAi reads the
+// same chats with simple rules on the server, no AI call. Only when the seller clicks it.
+async function readOrders({ withoutAi = false } = {}) {
   if (reading) return;
   const text = $("chat").value;
   const say = (message) => ($("read-message").textContent = message);
@@ -1026,21 +1088,25 @@ async function readOrders() {
 
   reading = true;
   const button = $("read-orders");
+  const without = $("read-without-ai");
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
+  without.hidden = true;
   hideError();
-  say(STAGE_WORDS.reading);
-  const poll = setInterval(() => checkReading(say), 1000);
+  say(withoutAi ? "Reading without AI..." : STAGE_WORDS.reading);
+  const poll = withoutAi ? null : setInterval(() => checkReading(say), 1000);
   try {
     const res = await fetch("/api/parse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, chatDate: $("chat-date").value }),
+      body: JSON.stringify({ text, chatDate: $("chat-date").value, ...(withoutAi && { withoutAi: true }) }),
     });
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
-    if (reply.notice) say(reply.notice);
-    else {
+    if (reply.notice) {
+      say(reply.notice);
+      without.hidden = !reply.readWithoutAi;
+    } else {
       say("");
       showOrders(reply);
       $("chat-edit").focus(); // the chat box folded away: keep keyboard focus on the slim bar
@@ -1103,6 +1169,7 @@ async function sendInvoices() {
       totals = reply.totals;
       summary = reply.summary;
       groups = reply.groups;
+      texts = textMap(reply.texts);
       rowsById = new Map(reply.orders.map((row) => [row.id, row]));
       showSummary();
       showStep(reply.orders);
@@ -1136,6 +1203,7 @@ async function newBatch() {
     if (reply.notice) return ($("read-message").textContent = reply.notice);
     $("chat").value = "";
     $("read-message").textContent = "";
+    $("read-without-ai").hidden = true;
     $("send-message").textContent = "";
     sendErrors = new Map();
     showProgress(0, 0);
@@ -1158,6 +1226,7 @@ async function loadDemo() {
     if (reply.notice) return say(reply.notice);
     $("chat").value = reply.text;
     $("chat-date").value = reply.chatDate;
+    $("read-without-ai").hidden = true;
     say(`Demo chats loaded: ${plural(reply.messages, "message")} from ${formatDate(reply.chatDate)}. Click Read orders.`);
     $("read-orders").focus();
   } catch (err) {
@@ -1178,6 +1247,7 @@ async function resetDemo() {
     stopPolling();
     closeDrawer();
     for (const id of ["read-message", "send-message", "status-message"]) $(id).textContent = "";
+    $("read-without-ai").hidden = true;
     sendErrors = new Map();
     showProgress(0, 0);
     $("chat").value = "";
@@ -1203,6 +1273,17 @@ async function copyText(text) {
   }
 }
 
+// [{ buyer, message, reminder, question }] from the server -> buyer (lowercase) -> texts.
+const textMap = (list) => new Map((list ?? []).map((t) => [String(t.buyer).trim().toLowerCase(), t]));
+
+async function copyBuyerText(button) {
+  const text = texts.get(button.dataset.buyer)?.[button.dataset.kind];
+  if (!text) return;
+  await copyText(text);
+  button.textContent = "Copied";
+  setTimeout(() => (button.textContent = COPY_LABELS[button.dataset.kind]), 2000);
+}
+
 async function copyLink(button) {
   await copyText(button.dataset.link);
   button.textContent = "Copied";
@@ -1217,7 +1298,8 @@ async function copyKitchen(button) {
 }
 
 $("chat-date").value = todayLocal();
-$("read-orders").addEventListener("click", readOrders);
+$("read-orders").addEventListener("click", () => readOrders());
+$("read-without-ai").addEventListener("click", () => readOrders({ withoutAi: true }));
 for (const button of document.querySelectorAll("[data-send-invoices]")) button.addEventListener("click", sendInvoices);
 for (const button of document.querySelectorAll("[data-new-batch]")) button.addEventListener("click", newBatch);
 $("refresh-status").addEventListener("click", () => refreshStatus({ byHand: true }));
@@ -1226,6 +1308,8 @@ $("load-demo").addEventListener("click", loadDemo);
 $("grid").addEventListener("click", (event) => {
   const copy = event.target.closest(".copy-link");
   if (copy) copyLink(copy);
+  const words = event.target.closest(".copy-text");
+  if (words) copyBuyerText(words);
 });
 $("chat-edit").addEventListener("click", () => {
   foldChats(false);
@@ -1252,6 +1336,7 @@ $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest("#record-payment")) recordPayment(event.target.closest("#record-payment"));
   if (event.target.closest(".keep-price")) keepMenuPrice(event.target.closest(".keep-price"));
   if (event.target.closest("#copy-kitchen")) copyKitchen(event.target.closest("#copy-kitchen"));
+  if (event.target.closest(".copy-text")) copyBuyerText(event.target.closest(".copy-text"));
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);

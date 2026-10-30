@@ -8,12 +8,14 @@ import { createStore, demoSource } from "./store.js";
 import { createAi } from "./ai.js";
 import { readPaste } from "./paste.js";
 import { checkOrders } from "./validate.js";
+import { fallbackParse } from "./fallback-parse.js";
 import { createPayPal, NOT_CONFIGURED, PayPalError } from "./paypal.js";
 import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
 import { buyerPanel } from "./panel.js";
 import { kitchenList } from "./kitchen.js";
+import { buyerMessages } from "./messages.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
@@ -75,10 +77,10 @@ export function createApp(config, {
   let readingStage = null; // "reading" or "backup" while a parse runs: the page's loading words (Step 9)
   const callsLeft = () => ai.callsLeft?.() ?? null; // a test's own fake AI may have no counter
 
-  // What the table, cards, slim bar and kitchen list need: the same shape after every change.
+  // What the table, cards, slim bar, kitchen list and ready-to-send texts need: the same shape after every change.
   const table = () => {
     const rows = store.rows();
-    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), source: store.source(), batch: store.batch() };
+    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: buyerMessages(rows, store.source(), menu), source: store.source(), batch: store.batch() };
   };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
@@ -134,35 +136,44 @@ export function createApp(config, {
     }
     const updated = store.replace(recalcRow(next, menu));
     const rows = store.rows();
-    res.json({ row: updated, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu) });
+    res.json({ row: updated, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: buyerMessages(rows, store.source(), menu) });
   });
 
   // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
   // our checks and toRows(), so bad AI data becomes unclear rows, never dropped (PLAN.md Section 5).
   // Anything the seller can fix by pasting again (too long, mock mode doesn't know the chats, an
   // unreadable AI answer) is a { notice } with status 200: friendly words, not an error, rows unchanged.
+  // Step 10: a notice about the AI (busy, too slow, used up, refused, unreadable) also says
+  // readWithoutAi: true, so the page offers "Read without AI"; { withoutAi: true } then reads the chats with
+  // src/fallback-parse.js (no AI call) through the same checks. Never automatic: the seller chooses.
   app.post("/api/parse", async (req, res) => {
-    const { text, chatDate } = req.body ?? {};
+    const { text, chatDate, withoutAi = false } = req.body ?? {};
     if (typeof text !== "string" || typeof chatDate !== "string") {
       return res.status(400).json({ error: 'Send { "text": "the chat messages", "chatDate": "YYYY-MM-DD" }.' });
     }
+    if (typeof withoutAi !== "boolean") return res.status(400).json({ error: "withoutAi must be true or false." });
     if (reading) return res.json({ notice: READING });
     if (invoicer.isBusy()) return res.json({ notice: SENDING });
     // Reading replaces every row: never once an invoice exists (its link would be lost). New batch first.
     if (store.hasInvoices()) return res.json({ notice: INVOICED });
     const { messages, notice } = readPaste(text, chatDate);
     if (notice) return res.json({ notice });
+    if (withoutAi) {
+      const rows = toRows(checkOrders(fallbackParse(messages, menu), messages), menu);
+      store.setAll(rows, { text, chatDate, messages: messages.length, reader: "fallback" });
+      return res.json(table());
+    }
 
     reading = true;
     readingStage = "reading";
     let rows;
     try {
       const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (readingStage = stage) });
-      if (reply.notice) return res.json({ notice: reply.notice });
+      if (reply.notice) return res.json({ notice: reply.notice, readWithoutAi: true });
       rows = toRows(checkOrders(reply.orders, messages), menu);
     } catch (err) {
       log(`Warning: the AI reply could not be read (${err.message}).`);
-      return res.json({ notice: UNREADABLE });
+      return res.json({ notice: UNREADABLE, readWithoutAi: true });
     } finally {
       reading = false;
       readingStage = null;

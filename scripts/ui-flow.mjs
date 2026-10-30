@@ -255,6 +255,46 @@ try {
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     check(copied === href && plain(await lina.locator(".copy-link").innerText()) === "Copied", "Copy link puts Lina's link on the clipboard and says Copied");
     check(await page.$eval("#drawer", (el) => el.hidden), "clicking Copy does not open the drawer");
+
+    // ---- Step 10: ready-to-send texts, built by code (no AI). Exact text on the clipboard. ----
+    const clipboard = async () => (await page.evaluate(() => navigator.clipboard.readText())).replaceAll("\r\n", "\n");
+    const linaMessage = `Hi Lina! Your order: 3 x Classic brownies (RM 54.00), delivery Sat 31 Oct. Pay here: ${href}. Thank you!`;
+    await lina.locator('.copy-text[data-kind="message"]').click();
+    await page.waitForTimeout(200);
+    const copiedMessage = await clipboard();
+    check(copiedMessage === linaMessage && plain(await lina.locator('.copy-text[data-kind="message"]').innerText()) === "Copied",
+      `Copy message (in her row): ${JSON.stringify(copiedMessage)}`);
+    check(await page.$eval("#drawer", (el) => el.hidden), "Copy message does not open the drawer");
+    await lina.locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open #copy-reminder");
+    await page.waitForTimeout(300);
+    check((await page.$eval("#text-message", (el) => el.textContent)) === linaMessage, "her drawer shows the same message in full");
+    await page.click("#copy-reminder");
+    await page.waitForTimeout(200);
+    const copiedReminder = await clipboard();
+    check(copiedReminder === `Hi Lina! A gentle reminder that your order (RM 54.00) is still unpaid. Pay here: ${href}. Thank you!`,
+      `Copy reminder (in her drawer): ${JSON.stringify(copiedReminder)}`);
+    await page.$eval("#drawer .text-card", (el) => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6c-texts.png` });
+    await page.keyboard.press("Escape");
+    await goToBuyerPage(page, "Priya");
+    const priyaRow = page.locator(ROWS, { hasText: "Priya" });
+    await priyaRow.locator('.copy-text[data-kind="question"]').click();
+    await page.waitForTimeout(200);
+    const copiedQuestion = await clipboard();
+    check(copiedQuestion === "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?", `Copy question (Priya's row): ${JSON.stringify(copiedQuestion)}`);
+    await goToBuyerPage(page, "Jun Wei");
+    await page.locator(ROWS, { hasText: "Jun Wei" }).locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open #copy-question");
+    await page.click("#copy-question");
+    await page.waitForTimeout(200);
+    const junQuestion = await clipboard();
+    check(junQuestion === "Hi Jun Wei! Just to check: Classic brownies are RM 18.00 each, so your total is RM 62.00. Is that ok?",
+      `Copy question (Jun Wei's drawer, price mismatch): ${JSON.stringify(junQuestion)}`);
+    check(!(await page.$("#copy-message")) && !(await page.$("#copy-reminder")), "no invoice yet, so no message or reminder for Jun Wei");
+    await page.keyboard.press("Escape");
+    await goToBuyerPage(page, "Lina");
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-6-sent.png`, fullPage: true });
 

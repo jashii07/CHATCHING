@@ -270,6 +270,30 @@ try {
     await page.close();
   }
 
+  // Step 10, Part 3: every item chip stays inside its own table cell ("1 × Burnt cheesecake 6-inch" ran into
+  // the Date column at 1280 px with the chats open). Chats folded AND open, at 1280, 768 and 390 px.
+  for (const viewport of [WIDTHS[0], { name: "tablet", width: 768, height: 1024 }, WIDTHS[2]]) {
+    const { page: chipPage, errors: chipErrors } = await open(viewport);
+    console.log(`\nItem chips at ${viewport.width} px`);
+    for (const chats of ["folded", "open"]) {
+      if (chats === "open") {
+        await chipPage.click("#chat-edit");
+        await chipPage.waitForTimeout(400);
+      }
+      for (const n of [1, 2]) {
+        await goToPage(chipPage, n);
+        const outside = await chipPage.$$eval(`${ROWS} .chip`, (chips) => chips
+          .map((chip) => ({ text: chip.textContent, over: chip.getBoundingClientRect().right - chip.closest(".ag-cell").getBoundingClientRect().right }))
+          .filter((chip) => chip.over > 0.5).map((chip) => `${chip.text} (${Math.round(chip.over)} px)`));
+        check(outside.length === 0, `chats ${chats}, page ${n}: every chip stays inside its column${outside.length ? `: ${outside.join(", ")}` : ""}`);
+        if (n === 1) await chipPage.screenshot({ path: `${OUT}chips-${viewport.width}-${chats}.png`, fullPage: true });
+      }
+      await goToPage(chipPage, 1);
+    }
+    check(chipErrors.length === 0, `no console errors or warnings${chipErrors.length ? `: ${chipErrors.join(" | ")}` : ""}`);
+    await chipPage.close();
+  }
+
   // The fix, in the drawer, at laptop width.
   console.log("\nFix Priya in the drawer: item -> Classic brownies, qty -> 1");
   const { page, errors } = await open(WIDTHS[0]);
