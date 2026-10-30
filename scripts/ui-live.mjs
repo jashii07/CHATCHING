@@ -100,6 +100,13 @@ try {
       console.log("note  an earlier batch was in the table: moved aside with New batch");
     }
 
+    // A server that just woke up already shows the demo table, with the chats folded (and Load demo with them).
+    if (await page.locator("#chat-edit").isVisible()) {
+      await page.click("#chat-edit");
+      await page.waitForTimeout(400);
+      console.log("note  the demo table was already there (a fresh server): opened the chats with Edit");
+    }
+
     // Load demo -> Read orders: from the saved reply, no AI call.
     await page.click("#load-demo");
     await page.waitForFunction(() => document.getElementById("read-message").textContent.includes("Demo chats loaded"), null, { timeout: SLOW });

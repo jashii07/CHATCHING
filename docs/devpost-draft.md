@@ -16,7 +16,7 @@ Live app: https://chatching.onrender.com/
 
 First load can take up to a minute while the free server wakes up.
 
-1. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
+1. The demo orders are usually on screen already. If the table is empty, click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice (no emails are sent).
 3. Click a buyer, then **Record payment** to record cash. Click **Refresh status**: the row shows Paid (cash/bank).
 4. Click **Kitchen list** to see what to make per day.
