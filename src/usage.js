@@ -37,7 +37,7 @@ export function nextReset(ms) {
 export const resetHourMalaysia = (ms) =>
   new Date(nextReset(ms)).toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur", hour: "numeric" });
 
-// { left(model), take(model), totalLeft() }. take() is called just BEFORE a call starts and saves at once.
+// { left(model), take(model), useUp(model), totalLeft() }. take() is called just BEFORE a call starts and saves at once.
 // A missing or broken file starts a fresh count (with a warning); a failed save only logs a warning, so
 // the counter never stops the app.
 export function createUsage({ file = USAGE_FILE, models, limit = DAILY_LIMIT, now = Date.now, log = console.log }) {
@@ -62,20 +62,29 @@ export function createUsage({ file = USAGE_FILE, models, limit = DAILY_LIMIT, no
     return Number.isInteger(n) && n > 0 ? n : 0;
   };
   const left = (model) => Math.max(0, limit - used(model));
+  const save = () => {
+    try {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(`${file}.tmp`, `${JSON.stringify(today(), null, 2)}\n`);
+      renameSync(`${file}.tmp`, file);
+    } catch (err) {
+      log(`Warning: the AI call count could not be saved (${err.message}).`);
+    }
+  };
 
   return {
     left,
     totalLeft: () => models.reduce((sum, model) => sum + left(model), 0),
     take(model) {
-      const day = today();
-      day.calls[model] = used(model) + 1;
-      try {
-        mkdirSync(dirname(file), { recursive: true });
-        writeFileSync(`${file}.tmp`, `${JSON.stringify(day, null, 2)}\n`);
-        renameSync(`${file}.tmp`, file);
-      } catch (err) {
-        log(`Warning: the AI call count could not be saved (${err.message}).`);
-      }
+      today().calls[model] = used(model) + 1;
+      save();
+    },
+    // Google said this model's DAILY quota is used up (a 429 naming a per-day quota). Our own count can be
+    // too low: on Render the count file is lost when the server restarts or sleeps, but Google's count is
+    // not. So the model counts as used up until the next Pacific day, and is not called again today.
+    useUp(model) {
+      today().calls[model] = Math.max(used(model), limit);
+      save();
     },
   };
 }

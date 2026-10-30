@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAi, parseKey, usedUp, NO_KEY, AI_BUSY, AI_REFUSED } from "../src/ai.js";
-import { MAIN_MODEL, BACKUP_MODEL } from "../src/gemini.js";
+import { MAIN_MODEL, BACKUP_MODEL, isDailyLimit } from "../src/gemini.js";
 import { createUsage } from "../src/usage.js";
 
 const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8"));
@@ -44,10 +44,21 @@ function fakeGemini(time, ...answers) {
     time.t += seconds * S;
     if (answer === "ok") return new Response(reply(), { status: 200 });
     if (answer === "broken") return new Response(JSON.stringify({ candidates: [{ finishReason: "SAFETY" }] }), { status: 200 });
+    if (answer === "daily" || answer === "minute") return new Response(quota429(answer), { status: 429 });
     return new Response(JSON.stringify({ error: { code: answer, status: "UNAVAILABLE", message: "busy" } }), { status: answer });
   }
   return { fetch, calls, models: () => calls.map((c) => c.url.match(/models\/(.+):generateContent/)[1]) };
 }
+
+// Google's 429 names the quota it hit (shape as seen in Google's forum, 2026): the free DAILY cap per model,
+// or the per-minute one.
+const quota429 = (kind) => JSON.stringify({ error: {
+  code: 429, status: "RESOURCE_EXHAUSTED", message: "You exceeded your current quota.",
+  details: [{ "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{
+    quotaMetric: "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+    quotaId: kind === "daily" ? "GenerateRequestsPerDayPerProjectPerModel-FreeTier" : "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+  }] }],
+} });
 
 const tempDir = () => mkdtempSync(join(tmpdir(), "chatching-ai-"));
 const make = (answers, extra = {}) => {
@@ -228,4 +239,52 @@ test("mock mode never calls Gemini, even with a key", async () => {
   const ai = createAi({ mode: "mock", apiKey: "fake-key-123", fetch: gemini.fetch, cacheDir: tempDir(), usage: createUsage({ file: join(tempDir(), "u.json"), models: [MAIN_MODEL] }) });
   assert.ok((await ai.parse({ text: CHATS, chatDate: CHAT_DATE, menu })).notice);
   assert.equal(gemini.calls.length, 0);
+});
+
+// Step 11: on Render the count file is lost when the server restarts or sleeps, so our count can say 40
+// while Google has already counted today's calls. Google's own "daily limit" answer must then stop us.
+test("restarted with a fresh count, but Google's DAILY limit is reached: one try per model, no retry, the used-up words, no more calls today", async () => {
+  const { parse, gemini, ai, usageFile, time } = make(["daily", "daily", "ok"]);
+  assert.equal(ai.callsLeft(), 40); // a fresh count, as after a restart on Render
+  assert.deepEqual(await parse(), { notice: usedUp(time.t) });
+  assert.deepEqual(gemini.models(), [MAIN_MODEL, BACKUP_MODEL]);
+  assert.deepEqual(time.waits, []); // waiting a minute can't help with a daily limit
+  assert.equal(ai.callsLeft(), 0);
+  assert.deepEqual(JSON.parse(readFileSync(usageFile, "utf8")).calls, { [MAIN_MODEL]: 20, [BACKUP_MODEL]: 20 });
+
+  assert.deepEqual(await parse("[29/10 9:05 AM] Ben: 1 cheese brownies"), { notice: usedUp(time.t) });
+  assert.equal(gemini.calls.length, 2); // never called again today
+  time.t = Date.UTC(2026, 9, 30, 7, 0); // midnight Pacific (3 PM Malaysia time): a new day
+  assert.equal((await parse()).from, MAIN_MODEL);
+});
+
+test("the main model's daily limit is reached -> the backup reads the chats; only the main model is used up", async () => {
+  const { parse, gemini, usage, stages } = make(["daily", "ok"]);
+  assert.equal((await parse()).from, BACKUP_MODEL);
+  assert.deepEqual(gemini.models(), [MAIN_MODEL, BACKUP_MODEL]);
+  assert.deepEqual([usage.left(MAIN_MODEL), usage.left(BACKUP_MODEL)], [0, 19]);
+  assert.deepEqual(stages, ["backup"]);
+});
+
+test("daily limit on the main model but the backup is only busy -> \"busy\" words (the backup still has calls today)", async () => {
+  const { parse, usage } = make(["daily", 503, 503]);
+  assert.deepEqual(await parse(), { notice: AI_BUSY });
+  assert.deepEqual([usage.left(MAIN_MODEL), usage.left(BACKUP_MODEL)], [0, 18]);
+});
+
+test("a PER-MINUTE 429 is still just \"busy\": wait 2 s, ask once more; the model is not used up", async () => {
+  const { parse, gemini, usage, time } = make(["minute", "ok"]);
+  assert.equal((await parse()).from, MAIN_MODEL);
+  assert.deepEqual(gemini.models(), [MAIN_MODEL, MAIN_MODEL]);
+  assert.deepEqual(time.waits, [2 * S]);
+  assert.equal(usage.left(MAIN_MODEL), 18);
+});
+
+test("isDailyLimit reads Google's quota id and never trips on odd shapes", () => {
+  const error = (quotaId) => ({ details: [{ violations: [{ quotaId }] }] });
+  assert.equal(isDailyLimit(error("GenerateRequestsPerDayPerProjectPerModel-FreeTier")), true);
+  assert.equal(isDailyLimit(error("GenerateRequestsPerMinutePerProjectPerModel-FreeTier")), false);
+  for (const odd of [undefined, null, {}, { details: "x" }, { details: [null, { violations: "x" }, { violations: [null] }] }]) {
+    assert.equal(isDailyLimit(odd), false);
+  }
 });

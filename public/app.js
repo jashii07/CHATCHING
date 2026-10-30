@@ -400,7 +400,9 @@ function showSummary() {
   if (!summary) return;
   const set = (id, figure, caption, state) => {
     const card = $(id);
-    card.querySelector("[data-figure]").textContent = figure;
+    const el = card.querySelector("[data-figure]");
+    el.textContent = figure;
+    el.style.setProperty("--figure-chars", figure.length); // longer figures shrink to fit the card (styles.css)
     card.querySelector("[data-caption]").textContent = caption;
     card.classList.remove("is-check", "is-paid");
     if (state) card.classList.add(state);
@@ -1072,6 +1074,7 @@ async function refreshStatus({ byHand }) {
     const res = await fetch("/api/invoices/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) return ($("status-message").textContent = reply.notice); // e.g. too many checks: friendly words, polling goes on
     if (reply.changed.length) {
       showOrders(reply);
       flashPaid(reply.changed);
@@ -1147,6 +1150,10 @@ async function recordPayment(button) {
     });
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.notice) { // e.g. too many requests: nothing was sent to PayPal; friendly words, not an Error box
+      renderDrawer();
+      return document.querySelector("#drawer .pay-card")?.append(Object.assign(el("p", "hint", reply.notice), { role: "status" }));
+    }
     if (reply.failed) throw new Error(reply.failed);
     closeDrawer(); // so the flash is seen, also on phones (full-screen drawer)
     showOrders(reply);

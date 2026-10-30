@@ -8,7 +8,7 @@
 import { toSen, fromSen } from "./money.js";
 
 export const SANDBOX_BASE = "https://api-m.sandbox.paypal.com";
-export const NOT_CONFIGURED = "PayPal is not configured, so invoices can't be sent. Add the PayPal sandbox keys to .env and restart the server.";
+export const NOT_CONFIGURED = "PayPal is not configured, so invoices can't be sent. Add the PayPal sandbox keys to .env (on Render: Environment settings) and restart the server.";
 const TOKEN_MARGIN_MS = 5 * 60 * 1000; // fetch a new token 5 minutes before the old one expires
 
 export class PayPalError extends Error {

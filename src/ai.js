@@ -8,6 +8,8 @@
 // - Step 9: ONE time budget for the whole parse (60 s; the main model gets up to 35 s, the backup the
 //   rest), one short-wait retry on 503/429 only if a real read still fits, never more than 3 calls, and
 //   the daily counter (src/usage.js): every call is counted before it starts; at 0 nothing is called.
+//   Step 11: if Google itself answers "daily limit reached" (our count starts again at 0 when Render
+//   restarts), that model is marked used up for the day and the seller gets the friendly "used up" words.
 //   When the AI fails, the page offers "Read without AI" (src/fallback-parse.js, Step 10); never automatic.
 // The key is passed in (from config), sent in a header by src/gemini.js, and never logged.
 import { createHash } from "node:crypto";
@@ -102,6 +104,7 @@ export function createAi({
     const deadline = start + budgetMs;
     let calls = 0;
     let retried = false;
+    let dailyLimitHit = false;
     for (const [i, model] of usable.entries()) {
       // The last model we can use gets everything that is left; any model before it only its share.
       const end = i < usable.length - 1 ? Math.min(start + mainShareMs, deadline) : deadline;
@@ -117,6 +120,13 @@ export function createAi({
           if (!(err instanceof GeminiError)) throw err;
           log(`Warning: Gemini ${model} failed after ${err.seconds} s (${err.message}).`);
           if (!err.retryable) return { notice: AI_REFUSED };
+          // Google's own daily limit for this model is reached (our count may be low after a restart):
+          // never call it again today, no retry, straight to the next model.
+          if (err.dailyLimit) {
+            usage.useUp(model);
+            dailyLimitHit = true;
+            break;
+          }
           // Busy or rate-limited: ask the same model once more, but only if a real read still fits after
           // the wait. A timeout or network error goes straight to the next model (no 90 s waits).
           // A retry must also leave a call for every model still to come (with maxCalls 2: main, then backup).
@@ -138,6 +148,8 @@ export function createAi({
         return { orders, from: model };
       }
     }
+    // Google said "daily limit" and no model is left: the used-up words, not "try again in a minute".
+    if (dailyLimitHit && usage.totalLeft() === 0) return { notice: usedUp(now()) };
     return { notice: AI_BUSY };
   }
 

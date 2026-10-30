@@ -8,7 +8,7 @@ function main() {
   for (const warning of config.warnings) console.log(`Warning: ${warning}`);
 
   const app = createApp(config);
-  const server = app.listen(config.port);
+  const server = app.listen(config.port, config.host); // Render sets PORT (10000) and RENDER
 
   server.on("listening", () => {
     const keys = Object.entries(config.keysPresent).map(([name, present]) => `${name}=${present ? "yes" : "no"}`);

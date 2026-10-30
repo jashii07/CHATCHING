@@ -16,6 +16,7 @@ import { createApp } from "../src/app.js";
 import { AI_BUSY, createAi, usedUp } from "../src/ai.js";
 import { BACKUP_MODEL, MAIN_MODEL } from "../src/gemini.js";
 import { createUsage, DAILY_LIMIT } from "../src/usage.js";
+import { createRateLimiter, RATE_LIMITS, slowDown } from "../src/rate-limit.js";
 
 const OUT = fileURLToPath(new URL("../tmp/screenshots-ai/", import.meta.url));
 const WIDTHS = [
@@ -181,6 +182,41 @@ try {
     server.closeAllConnections();
     server.close();
   }
+
+  // Step 11: too many reads from one visitor (a limit of 1 here, 6 in the app) -> friendly words and the
+  // Read without AI button, rows unchanged, no red console line. Mock mode: the demo's saved reply.
+  console.log("\nToo many reads from one visitor (rate limit, Step 11)");
+  const tight = Object.fromEntries(Object.keys(RATE_LIMITS).map((route) => [route, { limit: 1, windowMs: 10 * 60_000 }]));
+  const limitServer = createApp(loadConfig({}), { log: () => {}, storeFile: `${OUT}limit-orders.json`, limiter: createRateLimiter({ limits: tight }) }).listen(0);
+  await new Promise((resolve) => limitServer.once("listening", resolve));
+  const page = await browser.newPage({ viewport: WIDTHS[0] });
+  const errors = [];
+  page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
+  page.on("pageerror", (err) => errors.push(err.message));
+  await page.goto(`http://localhost:${limitServer.address().port}`);
+  await page.waitForSelector(ROWS);
+  const readOnce = async () => {
+    await page.click("#chat-edit");
+    await page.click("#load-demo");
+    await page.waitForFunction(() => document.getElementById("chat-date").value === "2026-10-28", null, { timeout: 5000 });
+    await page.click("#read-orders");
+    await page.waitForFunction(() => !document.getElementById("read-orders").disabled, null, { timeout: 5000 });
+    await page.waitForTimeout(300);
+  };
+  await readOnce();
+  check((await readMessage(page)) === "" && (await page.$$(ROWS)).length > 0, "the 1st read works");
+  const saved = async () => JSON.stringify((await (await fetch(`http://localhost:${limitServer.address().port}/api/state`)).json()).orders);
+  const before = await saved();
+  await readOnce();
+  const words = await readMessage(page);
+  check(words === slowDown(10 * 60_000), `the 2nd read gets friendly words: "${words}"`);
+  check(await page.isVisible("#read-without-ai"), "and the Read without AI button (it makes no AI call, so it is never limited)");
+  check((await saved()) === before, "the saved orders are unchanged (nothing was read)");
+  await page.screenshot({ path: `${OUT}1280-laptop-6-rate-limit.png`, fullPage: true });
+  check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+  await page.close();
+  limitServer.closeAllConnections();
+  limitServer.close();
 } finally {
   await browser.close();
 }

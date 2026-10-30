@@ -41,13 +41,13 @@ const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-brea
 const state = await (await fetch(`${base}/api/state`)).json();
 const PRIYA = state.groups.find((group) => group.buyer === "Priya").rowIds[0];
 
-async function open(viewport) {
+async function open(viewport, url = base) {
   const page = await browser.newPage({ viewport });
   const errors = [];
   // Warnings count too: AG Grid reports misuse as a warning, not an error.
   page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => errors.push(err.message));
-  await page.goto(base);
+  await page.goto(url);
   await page.waitForSelector(ROWS);
   await page.waitForTimeout(500); // let the grid finish measuring the rows
   return { page, errors };
@@ -315,6 +315,43 @@ try {
     }
     check(fitErrors.length === 0, `no console errors or warnings${fitErrors.length ? `: ${fitErrors.join(" | ")}` : ""}`);
     await fitPage.close();
+  }
+
+  // The big figures on the summary cards (Step 11 part 0): "RM 366.00" on Expected was cut off at 1024 px, and
+  // "RM 0.00" on Paid ran past its card's padding. Each figure's text must end inside its card's padding, at
+  // every width where the layout changes, with the demo's amounts AND with a big real total (every order set
+  // to 99, through the app's own edit route), so a long amount like "RM 36,234.00" is proven to fit too.
+  const figuresCutOff = (page) => page.$$eval(".stat [data-figure]", (els) => els.flatMap((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const card = el.closest(".stat");
+    const inner = card.getBoundingClientRect().right - parseFloat(getComputedStyle(card).paddingRight);
+    const over = range.getBoundingClientRect().right - inner;
+    return over > 0.5 ? [`${card.id} "${el.textContent.replace(/\s+/g, " ")}" runs ${Math.round(over)} px past its card`] : [];
+  }));
+  const heroSize = (page) => page.$eval("#stat-expected [data-figure]", (el) => parseFloat(getComputedStyle(el).fontSize));
+  const bigServer = createApp(loadConfig({}), { log: () => {}, storeFile: `${OUT}big-orders.json` }).listen(0);
+  await new Promise((resolve) => bigServer.once("listening", resolve));
+  const bigBase = `http://localhost:${bigServer.address().port}`;
+  for (const row of (await (await fetch(`${bigBase}/api/state`)).json()).orders.filter((r) => r.orderStatus === "active")) {
+    await fetch(`${bigBase}/api/orders/${row.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qty: 99 }) });
+  }
+  try {
+    for (const [label, url] of [["demo amounts", base], ["every order x 99", bigBase]]) {
+      console.log(`\nSummary figures fit their cards (${label})`);
+      for (const width of [1440, 1280, 1100, 1024, 1023, 820, 768, 641, 640, 390, 320]) {
+        const { page: cardPage, errors: cardErrors } = await open({ name: "cards", width, height: 900 }, url);
+        const problems = await figuresCutOff(cardPage);
+        const figures = plain(await cardPage.$$eval(".stat [data-figure]", (els) => els.map((el) => el.textContent).join(" | ")));
+        check(problems.length === 0 && cardErrors.length === 0,
+          `${width} px: ${figures} (hero ${await heroSize(cardPage)} px)${problems.length ? `: ${problems.join("; ")}` : ""}${cardErrors.length ? ` errors: ${cardErrors.join(" | ")}` : ""}`);
+        if (width === 1024) await cardPage.screenshot({ path: `${OUT}cards-1024-${label.replace(/\W+/g, "-")}.png` });
+        await cardPage.close();
+      }
+    }
+  } finally {
+    bigServer.closeAllConnections();
+    bigServer.close();
   }
 
   // The fix, in the drawer, at laptop width.

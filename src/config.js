@@ -48,8 +48,15 @@ export function loadConfig(env = process.env) {
     warnings.push('AI_MODE is "real" but GEMINI_API_KEY is missing, so AI calls will fail.');
   }
 
+  // Render always sets RENDER (render.com/docs/environment-variables). There the server must listen on
+  // 0.0.0.0 (render.com/docs/web-services) and sits behind Render's proxy, which passes the visitor's
+  // address in X-Forwarded-For (used by the rate limit, src/rate-limit.js).
+  const onRender = read("RENDER") !== "";
+
   return Object.freeze({
     port,
+    host: onRender ? "0.0.0.0" : undefined, // undefined = Node's default (all addresses)
+    onRender,
     aiMode,
     paypal: hideWhenPrinted({ clientId: read("PAYPAL_CLIENT_ID"), clientSecret: read("PAYPAL_CLIENT_SECRET") }),
     paypalBaseUrl,

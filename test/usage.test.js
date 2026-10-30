@@ -71,3 +71,15 @@ test("Pacific day and reset time: midnight Pacific is 3 PM Malaysia time until 1
   assert.equal(resetHourMalaysia(Date.parse("2026-11-05T04:00:00Z")), "4 PM");
   assert.equal(resetHourMalaysia(Date.parse("2026-12-15T04:00:00Z")), "4 PM"); // judging ends 16 Dec
 });
+
+test("useUp (Google said the daily limit is reached): that model is at 0 until the next Pacific day, saved; the other keeps its calls", () => {
+  const path = file();
+  const time = { t: Date.parse("2026-10-30T04:00:00Z") };
+  const usage = createUsage({ file: path, models: MODELS, now: () => time.t });
+  usage.take("main");
+  usage.useUp("main");
+  assert.deepEqual([usage.left("main"), usage.left("backup"), usage.totalLeft()], [0, 20, 20]);
+  assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { day: "2026-10-29", calls: { main: 20 } });
+  time.t = Date.parse("2026-10-30T07:00:00Z"); // midnight Pacific
+  assert.equal(usage.left("main"), 20);
+});

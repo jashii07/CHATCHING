@@ -11,12 +11,21 @@ const API = "https://generativelanguage.googleapis.com/v1beta/models";
 
 // A failed call. status is Google's HTTP status, 504 for our own timeout, 0 for a network error.
 // retryable = worth trying again or with the backup model (overloaded, rate limit, timeout, network).
+// dailyLimit = a 429 for this model's free DAILY quota (Google names it "GenerateRequestsPerDay..."), not the
+// per-minute one: waiting a minute won't help, so src/ai.js marks the model used up for the day.
 export class GeminiError extends Error {
-  constructor(message, { status, model, seconds }) {
+  constructor(message, { status, model, seconds, dailyLimit = false }) {
     super(message);
     this.name = "GeminiError";
-    Object.assign(this, { status, model, seconds, retryable: [0, 429, 500, 503, 504].includes(status) });
+    Object.assign(this, { status, model, seconds, dailyLimit, retryable: [0, 429, 500, 503, 504].includes(status) });
   }
+}
+
+// Google's 429 lists the quota it hit in error.details (QuotaFailure violations, each with a quotaId).
+const PER_DAY = /PerDay/i;
+export function isDailyLimit(error) {
+  const violations = (Array.isArray(error?.details) ? error.details : []).flatMap((d) => (Array.isArray(d?.violations) ? d.violations : []));
+  return violations.some((v) => PER_DAY.test(String(v?.quotaId ?? "")));
 }
 
 export async function callGemini({ apiKey, model, body, fetch = globalThis.fetch, timeoutMs, signal = AbortSignal.timeout(timeoutMs), now = () => performance.now() }) {
@@ -43,7 +52,7 @@ export async function callGemini({ apiKey, model, body, fetch = globalThis.fetch
       error = JSON.parse(text).error ?? {};
     } catch {}
     throw new GeminiError(`HTTP ${res.status}${error.status ? ` ${error.status}` : ""}: ${String(error.message ?? text).slice(0, 200)}`,
-      { status: res.status, model, seconds: seconds() });
+      { status: res.status, model, seconds: seconds(), dailyLimit: res.status === 429 && isDailyLimit(error) });
   }
   return { text, model, seconds: seconds() };
 }

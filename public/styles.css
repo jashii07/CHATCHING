@@ -282,6 +282,7 @@ h2 {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  container-type: inline-size; /* the figure sizes itself by the card's width (cqi below) */
   padding: 28px;
   border-radius: 24px;
   background: var(--white);
@@ -301,10 +302,14 @@ h2 {
   letter-spacing: 0;
 }
 
+/* The figure always fits its card: its normal size (--figure-max), or smaller when the card is too narrow.
+   One character of a money figure is at most ~0.57em wide (measured in Inter), so 0.6em per character is
+   safe; app.js sets --figure-chars to the figure's length (the demo's expected total is 9). 100cqi = the card's inner width. */
 .stat .figure {
+  --figure-max: 2.5rem;
   display: block;
   margin: 6px 0 8px;
-  font-size: 2.5rem;
+  font-size: min(var(--figure-max), 100cqi / (var(--figure-chars, 9) * 0.6));
   line-height: 1.05;
   font-weight: 650;
   letter-spacing: -0.03em;
@@ -351,8 +356,8 @@ h2 {
 }
 
 .stat-hero .figure {
+  --figure-max: 4.25rem;
   margin-top: 8px;
-  font-size: 4.25rem;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
@@ -1296,7 +1301,7 @@ button.ghost.small {
   }
 
   .stat .figure {
-    font-size: 1.5rem;
+    --figure-max: 1.5rem;
   }
 
   .stat:not(.stat-hero) .caption {
@@ -1308,7 +1313,7 @@ button.ghost.small {
   }
 
   .stat-hero .figure {
-    font-size: 3rem;
+    --figure-max: 3rem;
   }
 
   .ai-calls {

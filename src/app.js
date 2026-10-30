@@ -16,6 +16,7 @@ import { createStatusChecker } from "./status.js";
 import { buyerPanel } from "./panel.js";
 import { kitchenList } from "./kitchen.js";
 import { buyerMessages } from "./messages.js";
+import { createRateLimiter, slowDown } from "./rate-limit.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
@@ -25,6 +26,7 @@ const LOCKED = "Invoice sent: items are locked so the invoice and the table alwa
 const CANCELLED = "This order is cancelled, so it can't be changed.";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
+const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
 // The current rows live here (git-ignored). Tests pass their own temporary file.
 const STORE_FILE = fileURLToPath(new URL("../data/runtime/orders.json", import.meta.url));
@@ -68,6 +70,7 @@ export function createApp(config, {
   ai = createAi({ mode: config.aiMode, apiKey: config.gemini.apiKey, log }),
   paypal = createPayPal({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, baseUrl: config.paypalBaseUrl }),
   now = Date.now, // the clock for the status cache (tests pass their own)
+  limiter = createRateLimiter({ now }), // per-visitor limits on the Gemini / PayPal routes (src/rate-limit.js)
 } = {}) {
   const menu = loadMenu();
   const store = createStore({ file: storeFile, menu, log });
@@ -86,6 +89,20 @@ export function createApp(config, {
   };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
+  // On Render, req.ip is the visitor's address from X-Forwarded-For (the left-most one), not Render's proxy.
+  // Render adds to that header instead of replacing it, so a visitor could fake it and dodge the rate
+  // limit (DECISIONS.md, Known weaknesses); the daily AI counter still caps the AI calls for everyone.
+  if (config.onRender) app.set("trust proxy", true);
+
+  // Too many requests from one visitor -> 200 { notice } with friendly words (no red console error), and
+  // the route is not run. extra: more fields for the page (Read orders also offers Read without AI).
+  const limited = (route, extra = {}) => (req, res, next) => {
+    if (route === "parse" && req.body?.withoutAi === true) return next(); // no AI call, nothing to protect
+    const waitMs = limiter.take(route, req.ip);
+    if (waitMs === null) return next();
+    log(`Rate limit: too many ${route} requests from one visitor; asked to wait ${Math.ceil(waitMs / 1000)} s.`);
+    res.json({ notice: slowDown(waitMs), rateLimited: true, ...extra });
+  };
 
   // One log line per API request: method, path, status, time in ms.
   app.use("/api", (req, res, next) => {
@@ -99,8 +116,9 @@ export function createApp(config, {
   // Reads JSON request bodies (the chat paste later). 100 KB is plenty for ~50 messages.
   app.use(express.json({ limit: "100kb" }));
 
+  // For Render's health check and a quick "is it up?": only ok and the app's version, never keys or settings.
   app.get("/api/health", (req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, version: VERSION });
   });
 
   app.get("/api/state", (req, res) => {
@@ -214,7 +232,7 @@ export function createApp(config, {
   // Step 10: a notice about the AI (busy, too slow, used up, refused, unreadable) also says
   // readWithoutAi: true, so the page offers "Read without AI"; { withoutAi: true } then reads the chats with
   // src/fallback-parse.js (no AI call) through the same checks. Never automatic: the seller chooses.
-  app.post("/api/parse", async (req, res) => {
+  app.post("/api/parse", limited("parse", { readWithoutAi: true }), async (req, res) => {
     const { text, chatDate, withoutAi = false } = req.body ?? {};
     if (typeof text !== "string" || typeof chatDate !== "string") {
       return res.status(400).json({ error: 'Send { "text": "the chat messages", "chatDate": "YYYY-MM-DD" }.' });
@@ -259,7 +277,7 @@ export function createApp(config, {
   // Send invoices: one PayPal sandbox invoice per clear buyer that has none yet (src/invoices.js has the
   // guards). { buyer } invoices just that buyer. Missing keys -> 503 with the message sent on purpose,
   // because the error handler hides every 5xx message. Per-buyer PayPal problems come back in "failed".
-  app.post("/api/invoices", async (req, res) => {
+  app.post("/api/invoices", limited("invoices"), async (req, res) => {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
     const { buyer } = req.body ?? {};
     if (buyer !== undefined && typeof buyer !== "string") return res.status(400).json({ error: 'Send {} for every buyer, or { "buyer": "Lina" }.' });
@@ -277,7 +295,7 @@ export function createApp(config, {
 
   // Refresh status (the button, and the page's polling every 20 s): PayPal's status for every open
   // invoice, saved. 10-second cache + one shared round (src/status.js), so many tabs can't flood PayPal.
-  app.post("/api/invoices/refresh", async (req, res) => {
+  app.post("/api/invoices/refresh", limited("refresh"), async (req, res) => {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
     res.json({ ...(await status.refresh()), ...table() });
   });
@@ -285,7 +303,7 @@ export function createApp(config, {
   // Record a cash / bank-transfer payment: the page sends ONLY the method; the amount is the saved
   // invoice's full total (src/payments.js). Refusals (already paid, part paid, a second click) are 4xx
   // with the reason; a PayPal problem comes back as { failed } so its words reach the seller.
-  app.post("/api/invoices/:id/payment", async (req, res) => {
+  app.post("/api/invoices/:id/payment", limited("payment"), async (req, res) => {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
     const body = req.body ?? {};
     if (Object.hasOwn(body, "amount")) {

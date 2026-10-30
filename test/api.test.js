@@ -38,10 +38,11 @@ async function call(path, init) {
   return { status: res.status, type: res.headers.get("content-type"), text: await res.text() };
 }
 
-test("GET /api/health -> { ok: true }", async () => {
+test("GET /api/health -> { ok: true, version } and nothing else (no keys, no settings)", async () => {
   const res = await call("/api/health");
   assert.equal(res.status, 200);
-  assert.deepEqual(JSON.parse(res.text), { ok: true });
+  const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.deepEqual(JSON.parse(res.text), { ok: true, version });
 });
 
 test("GET /api/state -> menu, demo orders + totals, AI mode, placeholder counter, true/false key flags", async () => {
