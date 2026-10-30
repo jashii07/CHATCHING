@@ -83,10 +83,11 @@ try {
     await page.waitForSelector(ROWS);
     await page.waitForTimeout(400);
     check((await callsText(page)) === "AI calls left today: 40", `the top bar starts at "${await callsText(page)}"`);
-    const before = await rowTexts(page);
-
     // --- Busy: main 503, main again 503, backup 503 ---
     await page.click("#chat-edit");
+    await page.waitForTimeout(400);
+    // Taken with the chats open: opening them can move the date under the name (a narrower table).
+    const before = await rowTexts(page);
     await page.fill("#chat", CHATS);
     await page.fill("#chat-date", "2026-10-30");
     await page.click("#read-orders");

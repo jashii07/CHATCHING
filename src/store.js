@@ -77,6 +77,11 @@ export function createStore({ file, menu, log = console.log }) {
       save();
       return updated;
     },
+    // A changed list of rows (an item added or removed in the drawer): same batch, same chats, saved once.
+    setRows(newRows) {
+      rows = newRows;
+      save();
+    },
     // Several rows at once (one buyer's invoice), saved once.
     replaceMany(updated) {
       const byId = new Map(updated.map((row) => [row.id, row]));

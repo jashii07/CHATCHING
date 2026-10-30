@@ -15,6 +15,7 @@ const NEEDED_MODULES = {
 const BUYERS_PER_PAGE = 6;
 
 const phone = window.matchMedia("(max-width: 640px)");
+const LOCKED_WORDS = "Invoice sent: items are locked so the invoice and the table always match.";
 const laptop = window.matchMedia("(min-width: 1024px)");
 
 const $ = (id) => document.getElementById(id);
@@ -214,8 +215,8 @@ function buyerCell(p) {
   if (p.node.rowPinned) return el("span", "pinned-label", "Total");
   const cell = el("span", "buyer");
   const text = el("span", "");
-  // iPad has no Date column (no room), so the date sits under the name, as on the phone cards.
-  const sub = screenSize() === "ipad" && !p.data.cancelled ? `${buyerSub(p.data)}, ${datesText(p.data)}` : buyerSub(p.data);
+  // The narrower table has no Date column (no room), so the date sits under the name, as on the phone cards.
+  const sub = layout === "ipad" && !p.data.cancelled ? `${buyerSub(p.data)}, ${datesText(p.data)}` : buyerSub(p.data);
   text.append(el("span", "buyer-name", p.data.buyer || "No name"), el("span", "buyer-sub", sub));
   cell.append(avatar(p.data.buyer), text);
   return cell;
@@ -246,6 +247,12 @@ function openCell(p) {
 // ---- Phone: each buyer is one stacked card (a single column) ----
 
 function cardCell(p) {
+  // Cards on a wider screen (a narrow table) keep the pinned totals row; phones use the sticky bar instead.
+  if (p.node.rowPinned) {
+    const line = el("span", "card-top");
+    line.append(el("span", "pinned-label", `Total: ${ordersText(p.data.orders)}`), el("span", "card-total money", formatMoney(p.data.total)));
+    return line;
+  }
   const data = p.data;
   const card = el("span", "card-row");
   const top = el("span", "card-top");
@@ -268,19 +275,20 @@ function cardCell(p) {
 }
 
 // Every column always exists, so the search box and the CSV export work the same on every screen:
-// phones show only the card column, wider screens hide it.
+// card layouts show only the card column, the others hide it. Minimum widths add up to LAPTOP_MIN (with
+// the Date column) and IPAD_MIN (without), so a chosen set always fits the table: nothing is cut off.
 function columns(size) {
-  const isPhone = size === "phone";
+  const isPhone = size === "phone" || size === "cards";
   const wide = size === "laptop";
   return [
     {
       colId: "card", headerName: "Buyers", flex: 1, autoHeight: true, wrapText: true, hide: !isPhone,
       cellClass: "card-cell", cellRenderer: cardCell,
-      valueGetter: (p) => (p.node.rowPinned ? "" : `${p.data.buyer} ${itemsText(p.data)}`), // what the search box looks at
+      valueGetter: (p) => (p.node.rowPinned ? `${ordersText(p.data.orders)} ${p.data.total}` : `${p.data.buyer} ${itemsText(p.data)}`), // what the search box looks at
     },
-    { colId: "buyer", field: "buyer", headerName: "Buyer", minWidth: wide ? 200 : 180, flex: 1, wrapText: true, autoHeight: true, hide: isPhone, cellRenderer: buyerCell },
+    { colId: "buyer", field: "buyer", headerName: "Buyer", minWidth: wide ? 200 : 170, flex: 1, wrapText: true, autoHeight: true, hide: isPhone, cellRenderer: buyerCell },
     {
-      colId: "items", headerName: "Items", minWidth: 220, flex: 2.4, autoHeight: true, wrapText: true, hide: isPhone, cellRenderer: itemsCell,
+      colId: "items", headerName: "Items", minWidth: wide ? 220 : 200, flex: 2.4, autoHeight: true, wrapText: true, hide: isPhone, cellRenderer: itemsCell,
       // The totals row carries its own numbers, so AG Grid sees them change and redraws the cell.
       valueGetter: (p) => (p.node.rowPinned ? ordersText(p.data.orders) : itemsText(p.data)),
     },
@@ -289,16 +297,16 @@ function columns(size) {
       valueGetter: (p) => (p.node.rowPinned ? "" : datesText(p.data)),
     },
     {
-      colId: "total", headerName: "Total", type: "rightAligned", minWidth: 116, flex: 0.8, hide: isPhone,
+      colId: "total", headerName: "Total", type: "rightAligned", minWidth: 140, flex: 0.8, hide: isPhone,
       cellClass: ["money", "ag-right-aligned-cell"],
       valueGetter: (p) => (p.data.total == null ? "—" : formatMoney(p.data.total)),
     },
     {
-      colId: "status", headerName: "Status", minWidth: wide ? 150 : 128, flex: 0.9, hide: isPhone,
+      colId: "status", headerName: "Status", minWidth: wide ? 156 : 128, flex: 0.9, hide: isPhone,
       valueGetter: (p) => (p.node.rowPinned ? "" : p.data.status),
       cellRenderer: (p) => (p.node.rowPinned ? "" : statusTag(p.data.status)),
     },
-    { colId: "open", headerName: "", width: 64, minWidth: 64, maxWidth: 64, hide: isPhone, cellClass: "open-cell", cellRenderer: openCell },
+    { colId: "open", headerName: "", width: wide ? 64 : 48, minWidth: wide ? 64 : 48, maxWidth: wide ? 64 : 48, hide: isPhone, cellClass: "open-cell", cellRenderer: openCell },
   ];
 }
 
@@ -333,7 +341,18 @@ function makeTheme(isPhone) {
 }
 
 let themes = null;
-const screenSize = () => (phone.matches ? "phone" : laptop.matches ? "laptop" : "ipad");
+// Which columns fit is decided by the TABLE's own width, not the screen's: with the chat box open on a laptop
+// the table is much narrower (814 px at 1280). Phones always get cards; a table narrower than IPAD_MIN gets
+// the cards too, so no column is ever pushed out of sight.
+const LAPTOP_MIN = 200 + 220 + 130 + 140 + 156 + 64; // 910: buyer, items, date, total, status, arrow
+const IPAD_MIN = 170 + 200 + 140 + 128 + 48; // 686: no Date column; tag icons hidden (styles.css)
+let layout = null; // "phone", "cards", "ipad" or "laptop"
+function chooseLayout() {
+  if (phone.matches) return "phone";
+  const width = $("grid").clientWidth;
+  return width >= LAPTOP_MIN ? "laptop" : width >= IPAD_MIN ? "ipad" : "cards";
+}
+const cardLayout = () => layout === "phone" || layout === "cards";
 
 // The pinned totals row (laptop + iPad) and the sticky bar (phone) both show the server's totals.
 function showTotals() {
@@ -477,10 +496,15 @@ function showSource() {
   $("chat-bar-text").replaceChildren(`${plural(source.messages, "message")} read`, el("span", "bar-date", ` from ${formatDate(source.chatDate, false)}`));
 }
 
-// Phone <-> wider: switch theme and columns.
+// The table got wider or narrower (screen, chat box opened or folded): switch theme and columns.
 function fitToWidth() {
   if (!grid) return;
-  grid.updateGridOptions({ theme: phone.matches ? themes.phone : themes.wide, columnDefs: columns(screenSize()) });
+  layout = chooseLayout();
+  $("grid").dataset.layout = layout;
+  const defs = columns(layout);
+  grid.updateGridOptions({ theme: cardLayout() ? themes.phone : themes.wide, columnDefs: defs });
+  // A column that comes back (Date) would otherwise be put at the end: keep the order of the definitions.
+  grid.applyColumnState({ state: defs.map((def) => ({ colId: def.colId, hide: def.hide })), applyOrder: true });
   showTotals();
 }
 
@@ -531,9 +555,8 @@ function editCard(row) {
   const pair = el("div", "field-pair");
   pair.append(field("Qty", qty), field("Date", date));
   card.append(field("Item", select), pair);
-  if (cancelled) card.append(el("p", "hint", "This order was cancelled in the chat, so it can't be changed."));
-  else if (invoiced) card.append(el("p", "hint", "The invoice is sent, so this order can't be changed any more."));
-  else if (row.unclear) card.append(el("p", "check-text", `Check: ${row.reason}`));
+  if (cancelled) card.append(el("p", "hint", "This order is cancelled, so it can't be changed."));
+  else if (!invoiced && row.unclear) card.append(el("p", "check-text", `Check: ${row.reason}`));
   // Step 7a: the buyer wrote a price that isn't the menu's. The seller has seen it; the invoice always
   // uses the menu price, so this only clears the check.
   if (!cancelled && !invoiced && row.priceCheck && !row.priceCheck.kept) {
@@ -541,7 +564,88 @@ function editCard(row) {
     keep.dataset.row = row.id;
     card.append(keep);
   }
+  // Remove this line: the buyer's last item asks "Cancel this buyer's order?" first (removeItem).
+  if (!cancelled && !invoiced) {
+    const remove = Object.assign(el("button", "ghost small remove-item", ""), { type: "button", id: `remove-${row.id}` });
+    remove.append(icon("trash"), "Remove item");
+    remove.dataset.row = row.id;
+    remove.setAttribute("aria-label", `Remove ${item ? item.name : "this item"}`);
+    card.append(remove);
+  }
   return card;
+}
+
+// "Add item": a menu item the buyer doesn't have yet + a quantity. The server sets the price from the menu.
+function addCard(data) {
+  const active = data.rows.filter((row) => row.orderStatus === "active");
+  const choices = menuItems.filter((option) => !active.some((row) => row.itemId === option.id));
+  if (data.cancelled || data.payerLink || active.some((row) => row.invoiceId) || !choices.length) return null;
+  const card = el("section", "edit-card add-card");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon("plus"));
+  name.append(circle, "Add item");
+  title.append(name);
+  const select = Object.assign(el("select", ""), { id: "add-item-select" });
+  for (const option of choices) select.append(Object.assign(el("option", "", `${option.name}, ${formatMoney(option.price)}`), { value: option.id }));
+  const qty = Object.assign(document.createElement("input"), { type: "number", min: 1, max: 99, step: 1, inputMode: "numeric", value: 1, id: "add-item-qty" });
+  const pair = el("div", "field-pair"); // Qty at the same half width as in the item cards above
+  pair.append(field("Qty", qty));
+  const button = Object.assign(el("button", "", ""), { type: "button", id: "add-item" });
+  button.append(icon("plus"), "Add item");
+  card.append(title, field("Item", select), pair, button);
+  return card;
+}
+
+// The drawer's add / remove / cancel: the reply is the whole table (rows were added or removed). The drawer
+// stays on the same buyer, whose first row id may have changed. Same updates as an edit, nothing folds.
+async function changeItems(method, path, body) {
+  const key = buyerRows().find((row) => row.id === openGroupId)?.key;
+  try {
+    const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, ...(body && { body: JSON.stringify(body) }) });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    const group = reply.groups.find((g) => String(g.buyer).trim().toLowerCase() === key);
+    if (group) openGroupId = group.rowIds[0];
+    rowsById = new Map(reply.orders.map((row) => [row.id, row]));
+    totals = reply.totals;
+    summary = reply.summary;
+    groups = reply.groups;
+    kitchen = reply.kitchen;
+    texts = textMap(reply.texts);
+    hideError("drawer-error");
+    loadPanel(); // the buyer's messages: the first row id may be new
+  } catch (err) {
+    showError(`That change was not saved (${err.message}).`, "drawer-error");
+  }
+  refreshTable();
+  showSummary();
+  renderDrawer();
+}
+
+async function addItem() {
+  const qty = Number($("add-item-qty").value);
+  if (!(Number.isInteger(qty) && qty >= 1 && qty <= 99)) {
+    showError(`That item was not added (Quantity must be a whole number from 1 to 99, got ${$("add-item-qty").value || "nothing"}).`, "drawer-error");
+    return $("add-item-qty").focus();
+  }
+  await changeItems("POST", `/api/buyers/${encodeURIComponent(openGroupId)}/items`, { itemId: $("add-item-select").value, qty });
+  ($("add-item-select") ?? $("drawer-close")).focus();
+}
+
+// The last item: removing it would leave an empty order, so the seller is asked to cancel the order instead.
+async function removeItem(button) {
+  const data = buyerRows().find((row) => row.id === openGroupId);
+  if (!data) return;
+  const active = data.rows.filter((row) => row.orderStatus === "active");
+  if (active.length === 1) {
+    if (!window.confirm(`Cancel this buyer's order? ${data.buyer || "This buyer"} has no other items. The order stays in the table as cancelled; to undo it, read the chats again.`)) return;
+    await changeItems("POST", `/api/buyers/${encodeURIComponent(openGroupId)}/cancel`);
+    return $("drawer-close").focus();
+  }
+  await changeItems("DELETE", `/api/orders/${encodeURIComponent(button.dataset.row)}`);
+  ($("drawer-body").querySelector(".remove-item, #add-item-select") ?? $("drawer-close")).focus();
 }
 
 // The drawer has three parts, so a slow panel or QR code never redraws (and unfocuses) the edit fields:
@@ -562,7 +666,11 @@ function renderDrawer() {
   $("drawer-sub").textContent = data.cancelled ? "Cancelled order"
     : data.total == null ? "Needs a check before it can be invoiced"
     : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total${data.payerLink ? `. Invoice: ${data.status}` : ""}`;
-  drawerItems.replaceChildren(...data.rows.map(editCard));
+  // Once the invoice is sent, the items are locked: said once, above them (the server refuses changes too).
+  const locked = data.rows.some((row) => row.orderStatus === "active" && row.invoiceId);
+  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : []), ...data.rows.map(editCard));
+  const adding = addCard(data);
+  if (adding) drawerItems.append(adding);
   const ready = textCard(data);
   if (ready) drawerItems.append(ready);
   const pay = payCard(data);
@@ -836,12 +944,15 @@ function createOrdersGrid() {
     return null;
   }
   themes = { wide: makeTheme(false), phone: makeTheme(true) };
+  layout = chooseLayout();
+  $("grid").dataset.layout = layout;
   const api = agGrid.createGrid($("grid"), {
-    theme: phone.matches ? themes.phone : themes.wide,
-    columnDefs: columns(screenSize()),
+    theme: cardLayout() ? themes.phone : themes.wide,
+    columnDefs: columns(layout),
     animateRows: false,
     defaultColDef: { sortable: false, resizable: false, suppressMovable: true, cellDataType: false },
     domLayout: "autoHeight", // the page scrolls, not a box inside it
+    ensureDomOrder: true, // a column that comes back (Date) is read in its place, not last (screen readers too)
     rowData: [],
     getRowId: (p) => p.data.id,
     pagination: true,
@@ -995,7 +1106,7 @@ function flashPaid(changed) {
   grid.forEachNode((node) => {
     if (paid.has(String(node.data?.buyer ?? "").trim().toLowerCase())) rowNodes.push(node);
   });
-  if (rowNodes.length) grid.flashCells({ rowNodes, columns: [phone.matches ? "card" : "status"], flashDuration: 1200, fadeDuration: 1000 });
+  if (rowNodes.length) grid.flashCells({ rowNodes, columns: [cardLayout() ? "card" : "status"], flashDuration: 1200, fadeDuration: 1000 });
 }
 
 // ---- Record a cash / bank-transfer payment (in the drawer) ----
@@ -1337,6 +1448,8 @@ $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest(".keep-price")) keepMenuPrice(event.target.closest(".keep-price"));
   if (event.target.closest("#copy-kitchen")) copyKitchen(event.target.closest("#copy-kitchen"));
   if (event.target.closest(".copy-text")) copyBuyerText(event.target.closest(".copy-text"));
+  if (event.target.closest(".remove-item")) removeItem(event.target.closest(".remove-item"));
+  if (event.target.closest("#add-item")) addItem();
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);
@@ -1347,6 +1460,11 @@ laptop.addEventListener("change", () => {
   fitToWidth();
 });
 phone.addEventListener("change", fitToWidth);
+// The chat box opening or folding changes the table's width without any screen change. Checked on the next
+// frame, and only a change of column set redraws, so the observer never loops.
+new ResizeObserver(() => requestAnimationFrame(() => {
+  if (grid && chooseLayout() !== layout) fitToWidth();
+})).observe($("grid"));
 
 // Draw the static icons (<i data-lucide>). Without the library the page still works, just without icons.
 if (window.lucide) window.lucide.createIcons({ icons: window.lucide.icons });

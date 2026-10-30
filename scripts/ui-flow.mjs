@@ -509,6 +509,83 @@ try {
     await page.keyboard.press("Escape");
     check(await page.$eval("#drawer", (el) => el.hidden), "Escape closes the kitchen list");
 
+    // ---- Add / remove items in the drawer: Read without AI -> fix Hafiz -> send -> his items are locked ----
+    // The demo chats on another Chat date: mock mode doesn't know them, so the notice offers Read without AI.
+    await page.click("#chat-edit");
+    await page.fill("#chat-date", "2026-10-29");
+    await page.click("#read-orders");
+    await page.waitForSelector("#read-without-ai:not([hidden])", { timeout: 5000 }).catch(() => {});
+    await page.click("#read-without-ai");
+    await page.waitForSelector("#fallback-note:not([hidden])", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const stateNow = async () => (await fetch(`${base}/api/state`)).json();
+    const hafizRows = async () => (await stateNow()).orders.filter((row) => row.buyer === "Hafiz");
+    const [, hafizCookies] = await hafizRows();
+    await goToBuyerPage(page, "Hafiz");
+    const hafizRow = () => page.locator(ROWS, { hasText: "Hafiz" });
+    check(await hafizRow().evaluate((el) => el.classList.contains("row-unclear")), "read without AI, Hafiz is amber (cheesecake + the cookies he took back)");
+    await hafizRow().locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open");
+    await page.waitForTimeout(300);
+    check((await page.locator("#drawer .remove-item").count()) === 2 && (await page.locator("#add-item").count()) === 1, "his drawer has Remove item on both items and an Add item card");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-12-hafiz-before.png` });
+
+    // Add, then remove again: the price comes from the menu.
+    await page.selectOption("#add-item-select", "bahulu");
+    await page.fill("#add-item-qty", "2");
+    await page.click("#add-item");
+    await page.waitForFunction(() => document.querySelectorAll("#drawer .remove-item").length === 3, null, { timeout: 5000 }).catch(() => {});
+    const added = (await hafizRows()).find((row) => row.itemId === "bahulu");
+    check(added?.qty === 2 && added.lineTotal === "24.00" && (await page.locator("#drawer .edit-name", { hasText: "Kuih bahulu" }).count()) === 1,
+      `Add item: 2 × Kuih bahulu at the menu price (${added?.lineTotal})`);
+    await page.click(`#remove-${added.id}`);
+    await page.waitForFunction(() => document.querySelectorAll("#drawer .remove-item").length === 2, null, { timeout: 5000 }).catch(() => {});
+
+    // Remove the cookies: Hafiz becomes clear and can be invoiced.
+    await page.click(`#remove-${hafizCookies.id}`);
+    await page.waitForFunction(() => document.querySelectorAll("#drawer .remove-item").length === 1, null, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const hafizSub = plain(await page.$eval("#drawer-sub", (el) => el.textContent));
+    check(hafizSub === "1 item, RM 45.00 in total" && !(await page.$("#drawer-body .check-text")), `cookies removed: Hafiz is clear: "${hafizSub}"`);
+    check((await hafizRows()).map((row) => row.itemId).join() === "burnt_cheesecake", "the server keeps only his cheesecake");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-12-hafiz-after.png` });
+    await page.keyboard.press("Escape");
+    check(!(await hafizRow().evaluate((el) => el.classList.contains("row-unclear"))) && plain(await hafizRow().innerText()).includes("RM 45.00"),
+      "his row is no longer amber and shows RM 45.00");
+    check(plain(await page.$eval(".summary", (el) => el.innerText)).includes("Expected RM 117.00"), "Expected: Mei Ling 72.00 + Hafiz 45.00 = RM 117.00");
+
+    // Lina's only item: removing it asks to cancel her order first.
+    await goToBuyerPage(page, "Lina");
+    await page.locator(ROWS, { hasText: "Lina" }).locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open .remove-item");
+    let asked = "";
+    page.once("dialog", (dialog) => ((asked = dialog.message()), dialog.accept()));
+    await page.click("#drawer .remove-item");
+    await page.waitForFunction(() => document.getElementById("drawer-sub").textContent === "Cancelled order", null, { timeout: 5000 }).catch(() => {});
+    check(asked.startsWith("Cancel this buyer's order?"), `the last item asks first: "${asked}"`);
+    check(plain(await page.$eval("#drawer-sub", (el) => el.textContent)) === "Cancelled order" && !(await page.$("#drawer .remove-item")), "Lina's order is cancelled (no more Remove or Add)");
+    await page.keyboard.press("Escape");
+
+    // Send: Mei Ling + Hafiz. Then Hafiz's items are locked, in the drawer AND at the server.
+    await page.locator("[data-send-invoices]:visible").first().click();
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("2 of 2 sent"), null, { timeout: 10000 }).catch(() => {});
+    check(plain(await page.$eval("#send-message", (el) => el.textContent)).startsWith("2 of 2 sent"), `sent: "${plain(await page.$eval("#send-message", (el) => el.textContent))}"`);
+    await goToBuyerPage(page, "Hafiz");
+    await hafizRow().locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open");
+    await page.waitForTimeout(300);
+    const lockedText = plain(await page.$eval("#drawer .locked-note", (el) => el.textContent).catch(() => ""));
+    check(lockedText === "Invoice sent: items are locked so the invoice and the table always match.", `his drawer says why: "${lockedText}"`);
+    check(!(await page.$("#drawer .remove-item")) && !(await page.$("#add-item")) && (await page.$$eval("#drawer [data-field]", (els) => els.length > 0 && els.every((el) => el.disabled))),
+      "no Remove item, no Add item, and the item fields are disabled");
+    // Asked from here, not from the page: a refused request would be a red console error there.
+    const refusedRemove = await (await fetch(`${base}/api/orders/${(await hafizRows())[0].id}`, { method: "DELETE" })).json();
+    check(refusedRemove.error === lockedText, `the server refuses too: "${refusedRemove.error}"`);
+    await page.$eval("#drawer .locked-note", (el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-13-locked.png` });
+    await page.keyboard.press("Escape");
+
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();
     server.closeAllConnections();

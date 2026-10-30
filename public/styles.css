@@ -877,7 +877,15 @@ button:disabled {
   font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.5;
-  white-space: nowrap;
+  /* A long tag ("Paid (cash/bank)", "Cancelled/Refunded") wraps inside a narrow Status column instead of
+     running out of it. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* The narrower table (no Date column) drops the tag icons, as phones do: the words carry the meaning. */
+#grid[data-layout="ipad"] .badge .lucide {
+  display: none;
 }
 
 .badge .lucide {
@@ -1493,4 +1501,15 @@ mark.hl-price-check {
   background: var(--neutral-tint);
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* Add / remove items in the drawer (after Step 10): quiet buttons at the start of their card, like Copy. */
+.remove-item,
+#add-item {
+  align-self: flex-start;
+}
+
+/* "Invoice sent: items are locked ...": a quiet hint (not amber: nothing to check), said once above the items. */
+.locked-note {
+  margin: 0;
 }

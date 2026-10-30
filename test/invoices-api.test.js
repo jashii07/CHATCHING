@@ -165,7 +165,7 @@ test("an invoiced row can't be edited (the invoice would no longer match)", asyn
   const lina = rowsOf(await app.state(), "Lina")[0];
   const { status, body } = await app.call(`/api/orders/${lina.id}`, "PUT", { qty: 5 });
   assert.equal(status, 400);
-  assert.equal(body.error, "Lina is already invoiced, so this order can't be changed.");
+  assert.equal(body.error, "Invoice sent: items are locked so the invoice and the table always match.");
 });
 
 // ---- Batches (PLAN.md Step 5, added 28 Oct) ----

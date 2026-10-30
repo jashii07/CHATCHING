@@ -270,28 +270,51 @@ try {
     await page.close();
   }
 
-  // Step 10, Part 3: every item chip stays inside its own table cell ("1 × Burnt cheesecake 6-inch" ran into
-  // the Date column at 1280 px with the chats open). Chats folded AND open, at 1280, 768 and 390 px.
-  for (const viewport of [WIDTHS[0], { name: "tablet", width: 768, height: 1024 }, WIDTHS[2]]) {
-    const { page: chipPage, errors: chipErrors } = await open(viewport);
-    console.log(`\nItem chips at ${viewport.width} px`);
+  // Nothing cut off (Step 10 + the table-width fix): with the chats folded AND open, every column fits the
+  // table (the arrow column was scrolled out of sight at 1280 px with the chats open), every chip and status
+  // tag stays inside its own cell ("1 × Burnt cheesecake 6-inch" ran into the Date column), no cell clips its
+  // text, and every row shows its blue arrow (phone cards have none). 1024 px is the tightest laptop case.
+  const cutOff = (page) => page.evaluate((rowsSelector) => {
+    const grid = document.getElementById("grid").getBoundingClientRect();
+    const name = (el) => el.closest(".ag-cell, .ag-header-cell")?.getAttribute("col-id") ?? "?";
+    const problems = [];
+    for (const cell of document.querySelectorAll(`#grid .ag-header-cell, ${rowsSelector} .ag-cell, #grid .ag-floating-bottom .ag-cell, #grid .ag-grid-pinned-bottom-rows .ag-cell`)) {
+      const box = cell.getBoundingClientRect();
+      if (!box.width) continue;
+      if (box.right > grid.right + 0.5 || box.left < grid.left - 0.5) problems.push(`column ${name(cell)} is outside the table (${Math.round(box.right - grid.right)} px)`);
+      if (cell.scrollWidth > cell.clientWidth + 1) problems.push(`column ${name(cell)} clips its text "${cell.innerText.trim().slice(0, 30)}"`);
+    }
+    for (const part of document.querySelectorAll(`${rowsSelector} .chip, ${rowsSelector} .badge`)) {
+      const over = part.getBoundingClientRect().right - part.closest(".ag-cell").getBoundingClientRect().right;
+      if (over > 0.5) problems.push(`"${part.textContent}" runs ${Math.round(over)} px out of its column`);
+    }
+    const cards = !!document.querySelector(`${rowsSelector} .card-row`);
+    if (!cards) {
+      for (const row of document.querySelectorAll(rowsSelector)) {
+        const cue = row.querySelector(".open-cue")?.getBoundingClientRect();
+        if (!cue || cue.right > grid.right + 0.5 || !cue.width) problems.push(`no visible arrow on "${row.innerText.trim().split("\n")[0]}"`);
+      }
+    }
+    return { problems: [...new Set(problems)], layout: cards ? "cards" : document.querySelector('#grid .ag-header-cell[col-id="date"]') ? "with Date column" : "Date under the name" };
+  }, ROWS);
+  for (const viewport of [WIDTHS[0], { name: "laptop-small", width: 1024, height: 800 }, { name: "tablet", width: 768, height: 1024 }, WIDTHS[2]]) {
+    const { page: fitPage, errors: fitErrors } = await open(viewport);
+    console.log(`\nNothing cut off at ${viewport.width} px`);
     for (const chats of ["folded", "open"]) {
       if (chats === "open") {
-        await chipPage.click("#chat-edit");
-        await chipPage.waitForTimeout(400);
+        await fitPage.click("#chat-edit");
+        await fitPage.waitForTimeout(500);
       }
       for (const n of [1, 2]) {
-        await goToPage(chipPage, n);
-        const outside = await chipPage.$$eval(`${ROWS} .chip`, (chips) => chips
-          .map((chip) => ({ text: chip.textContent, over: chip.getBoundingClientRect().right - chip.closest(".ag-cell").getBoundingClientRect().right }))
-          .filter((chip) => chip.over > 0.5).map((chip) => `${chip.text} (${Math.round(chip.over)} px)`));
-        check(outside.length === 0, `chats ${chats}, page ${n}: every chip stays inside its column${outside.length ? `: ${outside.join(", ")}` : ""}`);
-        if (n === 1) await chipPage.screenshot({ path: `${OUT}chips-${viewport.width}-${chats}.png`, fullPage: true });
+        await goToPage(fitPage, n);
+        const { problems, layout } = await cutOff(fitPage);
+        check(problems.length === 0, `chats ${chats}, page ${n} (${layout}): the table fits and nothing is cut off${problems.length ? `: ${problems.join("; ")}` : ""}`);
+        if (n === 1) await fitPage.screenshot({ path: `${OUT}fit-${viewport.width}-${chats}.png`, fullPage: true });
       }
-      await goToPage(chipPage, 1);
+      await goToPage(fitPage, 1);
     }
-    check(chipErrors.length === 0, `no console errors or warnings${chipErrors.length ? `: ${chipErrors.join(" | ")}` : ""}`);
-    await chipPage.close();
+    check(fitErrors.length === 0, `no console errors or warnings${fitErrors.length ? `: ${fitErrors.join(" | ")}` : ""}`);
+    await fitPage.close();
   }
 
   // The fix, in the drawer, at laptop width.

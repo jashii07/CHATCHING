@@ -21,6 +21,8 @@ const UNREADABLE = "The AI's answer could not be read, so your orders were not c
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
 const SENDING = "Invoices are being sent right now. Please wait for that to finish.";
 const READING = "Already reading orders. Please wait for that to finish.";
+const LOCKED = "Invoice sent: items are locked so the invoice and the table always match.";
+const CANCELLED = "This order is cancelled, so it can't be changed.";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
@@ -112,20 +114,30 @@ export function createApp(config, {
     });
   });
 
+  // May the seller still change this buyer's order? Never once their invoice is sent (the invoice must keep
+  // matching the table), never on a cancelled order, never while invoices are being sent.
+  // -> null (go ahead) or [status, reason]. The page locks the drawer too, but the server is the guard.
+  const sameBuyer = (a, b) => a.buyer.trim().toLowerCase() === b.buyer.trim().toLowerCase();
+  function refuseChange(row, id) {
+    if (!row) return [404, `No order row "${id}".`];
+    const own = store.rows().filter((other) => sameBuyer(other, row));
+    if (own.some((other) => other.invoiceId)) return [400, LOCKED];
+    if (!own.some((other) => other.orderStatus === "active") || row.orderStatus === "cancelled") return [400, CANCELLED];
+    if (invoicer.isBusy()) return [409, SENDING];
+    return null;
+  }
+  const refuse = (res, [status, error]) => res.status(status).json({ error });
+  // Adding or removing an item is the seller's fix of the whole order: every active row of that buyer is
+  // checked again (recalcRow), so the AI's (or the no-AI reader's) "please check" goes, while our own
+  // checks stay (no item, a bad quantity, a price still to check).
+  const recheckBuyer = (rows, row) => rows.map((other) => (sameBuyer(other, row) && other.orderStatus === "active" ? recalcRow(other, menu) : other));
+
   // Save one edited cell (item, qty or date). The server recalculates the price, total and
   // unclear flag, so the page never does money maths. Bad input -> 400 with the reason.
   app.put("/api/orders/:id", (req, res) => {
     const row = store.find(req.params.id);
-    if (!row) return res.status(404).json({ error: `No order row "${req.params.id}".` });
-    if (row.orderStatus === "cancelled") {
-      return res.status(400).json({ error: "This order is cancelled, so it can't be edited." });
-    }
-    // An invoice can't change after it is sent: editing the row would make it disagree with PayPal.
-    const sameBuyer = (other) => other.buyer.trim().toLowerCase() === row.buyer.trim().toLowerCase();
-    if (store.rows().some((other) => sameBuyer(other) && other.invoiceId)) {
-      return res.status(400).json({ error: `${row.buyer} is already invoiced, so this order can't be changed.` });
-    }
-    if (invoicer.isBusy()) return res.status(409).json({ error: SENDING });
+    const refused = refuseChange(row, req.params.id);
+    if (refused) return refuse(res, refused);
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
     const { keepMenuPrice, ...fields } = changes;
@@ -137,6 +149,62 @@ export function createApp(config, {
     const updated = store.replace(recalcRow(next, menu));
     const rows = store.rows();
     res.json({ row: updated, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: buyerMessages(rows, store.source(), menu) });
+  });
+
+  // Add an item to a buyer's order (the drawer's "Add item"): { itemId, qty } only. The price and total come
+  // from the menu, the day and pickup/delivery from the buyer's order. The new row sits right after the
+  // buyer's other rows. The reply is the whole table, so the cards, kitchen list and Copy texts follow.
+  app.post("/api/buyers/:id/items", (req, res) => {
+    const row = store.find(req.params.id);
+    const refused = refuseChange(row, req.params.id);
+    if (refused) return refuse(res, refused);
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const extra = Object.keys(body).filter((field) => field !== "itemId" && field !== "qty");
+    if (extra.length) return res.status(400).json({ error: `"${extra[0]}" can't be set: send only itemId and qty. Prices come from the menu.` });
+    if (body.itemId === undefined || body.qty === undefined) return res.status(400).json({ error: 'Send { "itemId": "a menu item", "qty": 1 }.' });
+    const { problems } = checkEdit({ itemId: body.itemId, qty: body.qty }, menu);
+    if (problems.length) return res.status(400).json({ error: problems.join(" ") });
+
+    const rows = store.rows();
+    const own = rows.filter((other) => sameBuyer(other, row) && other.orderStatus === "active");
+    const item = menu.items.find((it) => it.id === body.itemId);
+    if (own.some((other) => other.itemId === item.id)) {
+      return res.status(400).json({ error: `${row.buyer} already has ${item.name}: change its quantity instead.` });
+    }
+    const base = own[0];
+    const id = `r${Math.max(0, ...rows.map((other) => Number(String(other.id).slice(1)) || 0)) + 1}`;
+    const added = recalcRow({
+      ...base, id, itemId: item.id, qty: body.qty, priceCheck: null,
+      invoiceId: null, invoiceNumber: null, payerLink: null, invoiceStatus: "Draft",
+    }, menu);
+    const at = rows.findLastIndex((other) => sameBuyer(other, row)) + 1;
+    store.setRows(recheckBuyer([...rows.slice(0, at), added, ...rows.slice(at)], row));
+    res.json(table());
+  });
+
+  // Remove one item (the drawer's "Remove item"). The buyer's last item can't just disappear: the reply
+  // is 409 { lastItem: true }, and the page asks "Cancel this buyer's order?" (the route below).
+  app.delete("/api/orders/:id", (req, res) => {
+    const row = store.find(req.params.id);
+    const refused = refuseChange(row, req.params.id);
+    if (refused) return refuse(res, refused);
+    const rows = store.rows();
+    if (rows.filter((other) => sameBuyer(other, row) && other.orderStatus === "active").length === 1) {
+      return res.status(409).json({ error: `This is ${row.buyer}'s last item. Cancel the order instead.`, lastItem: true });
+    }
+    store.setRows(recheckBuyer(rows.filter((other) => other.id !== row.id), row));
+    res.json(table());
+  });
+
+  // Cancel a buyer's order (after "Cancel this buyer's order?"): their rows stay, greyed out as cancelled,
+  // like an order the buyer cancelled in the chat. No undo button: reading the chats again starts over.
+  app.post("/api/buyers/:id/cancel", (req, res) => {
+    const row = store.find(req.params.id);
+    const refused = refuseChange(row, req.params.id);
+    if (refused) return refuse(res, refused);
+    store.setRows(store.rows().map((other) => (sameBuyer(other, row) && other.orderStatus === "active"
+      ? { ...other, orderStatus: "cancelled", unclear: false, reason: "" } : other)));
+    res.json(table());
   });
 
   // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
