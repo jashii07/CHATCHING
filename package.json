@@ -8,7 +8,8 @@
     "check": "node scripts/check.mjs",
     "test": "node --test",
     "ui-check": "node scripts/ui-check.mjs",
-    "ui-flow": "node scripts/ui-flow.mjs"
+    "ui-flow": "node scripts/ui-flow.mjs",
+    "ui-ai": "node scripts/ui-ai.mjs"
   },
   "repository": {
     "type": "git",

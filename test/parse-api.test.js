@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
-import { createAi, demoReplies, parseKey, MOCK_UNKNOWN } from "../src/ai.js";
+import { createAi, demoReplies, parseKey, AI_BUSY, MOCK_UNKNOWN } from "../src/ai.js";
 
 const CHAT = "2026-10-28";
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
@@ -187,4 +187,36 @@ test("AI_MODE=off is not built yet -> a friendly notice, not a crash; real mode 
   // Real mode without a key: the demo still works (saved reply, 0 calls); test/ai-real.test.js has the rest.
   const real = await start({ ai: createAi({ mode: "real", apiKey: "" }) });
   assert.deepEqual((await real.parse({ text: DEMO, chatDate: CHAT })).body.totals, { orders: 7, total: "366.00" });
+});
+
+test("Step 9: /api/parse/progress tells the page the stage (reading, then backup) and the calls left; a busy AI is a 200 notice", async () => {
+  let release;
+  let stage;
+  let started;
+  const isReading = new Promise((resolve) => (started = resolve));
+  let left = 40;
+  const slowAi = {
+    async parse({ onStage }) {
+      stage = onStage;
+      started();
+      await new Promise((resolve) => (release = resolve));
+      return { notice: AI_BUSY };
+    },
+    callsLeft: () => left,
+  };
+  const { parse, call } = await start({ ai: slowAi });
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, aiCallsLeft: 40 });
+  assert.equal((await call("/api/state")).body.aiCallsLeft, 40);
+
+  const reading = parse({ text: DEMO, chatDate: CHAT });
+  await isReading;
+  left = 39;
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "reading", aiCallsLeft: 39 });
+  stage("backup");
+  left = 37;
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "backup", aiCallsLeft: 37 });
+  release();
+  assert.deepEqual(await reading, { status: 200, body: { notice: AI_BUSY } });
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, aiCallsLeft: 37 });
+  assert.equal((await call("/api/state")).body.orders.length, 12); // rows unchanged (the demo)
 });

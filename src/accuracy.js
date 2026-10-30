@@ -41,13 +41,15 @@ export function savedReplyFor({ text, chatDate, reply = null }) {
 // ONE batched parse through the app's AI code. cacheDir must be a new, empty folder: the raw reply is
 // saved there (byte for byte) and read back. -> { raw, model, seconds, calls, replyPath } or
 // { notice, seconds, calls } when no model answered. seconds = the whole wait, backup included.
-export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, fetch = globalThis.fetch, log = console.log }) {
+// At most 2 calls (main, then backup; no retry of the same model), each one counted in the app's daily
+// counter (src/usage.js) like any real call. The tests pass their own counter, clock and wait in "ai".
+export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, fetch = globalThis.fetch, log = console.log, ai: aiOptions = {} }) {
   let calls = 0;
   const counted = (...args) => {
     calls += 1;
     return fetch(...args);
   };
-  const ai = createAi({ mode: "real", apiKey, replies: new Map(), cacheDir, fetch: counted, log });
+  const ai = createAi({ mode: "real", apiKey, replies: new Map(), cacheDir, fetch: counted, log, maxCalls: 2, ...aiOptions });
   const start = performance.now();
   const result = await ai.parse({ text, chatDate, menu });
   const seconds = Number(((performance.now() - start) / 1000).toFixed(1));

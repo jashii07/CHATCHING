@@ -9,6 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { liveParse, reportMarkdown, savedReplyFor, scoreReply } from "../src/accuracy.js";
+import { createUsage } from "../src/usage.js";
+import { BACKUP_MODEL, MAIN_MODEL } from "../src/gemini.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const readJson = (path) => JSON.parse(readFileSync(join(root, path), "utf8"));
@@ -18,6 +20,8 @@ const CHATS = readFileSync(join(root, "data/demo-chats.txt"), "utf8");
 const fixture = (name) => readFileSync(join(root, `test/fixtures/accuracy/${name}.json`), "utf8");
 const score = (name) => scoreReply({ raw: fixture(name), expected: EXPECTED, menu: MENU, text: CHATS, chatDate: EXPECTED.chatDate });
 const line = (s) => `${s.label} ${s.ok}/${s.total}`;
+// A live run counts its calls in the app's daily counter; the tests use a throwaway one (and no waiting).
+const noCounting = () => ({ usage: createUsage({ file: join(mkdtempSync(join(tmpdir(), "acc-usage-")), "ai-usage.json"), models: [MAIN_MODEL, BACKUP_MODEL] }), sleep: async () => {} });
 
 test("accuracy: a perfect reply scores full marks on every field, with the answer key's totals", () => {
   const result = score("perfect");
@@ -86,7 +90,7 @@ function fakeGemini(statuses) {
 test("accuracy --live: ONE call through the app's AI code, never the saved demo reply", async () => {
   const { fetch, seen } = fakeGemini([200]);
   const cacheDir = mkdtempSync(join(tmpdir(), "acc-"));
-  const live = await liveParse({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU, apiKey: "test-key", cacheDir, fetch, log: () => {} });
+  const live = await liveParse({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU, apiKey: "test-key", cacheDir, fetch, log: () => {}, ai: noCounting() });
   assert.equal(live.calls, 1);
   assert.deepEqual(seen, ["gemini-3.6-flash"]);
   assert.equal(live.model, "gemini-3.6-flash");
@@ -97,7 +101,7 @@ test("accuracy --live: ONE call through the app's AI code, never the saved demo 
 
 test("accuracy --live: the backup model answers when the main one is overloaded (2 calls)", async () => {
   const { fetch, seen } = fakeGemini([503, 200]);
-  const live = await liveParse({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU, apiKey: "test-key", cacheDir: mkdtempSync(join(tmpdir(), "acc-")), fetch, log: () => {} });
+  const live = await liveParse({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU, apiKey: "test-key", cacheDir: mkdtempSync(join(tmpdir(), "acc-")), fetch, log: () => {}, ai: noCounting() });
   assert.deepEqual(seen, ["gemini-3.6-flash", "gemini-3.8-flash"]);
   assert.equal(live.calls, 2);
   assert.equal(live.model, "gemini-3.8-flash");
@@ -105,7 +109,7 @@ test("accuracy --live: the backup model answers when the main one is overloaded 
 
 test("accuracy --live: both models busy gives a notice, no score", async () => {
   const { fetch } = fakeGemini([503, 503]);
-  const live = await liveParse({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU, apiKey: "test-key", cacheDir: mkdtempSync(join(tmpdir(), "acc-")), fetch, log: () => {} });
+  const live = await liveParse({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU, apiKey: "test-key", cacheDir: mkdtempSync(join(tmpdir(), "acc-")), fetch, log: () => {}, ai: noCounting() });
   assert.equal(live.calls, 2);
   assert.match(live.notice, /busy/);
   assert.equal(live.raw, undefined);

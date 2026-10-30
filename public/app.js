@@ -849,7 +849,7 @@ async function loadState() {
     menuItems = state.menu.items;
     paypalReady = state.paypalConfigured;
     showSetup(state);
-    $("ai-calls-text").textContent = `AI calls left today: ${state.aiCallsLeft}`;
+    showCallsLeft(state.aiCallsLeft);
     showOrders(state);
     if (hasOpenInvoices()) startPolling();
   } catch (err) {
@@ -993,6 +993,24 @@ async function recordPayment(button) {
 // (over 100 KB the server refuses the request, and the browser logs that as a red error).
 const MAX_CHARS = 10_000;
 let reading = false; // one parse at a time: the button is disabled while the server reads
+const STAGE_WORDS = { reading: "Reading the chats...", backup: "The AI is busy, trying the backup..." };
+
+// "AI calls left today: 37" in the top bar (the server's daily counter, src/usage.js).
+function showCallsLeft(left) {
+  $("ai-calls-text").textContent = `AI calls left today: ${left ?? "…"}`;
+}
+
+// While the server reads, ask it once a second which step it is on (no timer guessing: the words change
+// only when the server really moved to the backup model). A failed check just keeps the words as they are.
+async function checkReading(say) {
+  try {
+    const res = await fetch("/api/parse/progress");
+    if (!res.ok) return;
+    const progress = await res.json();
+    showCallsLeft(progress.aiCallsLeft);
+    if (reading && progress.reading && STAGE_WORDS[progress.stage]) say(STAGE_WORDS[progress.stage]);
+  } catch {}
+}
 
 // "Read orders": the chats + Chat date go to the server, which replies with the new rows, or with a
 // friendly notice (too long, mock mode doesn't know these chats) that leaves the rows as they are.
@@ -1011,7 +1029,8 @@ async function readOrders() {
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   hideError();
-  say("Reading your messages... this can take up to a minute.");
+  say(STAGE_WORDS.reading);
+  const poll = setInterval(() => checkReading(say), 1000);
   try {
     const res = await fetch("/api/parse", {
       method: "POST",
@@ -1030,9 +1049,11 @@ async function readOrders() {
     say("");
     showError(`The orders could not be read (${err.message}).`);
   } finally {
+    clearInterval(poll);
     reading = false;
     button.disabled = false;
     button.removeAttribute("aria-busy");
+    checkReading(say); // the counter after this read (failed calls count too)
   }
 }
 

@@ -5,7 +5,10 @@
 //   replies (data/runtime/ai-cache/, git-ignored: real chats are never committed), and only then ONE
 //   batched call: the main model, and the backup model if the main one is overloaded, rate-limited or
 //   too slow. The raw reply is cached byte for byte under the hash of the Chat date + chat text.
-//   Waiting between retries, the daily counter and the non-AI fallback come in Steps 9 and 12.
+// - Step 9: ONE time budget for the whole parse (60 s; the main model gets up to 35 s, the backup the
+//   rest), one short-wait retry on 503/429 only if a real read still fits, never more than 3 calls, and
+//   the daily counter (src/usage.js): every call is counted before it starts; at 0 nothing is called.
+//   The non-AI fallback comes in Step 12.
 // The key is passed in (from config), sent in a header by src/gemini.js, and never logged.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -13,17 +16,25 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRequest, replyToOrders } from "./ai-prompt.js";
 import { BACKUP_MODEL, GeminiError, MAIN_MODEL, callGemini } from "./gemini.js";
+import { createUsage, resetHourMalaysia } from "./usage.js";
 
 const DEMO_REPLY = fileURLToPath(new URL("../data/ai-cache/demo-parse.json", import.meta.url));
 const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
 const DEMO_ANSWERS = new URL("../data/expected-orders.json", import.meta.url);
 export const RUNTIME_CACHE = fileURLToPath(new URL("../data/runtime/ai-cache/", import.meta.url));
-export const PARSE_TIMEOUT_MS = 45_000; // Step 3b measured 17.6 s for 15 messages (DECISIONS.md, 27 Oct)
+
+// The time budget (DECISIONS.md, 30 Oct). On 29 Oct both models were busy and it took 47 s to fail.
+export const PARSE_BUDGET_MS = 60_000; // the most a seller waits for one parse, everything included
+export const MAIN_SHARE_MS = 35_000; // the main model's part; the backup always keeps at least 25 s
+export const RETRY_WAIT_MS = 2_000; // a 503/429 comes back fast; wait a moment before asking again
+export const MIN_TRY_MS = 20_000; // a retry needs this much left: real reads took 17.6 s and 21 s
+export const MAX_CALLS = 3; // per parse, retries and backup included
 
 export const MOCK_UNKNOWN = "Mock mode only knows the demo chats. Set AI_MODE=real to read other chats with Gemini.";
 export const NO_KEY = "The AI key is missing (GEMINI_API_KEY), so only the demo chats can be read.";
-export const AI_BUSY = "The AI is busy right now, so your orders were not changed. Please try again in a minute.";
+export const AI_BUSY = "The AI is busy right now. Please try again in a minute, or click Load demo to see how it works.";
 export const AI_REFUSED = "The AI could not read these chats, so your orders were not changed.";
+export const usedUp = (ms) => `Today's free AI reads are used up. Try again after ${resetHourMalaysia(ms)} Malaysia time, or click Load demo.`;
 const NOT_BUILT = { off: "Reading without AI comes in Step 12. Set AI_MODE=mock to read the demo chats for now." };
 
 // The cache key for one parse: a hash of the Chat date + the chat text. Line endings, blank lines and
@@ -58,7 +69,9 @@ export function mockParse(file = DEMO_REPLY) {
 
 // The app's AI. parse() -> { orders, from } (the AI's raw orders, not yet checked; from = "saved",
 // "cache" or the model name) or { notice } (a friendly message for the seller). A broken reply throws;
-// the route turns that into a notice.
+// the route turns that into a notice. onStage("backup") tells the page the main model failed.
+// now, sleep and timeoutSignal are the clock, the wait and the timer: the tests pass fake ones, so they
+// run every path (timeouts included) in milliseconds without waiting.
 export function createAi({
   mode,
   apiKey = "",
@@ -66,44 +79,77 @@ export function createAi({
   cacheDir = RUNTIME_CACHE,
   models = [MAIN_MODEL, BACKUP_MODEL],
   fetch = globalThis.fetch,
-  timeoutMs = PARSE_TIMEOUT_MS,
+  now = Date.now,
+  usage = createUsage({ models, now }),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  timeoutSignal = (ms) => AbortSignal.timeout(ms),
+  budgetMs = PARSE_BUDGET_MS,
+  mainShareMs = MAIN_SHARE_MS,
+  maxCalls = MAX_CALLS,
   log = console.log,
 }) {
   const cacheFile = (key) => join(cacheDir, `parse-${key}.json`);
 
-  async function realParse({ text, chatDate, menu }) {
+  async function realParse({ text, chatDate, menu, onStage }) {
     const key = parseKey(text, chatDate);
     if (existsSync(cacheFile(key))) return { orders: mockParse(cacheFile(key)), from: "cache" };
     if (!apiKey) return { notice: NO_KEY };
+    const usable = models.filter((model) => usage.left(model) > 0);
+    if (!usable.length) return { notice: usedUp(now()) };
     const { body } = parseRequest({ paste: text, chatDate, menu });
-    for (const model of models) {
-      let reply;
-      try {
-        reply = await callGemini({ apiKey, model, body, fetch, timeoutMs });
-      } catch (err) {
-        if (!(err instanceof GeminiError)) throw err;
-        log(`Warning: Gemini ${model} failed after ${err.seconds} s (${err.message}).`);
-        if (err.retryable) continue; // overloaded, rate limit, timeout: the next model has its own quota
-        return { notice: AI_REFUSED };
+
+    const start = now();
+    const deadline = start + budgetMs;
+    let calls = 0;
+    let retried = false;
+    for (const [i, model] of usable.entries()) {
+      // The last model we can use gets everything that is left; any model before it only its share.
+      const end = i < usable.length - 1 ? Math.min(start + mainShareMs, deadline) : deadline;
+      if (calls > 0) onStage("backup");
+      while (calls < maxCalls && end - now() > 0 && usage.left(model) > 0) {
+        const timeoutMs = end - now();
+        calls += 1;
+        usage.take(model); // counted before it starts: a failed call may count at Google too
+        let reply;
+        try {
+          reply = await callGemini({ apiKey, model, body, fetch, timeoutMs, signal: timeoutSignal(timeoutMs), now });
+        } catch (err) {
+          if (!(err instanceof GeminiError)) throw err;
+          log(`Warning: Gemini ${model} failed after ${err.seconds} s (${err.message}).`);
+          if (!err.retryable) return { notice: AI_REFUSED };
+          // Busy or rate-limited: ask the same model once more, but only if a real read still fits after
+          // the wait. A timeout or network error goes straight to the next model (no 90 s waits).
+          // A retry must also leave a call for every model still to come (with maxCalls 2: main, then backup).
+          const busy = err.status === 503 || err.status === 429;
+          const callsAfter = usable.length - 1 - i;
+          if (busy && !retried && calls + 1 + callsAfter <= maxCalls && end - now() - RETRY_WAIT_MS >= MIN_TRY_MS) {
+            retried = true;
+            await sleep(RETRY_WAIT_MS);
+            continue;
+          }
+          break;
+        }
+        const orders = replyToOrders(reply.text); // throws on a broken reply: nothing is cached then
+        mkdirSync(cacheDir, { recursive: true });
+        const tmp = `${cacheFile(key)}.tmp`;
+        writeFileSync(tmp, reply.text);
+        renameSync(tmp, cacheFile(key));
+        log(`Gemini ${model} read the chats in ${reply.seconds} s.`);
+        return { orders, from: model };
       }
-      const orders = replyToOrders(reply.text); // throws on a broken reply: nothing is cached then
-      mkdirSync(cacheDir, { recursive: true });
-      const tmp = `${cacheFile(key)}.tmp`;
-      writeFileSync(tmp, reply.text);
-      renameSync(tmp, cacheFile(key));
-      log(`Gemini ${model} read the chats in ${reply.seconds} s.`);
-      return { orders, from: model };
     }
     return { notice: AI_BUSY };
   }
 
   return {
-    async parse({ text, chatDate, menu }) {
+    // The demo reply and cached chats come first, so they still work when the counter is at 0.
+    async parse({ text, chatDate, menu, onStage = () => {} }) {
       if (mode !== "mock" && mode !== "real") return { notice: NOT_BUILT[mode] ?? MOCK_UNKNOWN };
       const file = replies.get(parseKey(text, chatDate));
       if (file) return { orders: mockParse(file), from: "saved" };
       if (mode === "mock") return { notice: MOCK_UNKNOWN };
-      return realParse({ text, chatDate, menu });
+      return realParse({ text, chatDate, menu, onStage });
     },
+    callsLeft: () => usage.totalLeft(),
   };
 }

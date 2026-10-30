@@ -1,6 +1,7 @@
 // One call to Gemini's generateContent (Step 7). Shared by the app's real AI mode (src/ai.js) and the
 // spike script, so both send the request the same way. The key goes in a header, never in the URL, and
 // is never logged. Returns the raw reply text unchanged (it is cached byte for byte).
+// signal and now exist for the tests (a fake timeout and a fake clock); normally timeoutMs is enough.
 import { PARSE_MODEL } from "./ai-prompt.js";
 
 export const MAIN_MODEL = PARSE_MODEL;
@@ -18,9 +19,9 @@ export class GeminiError extends Error {
   }
 }
 
-export async function callGemini({ apiKey, model, body, fetch = globalThis.fetch, timeoutMs }) {
-  const start = performance.now();
-  const seconds = () => Number(((performance.now() - start) / 1000).toFixed(1));
+export async function callGemini({ apiKey, model, body, fetch = globalThis.fetch, timeoutMs, signal = AbortSignal.timeout(timeoutMs), now = () => performance.now() }) {
+  const start = now();
+  const seconds = () => Number(((now() - start) / 1000).toFixed(1));
   let res;
   let text;
   try {
@@ -28,12 +29,12 @@ export async function callGemini({ apiKey, model, body, fetch = globalThis.fetch
       method: "POST",
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
     text = await res.text();
   } catch (err) {
     const timedOut = err?.name === "TimeoutError";
-    throw new GeminiError(timedOut ? `No answer within ${timeoutMs / 1000} s.` : `Network error: ${err?.cause?.code ?? err?.message}`,
+    throw new GeminiError(timedOut ? `No answer within ${Number((timeoutMs / 1000).toFixed(1))} s.` : `Network error: ${err?.cause?.code ?? err?.message}`,
       { status: timedOut ? 504 : 0, model, seconds: seconds() });
   }
   if (!res.ok) {

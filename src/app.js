@@ -71,7 +71,9 @@ export function createApp(config, {
   const status = createStatusChecker({ store, paypal, now, log });
   const payments = createPaymentRecorder({ store, paypal, menu, now });
   const qrCodes = new Map(); // invoice id -> Base64 PNG (a QR code never changes)
-  let reading = false; // never more than one parse at a time (it will cost a real AI call from Step 7)
+  let reading = false; // never more than one parse at a time (it can cost real AI calls)
+  let readingStage = null; // "reading" or "backup" while a parse runs: the page's loading words (Step 9)
+  const callsLeft = () => ai.callsLeft?.() ?? null; // a test's own fake AI may have no counter
 
   // What the table, cards, slim bar and kitchen list need: the same shape after every change.
   const table = () => {
@@ -102,7 +104,7 @@ export function createApp(config, {
       menu,
       ...table(),
       aiMode: config.aiMode,
-      aiCallsLeft: 20, // placeholder until the daily counter (PLAN.md Step 9)
+      aiCallsLeft: callsLeft(), // real calls left today, all models together (src/usage.js)
       paypalConfigured: config.paypalConfigured,
       geminiConfigured: config.geminiConfigured,
     });
@@ -152,9 +154,10 @@ export function createApp(config, {
     if (notice) return res.json({ notice });
 
     reading = true;
+    readingStage = "reading";
     let rows;
     try {
-      const reply = await ai.parse({ text, chatDate, messages, menu });
+      const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (readingStage = stage) });
       if (reply.notice) return res.json({ notice: reply.notice });
       rows = toRows(checkOrders(reply.orders, messages), menu);
     } catch (err) {
@@ -162,9 +165,16 @@ export function createApp(config, {
       return res.json({ notice: UNREADABLE });
     } finally {
       reading = false;
+      readingStage = null;
     }
     store.setAll(rows, { text, chatDate, messages: messages.length });
     res.json(table());
+  });
+
+  // While Read orders waits, the page asks this about once a second: which words to show ("Reading the
+  // chats..." or "The AI is busy, trying the backup...") and how many AI calls are left. Never calls the AI.
+  app.get("/api/parse/progress", (req, res) => {
+    res.json({ reading, stage: readingStage, aiCallsLeft: callsLeft() });
   });
 
   // Send invoices: one PayPal sandbox invoice per clear buyer that has none yet (src/invoices.js has the
