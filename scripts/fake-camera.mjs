@@ -10,6 +10,18 @@ const HEIGHT = 480;
 // The flags that give a browser the fake camera, with permission already granted.
 export const cameraArgs = (file) => ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-video-capture=${file}`];
 
+// What a phone would read from a QR picture on screen: the <img> drawn on a canvas, read by the page's own jsQR.
+export async function readQrOnScreen(page, selector) {
+  await page.addScriptTag({ url: "/vendor/jsQR.js" });
+  return page.$eval(selector, async (img) => {
+    await img.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: img.naturalWidth, height: img.naturalHeight });
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    return window.jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height)?.data ?? null;
+  });
+}
+
 // A white "desk" with the QR in the middle, at its own size, like a phone held up to a camera.
 export async function writeCameraFile(browser, pngBase64, file) {
   const page = await browser.newPage();

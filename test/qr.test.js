@@ -2,7 +2,7 @@
 // The two "real" strings were decoded from real PayPal sandbox QR codes in Step 7 (25 and 29 Oct).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NOT_OUR_QR, invoiceIdFromQr, invoiceRefFromTyped, isInvoiceRef } from "../public/invoice-qr.js";
+import { NOT_OUR_QR, invoiceIdFromQr, invoiceRefFromTyped, isInvoiceRef, isPairCode, pairLinkFrom } from "../public/invoice-qr.js";
 
 const REAL_QR = [
   ["https://www.sandbox.paypal.com/invoice/payerView/details/INV2-BKCU-NGE3-RZG3-U35Y?qr=1", "INV2-BKCU-NGE3-RZG3-U35Y"],
@@ -85,4 +85,43 @@ test("isInvoiceRef: the server's own check of what the page sent", () => {
   assert.equal(isInvoiceRef(GOOD_ID), true);
   assert.equal(isInvoiceRef("CHATCHING-K3F9Q2ZA7L1X-07"), true);
   for (const value of ["inv2-bkcu-nge3-rzg3-u35y", "hello", "", null, 7, ["INV2-BKCU-NGE3-RZG3-U35Y"]]) assert.equal(isInvoiceRef(value), false, String(value));
+});
+
+// ---- "Open on my phone": the in-app Pickup scan knows our own pairing QR too ----
+
+const SITE = "https://chatching.onrender.com";
+const CODE = "AbCdEfGhIjKlMnOpQrStUv";
+
+test("our own pairing link gives the link back, so the scan can open it", () => {
+  assert.equal(pairLinkFrom(`${SITE}/pair#${CODE}`, SITE), `${SITE}/pair#${CODE}`);
+  assert.equal(pairLinkFrom(`  ${SITE}/pair#${CODE}\n`, SITE), `${SITE}/pair#${CODE}`);
+  assert.equal(isPairCode(CODE), true);
+});
+
+test("a pairing link is ours only on this very site, in this exact shape", () => {
+  const bad = {
+    "another site": `https://evil.example/pair#${CODE}`,
+    "a look-alike": `https://chatching.onrender.com.evil.example/pair#${CODE}`,
+    "a login part": `https://chatching.onrender.com@evil.example/pair#${CODE}`,
+    "a login part on our own site": `https://me@chatching.onrender.com/pair#${CODE}`,
+    "a login and password on our own site": `https://me:secret@chatching.onrender.com/pair#${CODE}`,
+    "http": `http://chatching.onrender.com/pair#${CODE}`,
+    "another page": `${SITE}/pairing#${CODE}`,
+    "a query": `${SITE}/pair?x=1#${CODE}`,
+    "no code": `${SITE}/pair`,
+    "a short code": `${SITE}/pair#abc`,
+    "a long code": `${SITE}/pair#${CODE}x`,
+    "a bad letter": `${SITE}/pair#${CODE.slice(1)}!`,
+    "not a link": "hello",
+    "nothing": "",
+  };
+  for (const [name, text] of Object.entries(bad)) assert.equal(pairLinkFrom(text, SITE), null, name);
+  assert.equal(pairLinkFrom(null, SITE), null);
+  assert.equal(pairLinkFrom(`${SITE}/pair#${CODE}${" ".repeat(3000)}`, SITE), null, "too long");
+});
+
+test("a pairing link is not an invoice: the two readers never mix them up", () => {
+  assert.equal(invoiceIdFromQr(`${SITE}/pair#${CODE}`), null);
+  assert.equal(invoiceRefFromTyped(`${SITE}/pair#${CODE}`), null);
+  assert.equal(pairLinkFrom("https://www.sandbox.paypal.com/invoice/payerView/details/INV2-BKCU-NGE3-RZG3-U35Y?qr=1", SITE), null);
 });

@@ -47,7 +47,8 @@ export function paymentMessage(rows, menu) {
   const total = fromSen(active.reduce((sum, row) => sum + toSen(row.lineTotal), 0));
   const when = [active[0].fulfilment, list(days(active))].filter(Boolean).join(" ");
   const parts = [list(lines), active.length > 1 ? `total ${money(total, menu)}` : "", when].filter(Boolean);
-  return `Hi ${cleanName(sent.buyer)}! Your order: ${parts.join(", ")}. Pay here: ${sent.payerLink}. Thank you!`;
+  const showQr = active.some((row) => row.fulfilment === "pickup") ? " Show this QR when you pick up." : ""; // the seller sends the QR image with it
+  return `Hi ${cleanName(sent.buyer)}! Your order: ${parts.join(", ")}. Pay here: ${sent.payerLink}.${showQr} Thank you!`;
 }
 
 // One buyer's rows -> a short, polite reminder while their invoice is unpaid, or null.

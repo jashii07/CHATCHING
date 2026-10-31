@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { loadConfig } from "../src/config.js";
 import { createApp, ORDER_GONE } from "../src/app.js";
 import { createPayPal, NOT_CONFIGURED } from "../src/paypal.js";
+import { qrFileName } from "../src/pickup.js";
 import { fakePayPal, QR_PNG } from "../scripts/fake-paypal.mjs";
 import { testVisitor } from "../scripts/test-visitor.mjs";
 
@@ -63,7 +64,7 @@ test("QR: after sending, the panel names the invoice and the QR comes from PayPa
   const panel = (await app.call(`/api/buyers/${arif.id}/panel`)).body;
   assert.equal(panel.qrInvoiceId, arif.invoiceId);
   const first = await app.call(`/api/invoices/${arif.invoiceId}/qr`);
-  assert.deepEqual(first, { status: 200, body: { invoiceId: arif.invoiceId, png: QR_PNG } });
+  assert.deepEqual(first, { status: 200, body: { invoiceId: arif.invoiceId, png: QR_PNG, fileName: "pickup-Arif.png" } });
   const qrCall = app.fake.calls.find((c) => c.kind === "qr");
   assert.deepEqual(qrCall.body, { width: 300, height: 300, action: "pay" });
   await app.call(`/api/invoices/${arif.invoiceId}/qr`);
@@ -94,4 +95,31 @@ test("QR without PayPal keys -> the not-configured notice (200), no PayPal call"
   const { invoiceId } = await app.firstRow("Lina");
   assert.deepEqual(await app.call(`/api/invoices/${invoiceId}/qr`), { status: 200, body: { notice: NOT_CONFIGURED } });
   assert.equal(app.fake.calls.length, 0);
+});
+
+// ---- Save QR: the buyer's pickup QR as a file with a clear name ----
+
+test("the QR reply names the file after the buyer", async () => {
+  const app = await start();
+  await app.call("/api/invoices", "POST", {});
+  const { invoiceId } = await app.firstRow("Lina");
+  assert.equal((await app.call(`/api/invoices/${invoiceId}/qr`)).body.fileName, "pickup-Lina.png");
+  assert.equal((await app.call(`/api/invoices/${invoiceId}/qr`)).body.fileName, "pickup-Lina.png", "also from the kept copy");
+});
+
+test("a buyer's name can't break the file name", () => {
+  const cases = {
+    Lina: "pickup-Lina.png",
+    "Kak Ros": "pickup-Kak-Ros.png",
+    "  Mei Ling  ": "pickup-Mei-Ling.png",
+    "Lina 🌸": "pickup-Lina.png",
+    "José": "pickup-José.png",
+    "../../evil": "pickup-evil.png",
+    "a/b\\c:d*e?f": "pickup-a-b-c-d-e-f.png",
+    "🌸": "pickup-buyer.png",
+    "": "pickup-buyer.png",
+  };
+  for (const [buyer, file] of Object.entries(cases)) assert.equal(qrFileName(buyer), file, buyer);
+  assert.equal(qrFileName(null), "pickup-buyer.png");
+  assert.equal(qrFileName("x".repeat(500)), `pickup-${"x".repeat(40)}.png`);
 });

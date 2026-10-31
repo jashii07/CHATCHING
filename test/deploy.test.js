@@ -21,10 +21,10 @@ test("on Render (RENDER and PORT set by Render): listen on 0.0.0.0 and Render's 
   assert.deepEqual([local.onRender, local.host, local.port], [false, undefined, 3000]);
 });
 
-test("package.json: Node 24 and only express at runtime (Render installs with npm ci --omit=dev)", () => {
+test("package.json: Node 24 and only express + the QR maker at runtime (Render installs with npm ci --omit=dev)", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.engines.node, "24.x");
-  assert.deepEqual(Object.keys(pkg.dependencies), ["express"]);
+  assert.deepEqual(pkg.dependencies, { express: "5.3.0", "qrcode-generator": "2.0.4" }); // exact versions, no ^
   assert.equal(pkg.scripts.start, "node --env-file-if-exists=.env server.js"); // works with no .env file
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
   assert.equal(lock.packages[""].dependencies.express, pkg.dependencies.express, "the lock file matches package.json");

@@ -29,7 +29,7 @@ test("payment message: one item, with pickup or delivery and the day", () => {
   assert.equal(paymentMessage(sent(demo("Lina")), menu),
     `Hi Lina! Your order: 3 x Classic brownies (RM 54.00), delivery Sat 31 Oct. Pay here: ${LINK}. Thank you!`);
   assert.equal(paymentMessage(sent(demo("Aisyah")), menu),
-    `Hi Aisyah! Your order: 3 x Classic brownies (RM 54.00), pickup Sat 31 Oct. Pay here: ${LINK}. Thank you!`);
+    `Hi Aisyah! Your order: 3 x Classic brownies (RM 54.00), pickup Sat 31 Oct. Pay here: ${LINK}. Show this QR when you pick up. Thank you!`);
   assert.equal(paymentMessage(sent(demo("Hafiz")), menu),
     `Hi Hafiz! Your order: 1 x Burnt cheesecake 6-inch (RM 45.00), Fri 30 Oct. Pay here: ${LINK}. Thank you!`);
 });
@@ -39,9 +39,15 @@ test("payment message: several items get a total; no day and no pickup/delivery 
     `Hi Mei Ling! Your order: 1 x Cheese brownies (RM 22.00) and 2 x Choc chip cookies (RM 50.00), total RM 72.00, Sat 31 Oct. Pay here: ${LINK}. Thank you!`);
   const three = rowsOf([order("Zara", [["cookies", 2], ["bahulu", 1], ["classic_brownies", 1]], { fulfilment: "pickup" })], "Zara");
   assert.equal(paymentMessage(sent(three), menu),
-    `Hi Zara! Your order: 2 x Choc chip cookies (RM 50.00), 1 x Kuih bahulu (RM 12.00) and 1 x Classic brownies (RM 18.00), total RM 80.00, pickup. Pay here: ${LINK}. Thank you!`);
+    `Hi Zara! Your order: 2 x Choc chip cookies (RM 50.00), 1 x Kuih bahulu (RM 12.00) and 1 x Classic brownies (RM 18.00), total RM 80.00, pickup. Pay here: ${LINK}. Show this QR when you pick up. Thank you!`);
   assert.equal(paymentMessage(sent(rowsOf([order("Zara", [["cookies", 2]])], "Zara")), menu),
     `Hi Zara! Your order: 2 x Choc chip cookies (RM 50.00). Pay here: ${LINK}. Thank you!`);
+});
+
+test("the QR line is for pickup orders only, and the reminder stays short", () => {
+  assert.doesNotMatch(paymentMessage(sent(demo("Lina")), menu), /QR/, "delivery");
+  assert.doesNotMatch(paymentMessage(sent(rowsOf([order("Zara", [["cookies", 2]])], "Zara")), menu), /QR/, "not said yet");
+  assert.doesNotMatch(reminderMessage(sent(demo("Aisyah")), menu), /QR/);
 });
 
 test("payment message and reminder only for sent invoices; the reminder only while unpaid", () => {

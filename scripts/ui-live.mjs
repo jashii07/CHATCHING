@@ -1,6 +1,6 @@
 // The end-to-end check on the HOSTED app (Step 11 part 2), at laptop and phone widths:
-//   Load demo -> Read orders -> Send invoices -> Pickup scan of Aisyah's real QR -> record cash for Lina ->
-//   Refresh status -> Kitchen list -> Reset demo.
+//   Load demo -> Read orders -> Send invoices -> Open on my phone -> the paired phone scans Aisyah's real QR ->
+//   Collected shows on the laptop -> Save QR + record cash for Lina -> Refresh status -> Kitchen list -> Reset demo.
 // The pickup scan uses Chromium's fake camera, playing the QR image PayPal just made for that invoice: a real
 // QR, the real status from the sandbox, and a real cash payment. Only the camera itself is pretend.
 // This one is NOT a fake: it sends REAL sandbox invoices through the live server (7 per width, no emails;
@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { VISITOR_COOKIE, isVisitorId } from "../src/visitors.js";
-import { cameraArgs, writeCameraFile } from "./fake-camera.mjs";
+import { cameraArgs, readQrOnScreen, writeCameraFile } from "./fake-camera.mjs";
 
 const BASE = (process.argv[2] ?? "https://chatching.onrender.com").replace(/\/$/, "");
 const OUT = fileURLToPath(new URL("../tmp/screenshots-live/", import.meta.url));
@@ -31,7 +31,10 @@ const WIDTHS = [
   { name: "phone", width: 390, height: 844 },
 ];
 const ROWS = ".ag-grid-scrolling-container > .ag-row";
+const PHONE = { width: 390, height: 844 };
 const SLOW = 90_000; // the real PayPal sandbox, on a small free server
+const PAIR_HELP = "Scan this with your phone to open the same orders. Works once, for 10 minutes.";
+const PAIR_EXPIRED = "This link has expired. Make a new one on your laptop.";
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -147,22 +150,46 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     await shot("2-sent", { fullPage: true });
 
-    // Pickup scan: PayPal's real QR for Aisyah's invoice, in front of a fake camera, in a second browser that
-    // holds this visitor's cookie (the camera flags belong to a whole browser, so it can't be this one).
+    // Open on my phone: the real QR from the laptop's screen. The phone below opens exactly what it says.
+    await page.click("#open-on-phone");
+    await page.waitForSelector("#pair-qr", { timeout: SLOW });
+    await page.waitForTimeout(500);
+    const pairLink = await readQrOnScreen(page, "#pair-qr");
+    check(new RegExp(`^${BASE}/pair#[A-Za-z0-9_-]{22}$`).test(pairLink ?? "") && !pairLink.includes(cookie.value), `the laptop's QR reads as a one-time https link: ${pairLink?.replace(/#.*/, "#...")}`);
+    check(plain(await page.$eval("#pair-help", (el) => el.textContent)) === PAIR_HELP, "with the plain words");
+    await shot("2a-pair-qr");
+    await page.click("#drawer-close");
+
+    // Pickup scan: PayPal's real QR for Aisyah's invoice, in front of a fake camera, on a phone paired with that
+    // link (the camera flags belong to a whole browser, so the phone needs a browser of its own).
     const aisyah = sent.find((row) => row.buyer === "Aisyah");
+    check((await liveState(page)).texts.find((t) => t.buyer === "Aisyah").message.endsWith("Show this QR when you pick up. Thank you!"), "Aisyah's pickup message says to show the QR");
     const qr = await page.evaluate(async (id) => (await fetch(`/api/invoices/${id}/qr`)).json(), aisyah.invoiceId);
     check(Boolean(qr.png), `PayPal made a real QR for Aisyah's invoice ${aisyah.invoiceId}`);
     const cameraFile = join(mkdtempSync(join(tmpdir(), "chatching-live-camera-")), "qr.y4m");
     await writeCameraFile(browser, qr.png, cameraFile);
     const cameraBrowser = await chromium.launch({ channel: "chrome", headless: true, args: cameraArgs(cameraFile) });
     try {
-      const context = await cameraBrowser.newContext({ viewport, storageState: await page.context().storageState() });
+      const context = await cameraBrowser.newContext({ viewport: PHONE });
       const scan = await context.newPage();
       scan.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`scan: ${msg.type()}: ${msg.text()}`));
       scan.on("pageerror", (err) => errors.push(`scan: ${err.message}`));
       scan.on("response", (res) => res.status() >= 400 && errors.push(`scan: HTTP ${res.status()} ${res.url()}`));
-      await scan.goto(BASE, { waitUntil: "load" });
+      await scan.goto(pairLink, { waitUntil: "load" });
+      await scan.waitForURL(`${BASE}/`, { timeout: SLOW });
       await scan.waitForSelector(ROWS, { timeout: SLOW });
+      check(scan.url() === `${BASE}/`, `the phone lands on the app, no code in the address bar: ${scan.url()}`);
+      const paired = (await context.cookies()).find((c) => c.name === VISITOR_COOKIE);
+      check(paired?.value === cookie.value && paired.httpOnly && paired.secure && paired.sameSite === "Lax", "the phone has the same visitor, in an HttpOnly, Secure, SameSite=Lax cookie");
+      check((await liveState(scan)).orders.length === (await liveState(page)).orders.length, "the phone sees the same table");
+      await scan.waitForTimeout(500);
+      await scan.screenshot({ path: `${OUT}${viewport.width}-2a-phone-orders.png` });
+      const usedTwice = await browser.newPage({ viewport: PHONE });
+      await usedTwice.goto(pairLink, { waitUntil: "load" });
+      await usedTwice.waitForFunction((words) => document.getElementById("pair-words").textContent === words, PAIR_EXPIRED, { timeout: SLOW });
+      check(usedTwice.url() === `${BASE}/pair` && !(await usedTwice.context().cookies()).some((c) => c.name === VISITOR_COOKIE), `a second phone with the same link: "${PAIR_EXPIRED}", no cookie, no code in the address bar`);
+      await usedTwice.screenshot({ path: `${OUT}${viewport.width}-2a-phone-expired.png` });
+      await usedTwice.close();
       await scan.locator("[data-pickup-scan]:visible").first().click();
       await scan.waitForSelector("#scan-result:not([hidden])", { timeout: SLOW });
       check(plain(await scan.$eval("#scan-words", (el) => el.textContent)) === "Not paid yet: RM 54.00", `the real QR, the live status: "${plain(await scan.$eval("#scan-words", (el) => el.textContent))}"`);
@@ -186,11 +213,16 @@ try {
     } finally {
       await cameraBrowser.close();
     }
+    await page.click("#refresh-status");
+    await page.waitForSelector(`${ROWS} .badge-collected`, { state: "attached", timeout: SLOW }).catch(() => {});
+    await page.waitForTimeout(800);
+    await goToBuyerPage(page, "Aisyah");
+    check((await page.locator(ROWS, { hasText: "Aisyah" }).locator(".badge-collected").count()) === 1, "Refresh status shows the phone's Collected on the laptop");
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector(ROWS, { timeout: SLOW });
     await page.waitForTimeout(800);
     await goToBuyerPage(page, "Aisyah");
-    check((await page.locator(ROWS, { hasText: "Aisyah" }).locator(".badge-collected").count()) === 1, "the first browser's table shows the Collected badge");
+    check((await page.locator(ROWS, { hasText: "Aisyah" }).locator(".badge-collected").count()) === 1, "and after a reload");
 
     // Record cash for Lina in her drawer (the QR code comes from PayPal too).
     await goToBuyerPage(page, "Lina");
@@ -200,6 +232,11 @@ try {
     await page.waitForSelector("#qr-image", { timeout: SLOW }).catch(() => {});
     await page.waitForTimeout(800);
     check(await page.$eval("#qr-image", (img) => img.complete && img.naturalWidth > 0).catch(() => false), "her drawer shows PayPal's real QR code");
+    const linaInvoice = sent.find((row) => row.buyer === "Lina").invoiceId;
+    const [saved] = await Promise.all([page.waitForEvent("download"), page.click("#save-qr")]);
+    const savedBytes = readFileSync(await saved.path());
+    check(saved.suggestedFilename() === "pickup-Lina.png" && savedBytes.subarray(1, 4).toString() === "PNG", `Save QR gives ${saved.suggestedFilename()}, a real PNG of ${savedBytes.length} bytes`);
+    check((await readQrOnScreen(page, "#qr-image"))?.includes(linaInvoice), "the QR holds her invoice");
     check(plain(await page.$eval(".pay-card", (el) => el.innerText)).includes("RM 54.00"), "her drawer offers Record payment for RM 54.00");
     await shot("3-drawer");
     await page.selectOption("#pay-method", "CASH");

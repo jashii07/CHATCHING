@@ -17,6 +17,8 @@ test("the limits: per visitor, per route, in any 10 minutes", () => {
     invoices: { limit: 60, windowMs: 10 * MIN },
     payment: { limit: 20, windowMs: 10 * MIN },
     refresh: { limit: 60, windowMs: 10 * MIN },
+    pairNew: { limit: 20, windowMs: 10 * MIN },
+    pairOpen: { limit: 30, windowMs: 10 * MIN },
   });
 });
 

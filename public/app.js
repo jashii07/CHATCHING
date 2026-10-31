@@ -34,6 +34,7 @@ let openGroupId = null; // the buyer shown in the drawer (its first row id)
 let kitchen = { days: [], text: "" }; // the kitchen list from the server (src/kitchen.js)
 let texts = new Map(); // buyer (lowercase) -> { message, reminder, question }: ready-to-send texts from the server (src/messages.js)
 let kitchenOpen = false; // the drawer shows the kitchen list instead of a buyer
+let pairOpen = false; // the drawer shows the "Open on my phone" QR instead
 let onlyNeedsCheck = false; // the Needs check card filters the table to buyers that need a check
 let chatDate = null; // for the CSV file name
 let returnFocus = null;
@@ -674,6 +675,7 @@ const drawerQr = el("div", "drawer-part");
 $("drawer-body").append(drawerChat, drawerItems, drawerQr);
 
 function renderDrawer() {
+  if (pairOpen) return renderPair();
   if (kitchenOpen) return renderKitchen();
   const data = buyerRows().find((row) => row.id === openGroupId);
   if (!data) return closeDrawer();
@@ -776,12 +778,27 @@ function qrCard(invoiceId) {
       className: "qr-image", id: "qr-image", src: `data:image/png;base64,${qr.png}`, width: 180, height: 180,
       alt: "QR code that opens this PayPal invoice",
     }));
-    card.append(el("p", "hint", "Scanning it opens this PayPal invoice to pay. Show it at pickup, or send it with the payment message."));
+    const save = Object.assign(el("button", "ghost"), { type: "button", id: "save-qr" });
+    save.dataset.invoice = invoiceId;
+    save.append(icon("download"), "Save QR");
+    card.append(save, el("p", "hint", "Send it with the payment message, so the buyer can show it at pickup. Scanning it also opens this PayPal invoice to pay."));
   }
   // The number for Pickup scan's typing box, for when there is no camera.
   const number = [...rowsById.values()].find((row) => row.invoiceId === invoiceId)?.invoiceNumber;
   if (number) card.append(el("p", "hint invoice-number", `Invoice number: ${number}`));
   return card;
+}
+
+// Saves PayPal's QR picture as a file, e.g. pickup-Lina.png, for the seller to send in the chat.
+function saveQr(button) {
+  const { png, fileName } = qrCodes.get(button.dataset.invoice);
+  const bytes = Uint8Array.from(atob(png), (char) => char.charCodeAt(0));
+  const link = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([bytes], { type: "image/png" })),
+    download: fileName,
+  });
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 function renderPanel() {
@@ -886,9 +903,78 @@ function openKitchen() {
   ($("copy-kitchen").disabled ? $("drawer-close") : $("copy-kitchen")).focus();
 }
 
+// ---- Open on my phone: a one-time QR, so a phone opens this same table (src/pairing.js) ----
+
+const PAIR_HELP = "Scan this with your phone to open the same orders. Works once, for 10 minutes.";
+const PAIR_EXPIRED = "This link has expired. Make a new one on your laptop.";
+let pairQr = null; // what the drawer shows: { qr }, { words } or null while the link is being made
+let pairRun = 0; // goes up on every new link and on close, so a late answer can't change the drawer
+let pairTimer = null;
+
+function renderPair() {
+  $("drawer-avatar").replaceChildren(icon("smartphone"));
+  $("drawer-title").textContent = "Open on my phone";
+  $("drawer-sub").textContent = "The same orders, on a second device";
+  $("drawer-foot").textContent = "Anyone who scans this sees your orders, so keep it to yourself.";
+  drawerChat.replaceChildren();
+  drawerQr.replaceChildren();
+  const card = el("section", "edit-card pair-card");
+  if (!pairQr) card.append(el("p", "hint", "Making a link..."));
+  else if (pairQr.words) {
+    const note = Object.assign(el("p", "filter-note"), { id: "pair-note", role: "status" });
+    note.append(el("span", "", pairQr.words));
+    card.append(note);
+  } else {
+    card.append(Object.assign(document.createElement("img"), {
+      className: "pair-qr", id: "pair-qr", src: pairQr.qr, alt: "QR code that opens these orders on your phone",
+    }), Object.assign(el("p", "pair-help", PAIR_HELP), { id: "pair-help" }));
+  }
+  const again = Object.assign(el("button", "ghost"), { type: "button", id: "pair-new", disabled: !pairQr });
+  again.append(icon("refresh-cw"), "Make a new link");
+  card.append(again);
+  drawerItems.replaceChildren(card);
+}
+
+function showPair(shown) {
+  pairQr = shown;
+  renderDrawer();
+  $("pair-new").focus();
+}
+
+async function newPairLink() {
+  const run = ++pairRun;
+  clearTimeout(pairTimer);
+  pairQr = null;
+  renderDrawer();
+  let reply;
+  try {
+    reply = await postJson("/api/pair/new", {});
+  } catch (err) {
+    reply = { notice: `The link could not be made (${err.message}).` };
+  }
+  if (run !== pairRun) return;
+  if (reply.notice) return showPair({ words: reply.notice });
+  showPair({ qr: reply.qr });
+  pairTimer = setTimeout(() => showPair({ words: PAIR_EXPIRED }), reply.expiresInMs);
+}
+
+function openPairing() {
+  openGroupId = null;
+  kitchenOpen = false;
+  pairOpen = true;
+  returnFocus = document.activeElement;
+  hideError("drawer-error");
+  showDrawer();
+  $("drawer-close").focus();
+  newPairLink();
+}
+
 function closeDrawer() {
   openGroupId = null;
   kitchenOpen = false;
+  pairOpen = false;
+  pairRun++;
+  clearTimeout(pairTimer);
   $("drawer").classList.remove("is-open");
   $("drawer").hidden = true;
   $("scrim").hidden = true;
@@ -1075,11 +1161,21 @@ function showServerTable(state) {
   if (hasOpenInvoices()) startPolling();
 }
 
+// A second device on this table (Open on my phone) may have changed it: sent invoices, Collected, an edit.
+const tableChanged = (orders) => JSON.stringify(orders) !== JSON.stringify([...rowsById.values()]);
+
 async function tableStillHere() {
   try {
     const res = await fetch("/api/state");
     const state = await res.json();
-    if (!res.ok || state.batch === batch) return true;
+    if (!res.ok) return true;
+    if (state.batch === batch) {
+      if (tableChanged(state.orders)) {
+        showOrders(state);
+        if (hasOpenInvoices()) startPolling();
+      }
+      return true;
+    }
     showServerTable(state);
     return false;
   } catch {
@@ -1133,10 +1229,8 @@ async function refreshStatus({ byHand }) {
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
     if (reply.notice) return ($("status-message").textContent = reply.notice); // e.g. too many checks: friendly words, polling goes on
     if (reply.batch !== batch) return showServerTable(reply);
-    if (reply.changed.length) {
-      showOrders(reply);
-      flashPaid(reply.changed);
-    }
+    if (reply.changed.length || tableChanged(reply.orders)) showOrders(reply);
+    if (reply.changed.length) flashPaid(reply.changed);
     const paid = reply.changed.filter((c) => c.to.startsWith("Paid")).map((c) => c.buyer);
     $("status-message").textContent = [
       paid.length ? `Paid: ${paid.join(", ")}.` : "",
@@ -1231,7 +1325,7 @@ const SCAN_LOOKING = "Point the camera at the buyer's QR code.";
 const SCAN_EVERY_MS = 200; // about 5 tries a second: quick enough for a hand, kind to a phone's battery
 const SCAN_MAX_SIDE = 800; // a QR held up to the camera needs no more pixels than this
 const SCAN_SKIP_MS = 3000; // time to move the last buyer's QR out of view
-const OTHER_BROWSER = "An invoice belongs to the browser that sent it, so scan on that same phone or laptop.";
+const OTHER_BROWSER = "It may be in orders on another device. On that device, click Open on my phone, then scan that QR here.";
 let scanner = null; // public/invoice-qr.js, loaded on the first open
 let scanOpen = false;
 let scanStream = null; // the camera, while the sheet is open
@@ -1302,7 +1396,17 @@ function readFrame() {
   scanTimer = setTimeout(readFrame, SCAN_EVERY_MS);
 }
 
+// Our own "Open on my phone" QR, read by Pickup scan: open it, exactly as the phone's camera app would.
+function openPairLink(text) {
+  const link = scanner.pairLinkFrom(text, location.origin);
+  if (!link) return false;
+  closeScan();
+  location.assign(link);
+  return true;
+}
+
 function onScanned(text) {
+  if (openPairLink(text)) return;
   const invoiceId = scanner.invoiceIdFromQr(text);
   const justDone = invoiceId === scanSkip.id && Date.now() < scanSkip.until;
   if (invoiceId && !justDone) return checkPickup(invoiceId);
@@ -1454,6 +1558,7 @@ async function checkTyped(event) {
   } catch {
     return showScanBox("is-check", "The scanner could not load. Check the connection, then try again.");
   }
+  if (openPairLink(text)) return;
   const ref = scanner.invoiceRefFromTyped(text);
   if (ref) checkPickup(ref);
   else showScanBox("is-check", scanner.NOT_OUR_QR);
@@ -1824,6 +1929,7 @@ $("filter-clear").addEventListener("click", () => {
 $("search").addEventListener("input", (event) => grid?.setGridOption("quickFilterText", event.target.value));
 $("export-csv").addEventListener("click", exportCsv);
 $("kitchen-list").addEventListener("click", openKitchen);
+$("open-on-phone").addEventListener("click", openPairing);
 $("page-prev").addEventListener("click", () => grid?.paginationGoToPreviousPage());
 $("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
 $("drawer-close").addEventListener("click", closeDrawer);
@@ -1837,6 +1943,8 @@ $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest(".remove-item")) removeItem(event.target.closest(".remove-item"));
   if (event.target.closest("#add-item")) addItem();
   if (event.target.closest("#undo-collected")) undoCollected(event.target.closest("#undo-collected"));
+  if (event.target.closest("#save-qr")) saveQr(event.target.closest("#save-qr"));
+  if (event.target.closest("#pair-new")) newPairLink();
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);

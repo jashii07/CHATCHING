@@ -11,6 +11,7 @@ const ID_ONLY = new RegExp(`^${INVOICE_ID}$`);
 const NUMBER_ONLY = /^CHATCHING-[A-Z0-9]{12}-\d{2,3}$/; // src/paypal.js invoiceNumber()
 const PAYER_PAGE = new RegExp(`^/invoice/payerView/details/(${INVOICE_ID})$`);
 const MAX_TEXT = 2000; // PayPal's QR holds 86 characters
+const PAIR_CODE = /^[A-Za-z0-9_-]{22}$/; // 16 random bytes in URL-safe letters (src/pairing.js)
 
 // Text -> a URL on PayPal's sandbox itself, or null. Comparing the parsed host (with no login part and no
 // port) is what stops look-alikes such as www.sandbox.paypal.com.evil.example or ...@evil.example.
@@ -39,6 +40,22 @@ function invoiceIdFromPayerLink(text) {
   const url = sandboxUrl(text);
   const id = url?.hash.slice(1);
   return url?.pathname === "/invoice/p/" && ID_ONLY.test(id) ? id : null;
+}
+
+export const isPairCode = (value) => typeof value === "string" && PAIR_CODE.test(value);
+
+// "Open on my phone": our own pairing link, scanned or pasted into Pickup scan. It counts only on this very
+// site (origin: location.origin), so a stranger's QR can never send a phone somewhere else. -> the link or null.
+export function pairLinkFrom(text, origin) {
+  if (typeof text !== "string" || text.length > MAX_TEXT) return null;
+  let url;
+  try {
+    url = new URL(text.trim());
+  } catch {
+    return null;
+  }
+  const ours = url.origin === origin && url.pathname === "/pair" && !url.username && !url.password && !url.search;
+  return ours && isPairCode(url.hash.slice(1)) ? url.href : null;
 }
 
 // The fallback box: the invoice id or number (any case), or a pasted QR or payer link. -> id, number or null.

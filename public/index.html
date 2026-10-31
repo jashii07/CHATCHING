@@ -133,6 +133,10 @@
           <button type="button" class="ghost" id="kitchen-list" aria-controls="drawer">
             <i data-lucide="chef-hat" aria-hidden="true"></i>Kitchen list
           </button>
+          <!-- Shows a one-time QR, so a phone opens this same table (src/pairing.js). -->
+          <button type="button" class="ghost" id="open-on-phone" aria-controls="drawer">
+            <i data-lucide="smartphone" aria-hidden="true"></i>Open on my phone
+          </button>
           <!-- One PayPal sandbox invoice per clear buyer. On phones this button sits in the sticky total bar. -->
           <button type="button" id="send-invoices" data-send-invoices>Send invoices</button>
           <!-- Asks PayPal who has paid (the page also checks by itself every 20 s while invoices are open). -->

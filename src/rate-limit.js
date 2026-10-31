@@ -14,12 +14,16 @@ const WINDOW_MS = 10 * MINUTE;
 // - payment: recording cash / bank transfer, one click per buyer.
 // - refresh: the page asks every 20 s (30 times in 10 minutes per open tab), so 2 tabs fit.
 // - pickup: one scan per buyer, plus the odd "Check again": a busy pickup is well under 60 in 10 minutes.
+// - pairNew, pairOpen: "Open on my phone", a few tries by a seller. The code is unguessable anyway; these keep
+//   a script from filling the server's memory, and a whole office on one address still fits.
 export const RATE_LIMITS = Object.freeze({
   pickup: { limit: 60, windowMs: WINDOW_MS },
   parse: { limit: 6, windowMs: WINDOW_MS },
   invoices: { limit: 60, windowMs: WINDOW_MS },
   payment: { limit: 20, windowMs: WINDOW_MS },
   refresh: { limit: 60, windowMs: WINDOW_MS },
+  pairNew: { limit: 20, windowMs: WINDOW_MS },
+  pairOpen: { limit: 30, windowMs: WINDOW_MS },
 });
 
 export const slowDown = (waitMs) => {

@@ -1446,6 +1446,67 @@ mark.hl-price-check {
   height: 180px;
 }
 
+/* "Open on my phone": the QR in the drawer, and the small page the phone lands on. */
+.pair-card {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.pair-card .filter-note {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+}
+
+.pair-qr {
+  display: block;
+  width: 246px;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated; /* crisp squares scan better */
+}
+
+.pair-help {
+  margin: 0;
+  font-weight: 600;
+}
+
+.pair-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.pair-box {
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.pair-box h1 {
+  margin: 0 0 12px;
+  font-size: 28px;
+}
+
+.pair-box p {
+  margin: 0;
+}
+
+.pair-box a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  color: var(--blue);
+  font-weight: 600;
+}
+
 /* Step 10b: the kitchen list in the drawer. One card per day; the quantity leads each line. */
 .copy-kitchen {
   align-self: flex-start;

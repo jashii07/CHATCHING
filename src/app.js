@@ -14,7 +14,8 @@ import { createPayPal, NOT_CONFIGURED, PayPalError } from "./paypal.js";
 import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
-import { createPickup } from "./pickup.js";
+import { createPickup, qrFileName } from "./pickup.js";
+import { PAIR_EXPIRED, PAIR_TTL_MS, createPairing, pairQr } from "./pairing.js";
 import { buyerPanel } from "./panel.js";
 import { kitchenList } from "./kitchen.js";
 import { buyerMessages } from "./messages.js";
@@ -97,6 +98,7 @@ export function createApp(config, {
       return visitor;
     },
   });
+  const pairing = createPairing({ now }); // "Open on my phone": shared by all visitors, in memory only
   const callsLeft = () => ai.callsLeft?.() ?? null; // a test's own fake AI may have no counter
 
   // What the table, cards, slim bar, kitchen list and ready-to-send texts need: the same shape after every change.
@@ -138,15 +140,36 @@ export function createApp(config, {
     res.json({ ok: true, version: VERSION });
   });
 
+  // "Open on my phone", the phone's side. Above the visitor step on purpose: a phone that isn't paired yet gets
+  // no new visitor from this route, and a refused link leaves its cookie alone. Wrong, used and expired all get
+  // the same friendly words (200, no red console line). The id goes in the cookie only, never in a body or a URL.
+  const visitorCookie = (req) => ({ httpOnly: true, sameSite: "lax", secure: req.secure, maxAge: MAX_AGE_MS });
+  app.get("/pair", (req, res) => res.sendFile("pair.html", { root: PUBLIC_DIR }));
+  app.post("/api/pair/open", limited("pairOpen"), (req, res) => {
+    const code = req.body?.code;
+    if (typeof code !== "string") return res.status(400).json({ error: 'Send { "code": "..." }.' });
+    const id = pairing.redeem(code);
+    if (!id) return res.json({ notice: PAIR_EXPIRED });
+    res.cookie(VISITOR_COOKIE, id, visitorCookie(req));
+    res.json({ paired: true });
+  });
+
   // Everything after this belongs to one visitor. Each reply renews the cookie's 14 days, and says no-store
   // so a table can never sit in a shared cache. The health check above stays out, or every ping from Render
   // would be a new visitor. Secure follows the real connection: on Render req.secure reads X-Forwarded-Proto.
   app.use("/api", (req, res, next) => {
     const id = visitorIdFrom(req.headers.cookie) ?? newVisitorId();
-    res.cookie(VISITOR_COOKIE, id, { httpOnly: true, sameSite: "lax", secure: req.secure, maxAge: MAX_AGE_MS });
+    res.cookie(VISITOR_COOKIE, id, visitorCookie(req));
     res.set("Cache-Control", "no-store");
+    req.visitorId = id;
     req.visitor = visitors.get(id);
     next();
+  });
+
+  // "Open on my phone", the laptop's side: a new one-time link for this visitor, and its QR.
+  app.post("/api/pair/new", limited("pairNew"), (req, res) => {
+    const link = `${req.protocol}://${req.get("host")}/pair#${pairing.create(req.visitorId)}`;
+    res.json({ link, qr: pairQr(link), expiresInMs: PAIR_TTL_MS });
   });
 
   app.get("/api/state", (req, res) => {
@@ -406,7 +429,7 @@ export function createApp(config, {
     if (!config.paypalConfigured) return res.json({ notice: NOT_CONFIGURED });
     try {
       if (!qrCodes.has(row.invoiceId)) qrCodes.set(row.invoiceId, (await paypal.qrCode(row.invoiceId)).toString("base64"));
-      res.json({ invoiceId: row.invoiceId, png: qrCodes.get(row.invoiceId) });
+      res.json({ invoiceId: row.invoiceId, png: qrCodes.get(row.invoiceId), fileName: qrFileName(row.buyer) });
     } catch (err) {
       if (!(err instanceof PayPalError)) throw err;
       res.json({ notice: `The QR code could not be loaded (${err.message})` });

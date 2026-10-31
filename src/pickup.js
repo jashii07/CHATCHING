@@ -11,6 +11,13 @@ import { NOT_OUR_QR, isInvoiceRef } from "../public/invoice-qr.js";
 export const NOT_IN_ORDERS = "Not in your orders.";
 const NOT_YOURS = { notice: NOT_IN_ORDERS, notInOrders: true };
 
+// The saved QR's file name: letters and digits of any language, the rest (spaces, slashes, emoji) become a
+// dash, so a buyer's name from a chat can never make an odd path. "Kak Ros" -> "pickup-Kak-Ros.png".
+export function qrFileName(buyer) {
+  const words = String(buyer ?? "").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  return `pickup-${[...words].slice(0, 40).join("").replace(/-+$/, "") || "buyer"}.png`;
+}
+
 const isPaid = (status) => String(status).startsWith("Paid"); // Paid, or Paid (cash/bank)
 
 function stateOf(status) {
