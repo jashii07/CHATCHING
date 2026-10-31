@@ -22,7 +22,8 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice (no emails are sent).
 3. Click a buyer, then **Record payment** to record cash. Click **Refresh status**: the row shows Paid (cash/bank).
 4. Click **Kitchen list** to see what to make per day.
-5. Click **Reset demo** at the bottom to start again. It only clears your own table.
+5. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
+6. Click **Reset demo** at the bottom to start again. It only clears your own table.
 
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 

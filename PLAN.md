@@ -11,7 +11,7 @@ Small home sellers take orders as messy chat messages in English ("can i order 2
 ## 2. User
 
 - **Main user:** a home seller (cakes, kuih, frozen food) with a small fixed menu and 10-50 chat orders a day. Not technical.
-- **Judges:** open the link and act as that seller, each with their own table (a cookie, no login; changed 31 Oct), and pay as a buyer with a sandbox personal account.
+- **Judges:** open the link and act as that seller, each with their own table (a cookie, no login; changed 31 Oct), and pay as a buyer with a sandbox personal account. A one-time QR opens the same table on a phone (Open on my phone, 31 Oct).
 
 ## 3. Flow
 
@@ -41,10 +41,12 @@ src/dates.js              message timestamps + day words ("tomorrow", "Saturday"
 src/store.js              one visitor's orders + old batches, saved to data/runtime/visitors/<id>.json
 src/visitors.js           (31 Oct) the visitor id and cookie, the file path, cleanup (14 days, 500 files)
 src/pickup.js             (31 Oct) pickup check + Collected: this visitor's table, live status through src/status.js
+src/pairing.js            (31 Oct) Open on my phone: one-time codes (hashes only, in memory) and the pairing QR
 public/index.html         the page
 public/app.js             AG Grid table, buyer panel, buttons, polling
 public/styles.css
-public/invoice-qr.js      (31 Oct) reads an invoice from a QR or the typing box; used by the page AND the server
+public/invoice-qr.js      (31 Oct) reads an invoice or a pairing link from a QR or the typing box; used by the page AND the server
+public/pair.html, pair.js (31 Oct) the small page a phone lands on; it POSTs the code from the address and goes to /
 public/vendor/            (31 Oct) jsQR 1.4.0, self-hosted, with its Apache-2.0 licence
 data/menu.json            fixed menu (item -> price, aliases)
 data/demo-chats.txt       fictional English chats
@@ -56,7 +58,7 @@ test/                     node:test tests (built into Node, no package)
 scripts/                  smoke tests + accuracy.mjs
 ```
 
-Only one new package is planned: **express**.
+Only one new package is planned: **express**. (31 Oct: also **qrcode-generator 2.0.4**, MIT, no dependencies of its own, for the pairing QR.)
 
 ### Routes
 
@@ -69,13 +71,16 @@ Only one new package is planned: **express**.
 | `POST /api/invoices` | create + send one invoice per buyer that has no invoice yet (double-invoice guard, #3c) | **Never** |
 | `POST /api/invoices/refresh` | ask PayPal for the status of every open invoice | No |
 | `POST /api/invoices/:id/payment` | record a cash / bank-transfer payment in PayPal (#3a) | **Never** |
-| `GET /api/invoices/:id/qr` | pickup QR code image from PayPal (#3b) | **Never** |
+| `GET /api/invoices/:id/qr` | pickup QR code image from PayPal (#3b), with its file name (`pickup-Lina.png`) for Save QR | **Never** |
 | `POST /api/messages` | ready-to-send message per invoiced buyer (#2) | 1 call, or template |
 | `POST /api/reminders` | reminders for all unpaid buyers, same design as messages | 1 call, or template |
 | `POST /api/reset` | Reset demo: empty this visitor's table so their demo starts over; sent invoices stay in the visitor's file; nothing in PayPal is deleted or cancelled (changed 28 Oct, Step 6) | **0 calls** |
 | *(no route)* | (Step 10b, done 29 Oct) kitchen list: per date, how many of each item to make. Sent as `kitchen` in `/api/state` and every edit reply instead of its own route | **Never** |
 | `POST /api/pickup/check` | (Step 10c, done 31 Oct) `{ invoiceId }` (id or number): look ONLY in this visitor's table, get the live status through the status code (cache + rate limit), reply with buyer, items, total and paid or not | **Never** |
 | `POST /api/pickup/collected` | (Step 10c, done 31 Oct) `{ invoiceId, undo? }`: mark Collected, our own status, never sent to PayPal, only when paid; Undo allowed | **Never** |
+| `POST /api/pair/new` | (31 Oct) a new one-time pairing link for this visitor, and its QR; rate limited | **Never** |
+| `GET /pair` | (31 Oct) the phone's page; the code stays after the `#`, so it never reaches the server here | No |
+| `POST /api/pair/open` | (31 Oct) `{ code }`: works once, for 10 minutes; gives the phone the laptop's visitor cookie; anything else gets the same friendly words; rate limited | **Never** |
 
 ### AG Grid showcase (Community features only, no Enterprise)
 
@@ -274,7 +279,11 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - Any QR library is pinned with an integrity hash (like AG Grid and Lucide). Add a Content-Security-Policy (the app has none yet) that allows it; **never `'unsafe-eval'`**.
    - The camera needs HTTPS, so test it on Render (localhost also counts as secure for a first check).
    - **What PayPal's QR holds (verified 29 Oct, Step 7):** decoded from two real sandbox QR codes (25 Oct and 29 Oct) with `scripts/decode-qr.mjs` (jsQR 1.4.0): `https://www.sandbox.paypal.com/invoice/payerView/details/INV2-BKCU-NGE3-RZG3-U35Y?qr=1`, i.e. the invoice's payer page with the **full invoice id (with dashes)** and `?qr=1`. QR version 5, 86 characters. `invoiceIdIn()` in `src/qr.js` already reads the id from it (tested). So the scan needs no PayPal call to find the invoice; it then checks our store and asks PayPal for the live status. Expect a live (non-sandbox) QR to say `www.paypal.com` instead (not tested).
-   - Still assumed after 10c: how the buyer has the QR on pickup day (the seller sends the PayPal QR image with the payment message, or the buyer opens their invoice). Also: a table belongs to one browser, so the seller must send and scan on the same device (DECISIONS.md, Known weaknesses).
+   - ~~Still assumed after 10c: how the buyer has the QR on pickup day; a table belongs to one browser.~~ Both closed by Step 10d.
+10d. ✅ (done Sat 31 Oct; `src/pairing.js`, `public/pair.html`, `public/pair.js`, `npm run ui-pair`, version 1.3.0) **One table on two devices, and the buyer's QR.** Jasper's decisions, with his advisor; DECISIONS.md has the details.
+   - **Open on my phone:** a button shows a QR with a one-time link (`/pair#<code>`, 128 random bits, 10 minutes, works once, stored only as a hash). The phone POSTs the code and gets the same visitor cookie. The phone's camera app opens it; Pickup scan and its typing box know it too.
+   - **Save QR + the message:** the check showed a buyer had no way to get the QR. The drawer now saves PayPal's QR as `pickup-Lina.png`, and the Copy message of a pickup order ends "Show this QR when you pick up."
+   - **Two devices stay in step:** Refresh status and coming back to the tab now show what the other device changed (Collected, sent invoices). Before, only a change from PayPal or a new batch redrew the table.
 11. Deploy to Render; end-to-end test on the hosted URL.
    - **Part 1 ✅ (done early, Fri 30 Oct; 370 tests):** the app is ready for Render's free plan: `PORT`/`RENDER`, no `.env` needed, `GET /api/health` (ok + version only), `npm ci --omit=dev`, Node 24, clean start with no runtime files, Google's daily-limit 429 marks a model used up, a per-visitor rate limit (`src/rate-limit.js`), the summary figures always fit their cards (part 0). Click-by-click guide for Jasper: `docs/deploy-render.md`.
    - **Part 2 ✅ (done early, Fri 30 Oct):** live at **https://chatching.onrender.com/** (first load can take up to a minute while the free server wakes up). `npm run ui-live` runs the whole flow on the hosted URL at 1280 + 390 px with real sandbox invoices: Load demo → Read orders → Send invoices → record cash → Refresh → Kitchen list → Reset demo. Cold start measured once: 22.9 s after 17 idle minutes. A buyer really paying in the sandbox stays a manual check (it needs a buyer login).
@@ -286,7 +295,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 ## 8. Cut list (we will NOT build)
 
 - No WhatsApp/Instagram integration, and no logos of either anywhere.
-- No seller login or accounts: one demo seller, with a separate table per browser (a cookie; changed 31 Oct).
+- No seller login or accounts: one demo seller, with a separate table per browser (a cookie; changed 31 Oct), shared with a phone only through a one-time QR.
 - No database: JSON files (Render free disk resets on restart → every table starts empty; invoice status always comes from PayPal).
 - No webhooks (stretch goal only).
 - No React or build step.
@@ -315,6 +324,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Fri 30 Oct (2 h) | **Step 10b: Kitchen list** (added 29 Oct, one session; uses the evening freed by finishing Step 5 early) | Per date, a count per item from active clear orders; cancelled left out; "+1 order still to check"; Copy works |
 | Sat 31 Oct (6 h) | ✅ **Step 6 DONE early (Wed 28 Oct)**: 239 tests, `npm run ui-flow` at 1280 + 390 px, one real cash payment. **Still on Sat 31 Oct: the first Render deploy (buffer hour).** Step 6: polling, badges, Refresh, Reset demo; Paid flash + CSV export; pinned totals + quick filter; record cash/bank. **Buffer hour: FIRST DEPLOY to Render of whatever exists (walking skeleton)**, and check Render's free-tier rules (sleep after inactivity, monthly hours, whether it asks for a card; **if it asks for a card, stop and ask Jasper**) → note them in DECISIONS.md | Paid in sandbox → cell flashes green; cash → "Paid (cash)"; CSV opens in Excel; **the app loads from a Render URL** |
 | Sat 31 Oct (rest of the day) | ✅ **Step 10c DONE (Sat 31 Oct)**: 459 tests, `npm run ui-pickup` at 1280 + 390 px with a real PayPal QR through the fake camera; a real phone is Jasper's check. **Step 10c: Pickup scan** (added 29 Oct, one session; the hours freed by finishing Step 6 early). It needs HTTPS, so it follows the first Render deploy and is tested there. **Dropped first if time is tight** | On a phone over the Render URL: scan a sandbox invoice QR → green "Paid: ..." or amber "Not paid yet: ..." → Collected; typing the invoice number works without a camera |
+| Sat 31 Oct (extra) | ✅ **Step 10d DONE (Sat 31 Oct)**: Open on my phone + Save QR, `npm run ui-pair` (laptop + phone contexts), live on Render; a real phone is Jasper's check | Pair -> the phone sees the same table -> the phone scans -> Collected shows on the laptop after Refresh |
 | Sun 1 Nov (5 h) | ✅ **Step 7 DONE early (Thu 29 Oct)**: perfect score on the new chats, 21 s, 2 of 6 calls; 282 tests; ui-check + ui-flow at 1280/820/390. Step 7: real Gemini + cache; buyer panel (note + highlighted messages); pickup QR; **price mismatch + messier demo chats (added 29 Oct)** | Real call once, cached after; clicking Arif shows his 2 messages + a QR; the wrong price mention shows "Check: buyer mentioned ..., menu says ..."; the new expected-orders.json scored against Gemini's real reply, saved as the demo cache. **You: holdout chats + expected answers saved** |
 | Mon 2 Nov (2 h) | ✅ **Step 8 DONE early (Thu 29 Oct)**: `--cached` 74/74, 310 tests; the one live run got 503 from both models (no live score yet). Step 8: accuracy.mjs + prompt tuning | Score printed; demo chats give the totals in the updated expected-orders.json (was 7 orders / RM 387.00 before Step 7) |
 | Tue 3 Nov (2 h) | ✅ **Step 9 DONE early (Fri 30 Oct)**: 323 tests, `npm run ui-ai` at 1280 + 390 px; the live run got Google busy again (no score). Step 9: timeout, retry, backup, counter | "AI calls left" shown; quota 0 → friendly "AI busy" message |
