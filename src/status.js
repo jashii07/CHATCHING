@@ -56,5 +56,6 @@ export function createStatusChecker({ store, paypal, now = Date.now, log = conso
     },
     // Invoices were just sent: their statuses are fresh, so the next poll may wait for the cache.
     markFresh: () => (lastCheck = now()),
+    isBusy: () => pending !== null,
   };
 }

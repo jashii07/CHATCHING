@@ -11,7 +11,7 @@ Small home sellers take orders as messy chat messages in English ("can i order 2
 ## 2. User
 
 - **Main user:** a home seller (cakes, kuih, frozen food) with a small fixed menu and 10-50 chat orders a day. Not technical.
-- **Judges:** log in as that seller (shared sandbox demo) and pay as a buyer with a sandbox personal account.
+- **Judges:** open the link and act as that seller, each with their own table (a cookie, no login; changed 31 Oct), and pay as a buyer with a sandbox personal account.
 
 ## 3. Flow
 
@@ -38,7 +38,8 @@ src/messages.js           placeholders {items} {total} {date} {link}, checks, En
 src/fallback.js           non-AI: alias-based parser
 src/orders.js             pure logic: prices from menu, totals, group rows by buyer, status mapping
 src/dates.js              message timestamps + day words ("tomorrow", "Saturday", "Friday") -> dates
-src/store.js              saves orders + AI usage counter to data/*.json
+src/store.js              one visitor's orders + old batches, saved to data/runtime/visitors/<id>.json
+src/visitors.js           (31 Oct) the visitor id and cookie, the file path, cleanup (14 days, 500 files)
 public/index.html         the page
 public/app.js             AG Grid table, buyer panel, buttons, polling
 public/styles.css
@@ -68,7 +69,7 @@ Only one new package is planned: **express**.
 | `GET /api/invoices/:id/qr` | pickup QR code image from PayPal (#3b) | **Never** |
 | `POST /api/messages` | ready-to-send message per invoiced buyer (#2) | 1 call, or template |
 | `POST /api/reminders` | reminders for all unpaid buyers, same design as messages | 1 call, or template |
-| `POST /api/reset` | Reset demo: empty the table (the saved orders) so the demo starts over; sent invoices are saved to `batches/` first; nothing in PayPal is deleted or cancelled (changed 28 Oct, Step 6) | **0 calls** |
+| `POST /api/reset` | Reset demo: empty this visitor's table so their demo starts over; sent invoices stay in the visitor's file; nothing in PayPal is deleted or cancelled (changed 28 Oct, Step 6) | **0 calls** |
 | *(no route)* | (Step 10b, done 29 Oct) kitchen list: per date, how many of each item to make. Sent as `kitchen` in `/api/state` and every edit reply instead of its own route | **Never** |
 | `GET /api/pickup/:ref` | (Step 10c, planned) look up a scanned or typed invoice id/number in the store, then ask PayPal for its live status | **Never** |
 | `POST /api/invoices/:id/collected` | (Step 10c, planned) mark an order Collected: our own status, never sent to PayPal | **Never** |
@@ -283,8 +284,8 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 ## 8. Cut list (we will NOT build)
 
 - No WhatsApp/Instagram integration, and no logos of either anywhere.
-- No seller login or accounts: one shared demo seller.
-- No database: JSON files (Render free disk resets on restart → demo data reloads; invoice status always comes from PayPal).
+- No seller login or accounts: one demo seller, with a separate table per browser (a cookie; changed 31 Oct).
+- No database: JSON files (Render free disk resets on restart → every table starts empty; invoice status always comes from PayPal).
 - No webhooks (stretch goal only).
 - No React or build step.
 - No AG Grid Enterprise features (no row grouping, no Excel `.xlsx` export, no Side Bar).
@@ -386,7 +387,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 - **c.** Three layers:
   1. The server skips buyers that already have an invoice.
   2. A per-buyer "in progress" lock, with the button disabled while sending, so a double-click can't create two.
-  3. Every invoice gets `invoice_number` = `CHATCHING-{batch}-{nn}`, e.g. `CHATCHING-K3F9Q2ZA-07`. The batch is 8 characters, so the number is 21 characters, within PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the server looks that invoice up by its number and uses it (changed 28 Oct, Step 5; verified on the real sandbox).
+  3. Every invoice gets `invoice_number` = `CHATCHING-{batch}-{nn}`, e.g. `CHATCHING-K3F9Q2ZA7L1X-07`. The batch is 12 characters (8 until 31 Oct: numbers must stay unique across all visitors), so the number is exactly PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the server looks that invoice up by its number and uses it (changed 28 Oct, Step 5; verified on the real sandbox).
 
 ### 4. AG Grid extras (both Community, checked in AG Grid's module list)
 - **"Export CSV (opens in Excel)"** → `api.exportDataAsCsv()` (CsvExportModule, Community).

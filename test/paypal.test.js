@@ -13,7 +13,7 @@ const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.ur
 const KEYS = { clientId: "fake-client-id-123", clientSecret: "fake-secret-456" };
 const demo = toRows(mockParse(), menu);
 const rowsOf = (buyer) => demo.filter((row) => row.buyer === buyer);
-const NUMBER = "CHATCHING-K3F9Q2ZA-02";
+const NUMBER = "CHATCHING-K3F9Q2ZA7L1X-02";
 
 function setup(options = {}) {
   const fake = fakePayPal(options.fake);
@@ -23,9 +23,9 @@ function setup(options = {}) {
 }
 
 test("invoiceNumber: CHATCHING-{batch}-{nn}, at most PayPal's 25 characters", () => {
-  assert.equal(invoiceNumber("K3F9Q2ZA", 7), "CHATCHING-K3F9Q2ZA-07");
-  assert.equal(invoiceNumber("K3F9Q2ZA", 50).length, 21);
-  for (const [batch, n] of [["short", 1], ["K3F9Q2Za", 1], ["K3F9Q2ZA", 0], ["K3F9Q2ZA", 100], ["K3F9Q2ZA", 1.5]]) {
+  assert.equal(invoiceNumber("K3F9Q2ZA7L1X", 7), "CHATCHING-K3F9Q2ZA7L1X-07");
+  assert.equal(invoiceNumber("K3F9Q2ZA7L1X", 50).length, 25);
+  for (const [batch, n] of [["short", 1], ["K3F9Q2ZA", 1], ["K3F9Q2Za7L1X", 1], ["K3F9Q2ZA7L1X", 0], ["K3F9Q2ZA7L1X", 100], ["K3F9Q2ZA7L1X", 1.5]]) {
     assert.throws(() => invoiceNumber(batch, n), /batch|number/, `${batch} ${n}`);
   }
 });

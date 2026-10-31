@@ -27,6 +27,7 @@ let grid = null;
 let totals = { orders: 0, total: "0.00" };
 let summary = null;
 let source = null; // the chats the rows came from: { text, chatDate, messages }
+let batch = null; // this table's batch id: the server having another one means the table is no longer this one
 let rowsById = new Map(); // the order rows (one per item), as the server last confirmed them
 let groups = []; // buyer groups from the server: { buyer, rowIds, items, total, cancelled }
 let openGroupId = null; // the buyer shown in the drawer (its first row id)
@@ -47,6 +48,7 @@ let pollTimer = null;
 let pollUntil = 0;
 const POLL_MS = 20_000; // PLAN.md Section 3: every 20 s while the page is open
 const POLL_FOR_MS = 30 * 60_000; // then stop, so a forgotten tab doesn't ask PayPal all day
+const TABLE_CLEARED = "Your table was cleared: the free server forgets tables when it sleeps. Click Load demo, then Read orders.";
 
 // "54.00" -> "RM 54.00" (MYR) or "$54.00" (USD). Same Intl options as formatMoney in src/money.js.
 function formatMoney(amount) {
@@ -620,6 +622,7 @@ async function changeItems(method, path, body) {
     loadPanel(); // the buyer's messages: the first row id may be new
   } catch (err) {
     showError(`That change was not saved (${err.message}).`, "drawer-error");
+    await tableStillHere();
   }
   refreshTable();
   showSummary();
@@ -786,6 +789,7 @@ async function loadPanel(id = openGroupId) {
     }
   } catch (err) {
     if (id === openGroupId) drawerChat.replaceChildren(el("p", "hint", `The messages could not be loaded (${err.message}).`));
+    tableStillHere();
   }
 }
 
@@ -908,6 +912,7 @@ async function putRow(id, change) {
     hideError("drawer-error");
   } catch (err) {
     showError(`That change was not saved (${err.message}).`, "drawer-error");
+    await tableStillHere();
   }
   refreshTable();
   showSummary();
@@ -994,6 +999,7 @@ function showOrders(state) {
   totals = state.totals;
   summary = state.summary;
   source = state.source;
+  batch = state.batch;
   chatDate = state.source?.chatDate ?? null;
   groups = state.groups;
   kitchen = state.kitchen;
@@ -1027,6 +1033,35 @@ async function loadState() {
     if (hasOpenInvoices()) startPolling();
   } catch (err) {
     showError(`Can't reach the server (${err.message}). Is npm start running?`);
+  }
+}
+
+// The free server forgets every table when it sleeps or restarts, so a tab left open can show rows the server
+// no longer has. Asked when the tab comes back, before sending and after a failed drawer request: another
+// batch id means this table is gone, so the page shows the server's table, with plain words if it is empty.
+// -> true while this is still the server's table. A failed check says true: the next request reports it.
+function showServerTable(state) {
+  const cleared = rowsById.size > 0 && !state.orders.length;
+  closeDrawer();
+  stopPolling();
+  sendErrors = new Map();
+  showProgress(0, 0);
+  for (const id of ["send-message", "status-message"]) $(id).textContent = "";
+  showOrders(state);
+  $("read-message").textContent = cleared ? TABLE_CLEARED : "";
+  if (cleared) $("read-message").scrollIntoView({ block: "center" }); // on a phone it sits far below the cards
+  if (hasOpenInvoices()) startPolling();
+}
+
+async function tableStillHere() {
+  try {
+    const res = await fetch("/api/state");
+    const state = await res.json();
+    if (!res.ok || state.batch === batch) return true;
+    showServerTable(state);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -1075,6 +1110,7 @@ async function refreshStatus({ byHand }) {
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
     if (reply.notice) return ($("status-message").textContent = reply.notice); // e.g. too many checks: friendly words, polling goes on
+    if (reply.batch !== batch) return showServerTable(reply);
     if (reply.changed.length) {
       showOrders(reply);
       flashPaid(reply.changed);
@@ -1267,6 +1303,11 @@ async function sendInvoices() {
   sendErrors = new Map();
   hideError();
   showProgress(0, total);
+  say(`Sending invoice 1 of ${total}...`);
+  if (!(await tableStillHere())) {
+    sending = false;
+    return showSendButtons();
+  }
   for (const [done, buyer] of queue.entries()) {
     sendProgress = { done, total };
     say(`Sending invoice ${done + 1} of ${total}...`);
@@ -1352,8 +1393,8 @@ async function loadDemo() {
   }
 }
 
-// "Reset demo": the server empties the table (the saved orders file) so the demo can start over.
-// Nothing in PayPal is deleted or cancelled; sent invoices are kept in data/runtime/batches/.
+// "Reset demo": the server empties this visitor's table so their demo can start over.
+// Only this visitor's table. Nothing in PayPal is deleted or cancelled; sent invoices stay in the visitor's file.
 async function resetDemo() {
   if (!window.confirm("Reset the demo? The table empties so you can start over. Nothing in PayPal is deleted or cancelled.")) return;
   hideError();
@@ -1416,6 +1457,9 @@ async function copyKitchen(button) {
 }
 
 $("chat-date").value = todayLocal();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && !sending && !reading) tableStillHere();
+});
 $("read-orders").addEventListener("click", () => readOrders());
 $("read-without-ai").addEventListener("click", () => readOrders({ withoutAi: true }));
 for (const button of document.querySelectorAll("[data-send-invoices]")) button.addEventListener("click", sendInvoices);

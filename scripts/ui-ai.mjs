@@ -7,7 +7,7 @@
 //   Used up: the counter at 0 -> no call, "Today's free AI reads are used up..."; Load demo + Read orders
 //         still work (the saved reply, 0 calls).
 // It fails on any console error or warning. Run: npm run ui-ai (uses the installed Google Chrome).
-// Each width gets its own store and counter file in tmp/. Screenshots go to tmp/screenshots-ai/.
+// Each width gets its own test visitor (the demo table) and counter file. Screenshots go to tmp/screenshots-ai/.
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -17,6 +17,7 @@ import { AI_BUSY, createAi, usedUp } from "../src/ai.js";
 import { BACKUP_MODEL, MAIN_MODEL } from "../src/gemini.js";
 import { createUsage, DAILY_LIMIT } from "../src/usage.js";
 import { createRateLimiter, RATE_LIMITS, slowDown } from "../src/rate-limit.js";
+import { testVisitor, visitorPage } from "./test-visitor.mjs";
 
 const OUT = fileURLToPath(new URL("../tmp/screenshots-ai/", import.meta.url));
 const WIDTHS = [
@@ -60,9 +61,10 @@ async function startServer(name) {
   const usage = createUsage({ file: `${OUT}${name}-ai-usage.json`, models: [MAIN_MODEL, BACKUP_MODEL], log: () => {} });
   // sleep: no real 2 s wait before the retry (the timing itself is tested in test/ai-real.test.js).
   const ai = createAi({ mode: "real", apiKey: "fake-gemini-key", fetch: gemini.fetch, usage, sleep: async () => {}, cacheDir: `${OUT}${name}-ai-cache`, log: () => {} });
-  const server = createApp(loadConfig({ AI_MODE: "real" }), { log: () => {}, storeFile: `${OUT}${name}-orders.json`, ai }).listen(0);
+  const visitor = testVisitor();
+  const server = createApp(loadConfig({ AI_MODE: "real" }), { log: () => {}, visitorsDir: visitor.dir, ai }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
-  return { server, gemini, usage };
+  return { server, gemini, usage, visitor };
 }
 
 const readMessage = async (page) => plain(await page.$eval("#read-message", (el) => el.textContent));
@@ -72,9 +74,9 @@ const rowTexts = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerTe
 
 try {
   for (const viewport of WIDTHS) {
-    const { server, gemini, usage } = await startServer(viewport.name);
+    const { server, gemini, usage, visitor } = await startServer(viewport.name);
     const base = `http://localhost:${server.address().port}`;
-    const page = await browser.newPage({ viewport });
+    const page = await visitorPage(browser, visitor, base, { viewport });
     const errors = [];
     page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
     page.on("pageerror", (err) => errors.push(err.message));
@@ -187,9 +189,10 @@ try {
   // Read without AI button, rows unchanged, no red console line. Mock mode: the demo's saved reply.
   console.log("\nToo many reads from one visitor (rate limit, Step 11)");
   const tight = Object.fromEntries(Object.keys(RATE_LIMITS).map((route) => [route, { limit: 1, windowMs: 10 * 60_000 }]));
-  const limitServer = createApp(loadConfig({}), { log: () => {}, storeFile: `${OUT}limit-orders.json`, limiter: createRateLimiter({ limits: tight }) }).listen(0);
+  const limitVisitor = testVisitor();
+  const limitServer = createApp(loadConfig({}), { log: () => {}, visitorsDir: limitVisitor.dir, limiter: createRateLimiter({ limits: tight }) }).listen(0);
   await new Promise((resolve) => limitServer.once("listening", resolve));
-  const page = await browser.newPage({ viewport: WIDTHS[0] });
+  const page = await visitorPage(browser, limitVisitor, `http://localhost:${limitServer.address().port}`, { viewport: WIDTHS[0] });
   const errors = [];
   page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => errors.push(err.message));
@@ -205,7 +208,7 @@ try {
   };
   await readOnce();
   check((await readMessage(page)) === "" && (await page.$$(ROWS)).length > 0, "the 1st read works");
-  const saved = async () => JSON.stringify((await (await fetch(`http://localhost:${limitServer.address().port}/api/state`)).json()).orders);
+  const saved = async () => JSON.stringify((await (await limitVisitor.fetch(`http://localhost:${limitServer.address().port}/api/state`)).json()).orders);
   const before = await saved();
   await readOnce();
   const words = await readMessage(page);

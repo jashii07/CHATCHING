@@ -37,10 +37,10 @@ const sameMoney = (a, b) => {
   }
 };
 
-// "CHATCHING-K3F9Q2ZA-07": the batch changes on every parse and New batch, nn is the buyer's place in
-// the batch. 21 characters, within PayPal's 25. PayPal itself refuses a repeat (the last guard).
+// "CHATCHING-K3F9Q2ZA7L1X-07": the batch changes on every parse and New batch, nn is the buyer's place in
+// the batch. 25 characters, exactly PayPal's limit. PayPal itself refuses a repeat (the last guard).
 export function invoiceNumber(batch, n) {
-  if (!/^[A-Z0-9]{8}$/.test(String(batch))) throw new RangeError(`Bad batch id ${JSON.stringify(batch)}: use 8 capital letters or digits.`);
+  if (!/^[A-Z0-9]{12}$/.test(String(batch))) throw new RangeError(`Bad batch id ${JSON.stringify(batch)}: use 12 capital letters or digits.`);
   if (!Number.isInteger(n) || n < 1 || n > 99) throw new RangeError(`Bad invoice number ${JSON.stringify(n)}: use 1 to 99.`);
   return `CHATCHING-${batch}-${String(n).padStart(2, "0")}`;
 }

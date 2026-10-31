@@ -3,12 +3,11 @@
 // { withoutAi: true } reads the chats with src/fallback-parse.js: no AI call, the same checks, the same rows.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { AI_BUSY, createAi, usedUp } from "../src/ai.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const CHAT = "2026-10-28";
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
@@ -24,8 +23,8 @@ const noticeAi = (notice) => {
 };
 
 async function start({ ai }) {
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json");
-  const server = createApp(loadConfig({}), { log: () => {}, storeFile, ai }).listen(0);
+  const { dir: visitorsDir, fetch } = testVisitor();
+  const server = createApp(loadConfig({}), { log: () => {}, visitorsDir, ai }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;

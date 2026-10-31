@@ -16,11 +16,15 @@ Live app: https://chatching.onrender.com/
 
 First load can take up to a minute while the free server wakes up.
 
-1. The demo orders are usually on screen already. If the table is empty, click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
+Each judge gets their own fresh table: nobody else can see or change your orders. No login is needed.
+
+1. Your table starts empty. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice (no emails are sent).
 3. Click a buyer, then **Record payment** to record cash. Click **Refresh status**: the row shows Paid (cash/bank).
 4. Click **Kitchen list** to see what to make per day.
-5. Click **Reset demo** at the bottom to start again. Everyone who opens the link shares one table.
+5. Click **Reset demo** at the bottom to start again. It only clears your own table.
+
+The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 
 Sandbox buyer logins for paying an invoice: to add on Sat 7 Nov.
 

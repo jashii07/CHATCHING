@@ -2,18 +2,16 @@
 // Each server gets its own temporary store file; the real data/runtime/ is never touched.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
-const tempFile = () => join(mkdtempSync(join(tmpdir(), "chatching-")), "runtime", "orders.json");
 
 const servers = [];
-async function start(storeFile, logs = []) {
-  const server = createApp(loadConfig({}), { log: (line) => logs.push(line), storeFile }).listen(0);
+async function start({ dir, fetch }, logs = []) {
+  const server = createApp(loadConfig({}), { log: (line) => logs.push(line), visitorsDir: dir }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;
@@ -24,21 +22,21 @@ async function start(storeFile, logs = []) {
 }
 const put = (id, body) => ({ method: "PUT", headers: JSON_HEADERS, body: typeof body === "string" ? body : JSON.stringify(body) });
 
-let file;
+let visitor;
 let call;
 let priya;
 before(async () => {
-  file = tempFile();
-  call = await start(file);
+  visitor = testVisitor();
+  call = await start(visitor);
   priya = (await call("/api/state")).body.orders.find((row) => row.buyer === "Priya");
 });
 after(() => servers.forEach((server) => (server.closeAllConnections(), server.close())));
 
-test("first start loads the demo and saves it to the store file", async () => {
+test("a saved visitor's table loads from their file", async () => {
   const { body } = await call("/api/state");
   assert.equal(body.orders.length, 12);
   assert.deepEqual(body.totals, { orders: 7, total: "366.00" });
-  assert.equal(JSON.parse(readFileSync(file, "utf8")).rows.length, 12);
+  assert.equal(JSON.parse(readFileSync(visitor.file, "utf8")).rows.length, 12);
   assert.equal(priya.unclear, true);
   assert.equal(body.orders.find((row) => row.buyer === "Danish").orderStatus, "cancelled");
 });
@@ -72,7 +70,7 @@ test("PUT a date: saved as-is; null clears it", async () => {
 });
 
 test("the edit survives a restart: a new server on the same file sees it", async () => {
-  const again = await start(file);
+  const again = await start(visitor);
   const { body } = await again("/api/state");
   const row = body.orders.find((r) => r.id === priya.id);
   assert.equal(row.itemId, "classic_brownies");
@@ -126,16 +124,15 @@ test("unknown row -> 404; a cancelled row can't be edited -> 400", async () => {
   assert.match(res.body.error, /cancelled/);
 });
 
-test("a broken store file never stops the server: it logs a warning and loads the demo", async () => {
+test("a broken visitor file never stops the server: it logs a warning and that table starts empty", async () => {
   for (const content of ["{ not json", '{"rows": "nope"}', "null", ""]) {
-    const broken = tempFile();
-    await start(broken); // creates the folder + demo file
-    writeFileSync(broken, content);
+    const broken = testVisitor();
+    writeFileSync(broken.file, content);
     const logs = [];
     const fresh = await start(broken, logs);
     const { body } = await fresh("/api/state");
-    assert.equal(body.orders.length, 12, JSON.stringify(content));
-    assert.match(logs.join("\n"), /could not read the saved orders/);
+    assert.deepEqual(body.orders, [], JSON.stringify(content));
+    assert.match(logs.join("\n"), /could not read a visitor's saved orders/);
   }
 });
 
@@ -144,5 +141,5 @@ test("the store remembers which chats the rows came from (demo: 18 messages, Cha
   assert.equal(body.source.messages, 18);
   assert.equal(body.source.chatDate, "2026-10-28");
   assert.match(body.source.text, /^\[28\/10 9:02 AM\] Lina:/);
-  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).source.messages, 18);
+  assert.deepEqual(JSON.parse(readFileSync(visitor.file, "utf8")).source.messages, 18);
 });

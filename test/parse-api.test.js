@@ -1,5 +1,5 @@
 // Tests for POST /api/parse (Step 4, Part 2): chat text + Chat date -> order rows, in mock mode.
-// Each server gets its own temporary store file; the real data/runtime/ is never touched.
+// Each server gets its own temporary visitor; the real data/runtime/ is never touched.
 // Broken saved replies are written to a temporary folder and looked up by the same key as the demo.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createAi, demoReplies, parseKey, AI_BUSY, MOCK_UNKNOWN } from "../src/ai.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const CHAT = "2026-10-28";
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
@@ -21,7 +22,8 @@ after(() => servers.forEach((server) => (server.closeAllConnections(), server.cl
 
 async function start({ ai, logs = [] } = {}) {
   const config = loadConfig({});
-  const server = createApp(config, { log: (line) => logs.push(line), storeFile: join(tempDir(), "orders.json"), ai }).listen(0);
+  const { dir: visitorsDir, fetch } = testVisitor();
+  const server = createApp(config, { log: (line) => logs.push(line), visitorsDir, ai }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;

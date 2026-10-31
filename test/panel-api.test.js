@@ -2,22 +2,21 @@
 // scripts/fake-paypal.mjs; each server has its own temporary store file.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createPayPal, NOT_CONFIGURED } from "../src/paypal.js";
 import { fakePayPal, QR_PNG } from "../scripts/fake-paypal.mjs";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id-123", PAYPAL_CLIENT_SECRET: "fake-secret-456" };
 const servers = [];
 after(() => servers.forEach((server) => (server.closeAllConnections(), server.close())));
 
-async function start({ env = FAKE_KEYS, storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json") } = {}) {
+async function start({ env = FAKE_KEYS, visitor = testVisitor() } = {}) {
+  const { fetch } = visitor;
   const fake = fakePayPal();
   const paypal = createPayPal({ clientId: env.PAYPAL_CLIENT_ID ?? "", clientSecret: env.PAYPAL_CLIENT_SECRET ?? "", fetch: fake.fetch });
-  const server = createApp(loadConfig(env), { log: () => {}, storeFile, paypal }).listen(0);
+  const server = createApp(loadConfig(env), { log: () => {}, visitorsDir: visitor.dir, paypal }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;
@@ -27,7 +26,7 @@ async function start({ env = FAKE_KEYS, storeFile = join(mkdtempSync(join(tmpdir
   };
   const state = async () => (await call("/api/state")).body;
   const firstRow = async (buyer) => (await state()).orders.find((row) => row.buyer === buyer);
-  return { fake, call, state, firstRow, storeFile };
+  return { fake, call, state, firstRow, visitor };
 }
 
 test("panel: Arif's note and his messages, with marks; no QR before the invoice is sent", async () => {
@@ -86,7 +85,7 @@ test("QR: a PayPal problem is friendly words (200 { notice }), not an error; the
 test("QR without PayPal keys -> the not-configured notice (200), no PayPal call", async () => {
   const keyed = await start();
   await keyed.call("/api/invoices", "POST", {});
-  const app = await start({ env: {}, storeFile: keyed.storeFile }); // same saved invoices, keys gone
+  const app = await start({ env: {}, visitor: keyed.visitor }); // same saved invoices, keys gone
   const { invoiceId } = await app.firstRow("Lina");
   assert.deepEqual(await app.call(`/api/invoices/${invoiceId}/qr`), { status: 200, body: { notice: NOT_CONFIGURED } });
   assert.equal(app.fake.calls.length, 0);

@@ -5,13 +5,12 @@
 // so totals, Needs check, the kitchen list and the Copy texts update at once.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createAi } from "../src/ai.js";
 import { toRows } from "../src/orders.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const CHAT = "2026-10-28";
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
@@ -26,9 +25,8 @@ after(() => servers.forEach((server) => (server.closeAllConnections(), server.cl
 
 // A server with the demo rows (Gemini's saved reply), or with the rows given.
 async function start(rows) {
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json");
-  if (rows) writeFileSync(storeFile, JSON.stringify({ batch: "TESTBTCH", rows, source: null }));
-  const server = createApp(loadConfig({}), { log: () => {}, storeFile, ai: createAi({ mode: "mock" }) }).listen(0);
+  const { dir: visitorsDir, fetch } = testVisitor(rows ? { rows, source: null } : {});
+  const server = createApp(loadConfig({}), { log: () => {}, visitorsDir, ai: createAi({ mode: "mock" }) }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;
@@ -152,7 +150,7 @@ test("the last item can't just disappear: removing it asks for 'cancel the order
 
 test("locked once the buyer's invoice is sent: add, remove, cancel and edit are refused by the SERVER", async () => {
   const rows = toRows(expected.orders, menu).map((row) => (row.buyer === "Mei Ling"
-    ? { ...row, invoiceId: "INV2-TEST-0001", invoiceNumber: "CHATCHING-TESTBTCH-01", payerLink: "https://www.sandbox.paypal.com/invoice/p/#INV2-TEST-0001", invoiceStatus: "Sent" }
+    ? { ...row, invoiceId: "INV2-TEST-0001", invoiceNumber: "CHATCHING-TESTBTCHTEST-01", payerLink: "https://www.sandbox.paypal.com/invoice/p/#INV2-TEST-0001", invoiceStatus: "Sent" }
     : row));
   const { call, state } = await start(rows);
   const [cheese, cookies] = rowsOf(await state(), "Mei Ling");

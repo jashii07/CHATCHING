@@ -15,14 +15,17 @@
 // PayPal is the FAKE in scripts/fake-paypal.mjs (fake keys): no network, no real invoices.
 // It fails on any console error or warning.
 // Run: npm run ui-flow (uses the installed Google Chrome, no download).
-// Each width gets its own server and store file in tmp/, so your saved orders in data/runtime/ are never
-// touched. Screenshots go to tmp/screenshots-flow/ (git-ignored).
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// Each width gets its own server and a temporary visitors folder, so your saved orders in data/runtime/ are
+// never touched. Screenshots go to tmp/screenshots-flow/ (git-ignored).
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createPayPal } from "../src/paypal.js";
+import { visitorFile } from "../src/visitors.js";
 import { fakePayPal } from "./fake-paypal.mjs";
 
 const OUT = fileURLToPath(new URL("../tmp/screenshots-flow/", import.meta.url));
@@ -47,17 +50,16 @@ const check = (ok, label) => {
 };
 const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-break space after "RM"
 
-// A fresh server whose store starts EMPTY (no rows, no chats), as for a seller on their first day.
-async function startServer(name) {
-  const storeFile = `${OUT}${name}-orders.json`;
-  writeFileSync(storeFile, JSON.stringify({ rows: [], source: null }));
+// A fresh server: every new visitor starts EMPTY (no rows, no chats), as for a seller on their first day.
+async function startServer() {
+  const visitorsDir = mkdtempSync(join(tmpdir(), "chatching-ui-flow-"));
   const fake = fakePayPal();
   const paypal = createPayPal({ clientId: FAKE_KEYS.PAYPAL_CLIENT_ID, clientSecret: FAKE_KEYS.PAYPAL_CLIENT_SECRET, fetch: fake.fetch });
   // The server's clock can be moved past its 10-second status cache (skip), without waiting.
   let skew = 0;
-  const server = createApp(loadConfig(FAKE_KEYS), { log: () => {}, storeFile, paypal, now: () => Date.now() + skew }).listen(0);
+  const server = createApp(loadConfig(FAKE_KEYS), { log: () => {}, visitorsDir, paypal, now: () => Date.now() + skew }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
-  return { server, fake, skip: (ms) => (skew += ms) };
+  return { server, fake, visitorsDir, skip: (ms) => (skew += ms) };
 }
 
 const bodyRows = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerText.replace(/\s+/g, " ").trim()));
@@ -90,7 +92,7 @@ async function allBuyers(page) {
 
 try {
   for (const viewport of WIDTHS) {
-    const { server, fake, skip } = await startServer(viewport.name);
+    const { server, fake, visitorsDir, skip } = await startServer();
     const base = `http://localhost:${server.address().port}`;
     const page = await browser.newPage({ viewport, permissions: ["clipboard-read", "clipboard-write"] });
     const errors = [];
@@ -325,7 +327,9 @@ try {
     check(again.sent.length === 0 && fake.count("create") === creates && fake.invoices.size === 7, "sending again creates nothing new (server check)");
 
     // ---- Step 6: who has paid ----
-    const idOf = async (buyer) => (await (await fetch(`${base}/api/state`)).json()).orders.find((row) => row.buyer === buyer).invoiceId;
+    // page.request carries this browser's cookie, and a refused request here is no red console line.
+    const stateNow = async () => (await page.request.get(`${base}/api/state`)).json();
+    const idOf = async (buyer) => (await stateNow()).orders.find((row) => row.buyer === buyer).invoiceId;
     const statusOf = async (buyer) => plain(await page.locator(ROWS, { hasText: buyer }).locator(".badge").innerText());
     check(await page.locator("#refresh-status").isVisible(), "Refresh status shows once invoices exist");
     // Hafiz pays in the sandbox; 20 s later the page's own poll notices (no click).
@@ -457,7 +461,7 @@ try {
     check(afterReset.includes("No orders yet") && (await cards(page)).includes("Orders 0") && (await cards(page)).includes("Paid RM 0.00"),
       `Reset demo: the table is empty ("${afterReset}")`);
     check(fake.calls.length === callsBefore && fake.invoices.size === invoicesBefore, "Reset made no PayPal call and deleted nothing");
-    const savedFile = JSON.parse(readFileSync(`${OUT}${viewport.name}-orders.json`, "utf8"));
+    const savedFile = JSON.parse(readFileSync(visitorFile(visitorsDir, (await page.context().cookies())[0].value), "utf8"));
     check(savedFile.rows.length === 0 && savedFile.source === null, "the saved orders file is cleared");
     check((await page.inputValue("#chat")) === "" && !(await page.locator("#chats").isHidden()), "the chat box is open and empty, ready for a new paste");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-9-reset.png`, fullPage: true });
@@ -502,7 +506,7 @@ try {
     await page.waitForTimeout(200);
     // Windows' clipboard stores line breaks as \r\n; the app copies \n (both paste the same).
     const kitchenText = (await page.evaluate(() => navigator.clipboard.readText())).replaceAll("\r\n", "\n");
-    const kitchenWant = (await (await fetch(`${base}/api/state`)).json()).kitchen.text;
+    const kitchenWant = (await stateNow()).kitchen.text;
     check(kitchenText === kitchenWant && kitchenText.startsWith("Kitchen list\n\nThu 29 Oct\n2 x Kuih bahulu (pack of 20)\n")
       && kitchenText.includes("\n+2 orders still to check\n"), `Copy puts the kitchen list on the clipboard as plain text${kitchenText === kitchenWant ? "" : `: ${JSON.stringify(kitchenText)}`}`);
     check(plain(await page.$eval("#copy-kitchen", (el) => el.innerText)) === "Copied", "the button says Copied");
@@ -518,7 +522,6 @@ try {
     await page.click("#read-without-ai");
     await page.waitForSelector("#fallback-note:not([hidden])", { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(400);
-    const stateNow = async () => (await fetch(`${base}/api/state`)).json();
     const hafizRows = async () => (await stateNow()).orders.filter((row) => row.buyer === "Hafiz");
     const [, hafizCookies] = await hafizRows();
     await goToBuyerPage(page, "Hafiz");
@@ -579,7 +582,7 @@ try {
     check(!(await page.$("#drawer .remove-item")) && !(await page.$("#add-item")) && (await page.$$eval("#drawer [data-field]", (els) => els.length > 0 && els.every((el) => el.disabled))),
       "no Remove item, no Add item, and the item fields are disabled");
     // Asked from here, not from the page: a refused request would be a red console error there.
-    const refusedRemove = await (await fetch(`${base}/api/orders/${(await hafizRows())[0].id}`, { method: "DELETE" })).json();
+    const refusedRemove = await (await page.request.delete(`${base}/api/orders/${(await hafizRows())[0].id}`)).json();
     check(refusedRemove.error === lockedText, `the server refuses too: "${refusedRemove.error}"`);
     await page.$eval("#drawer .locked-note", (el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(200);

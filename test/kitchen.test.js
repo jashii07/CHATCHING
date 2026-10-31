@@ -2,13 +2,13 @@
 // Plus the API: the kitchen list rides along with /api/state and every edit, so it is never stale.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { kitchenList } from "../src/kitchen.js";
 import { toRows, recalcRow } from "../src/orders.js";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 const menu = readJson("../data/menu.json");
@@ -158,8 +158,8 @@ test('text: "+1 order" (singular) and the "No date yet" group', () => {
 const servers = [];
 after(() => servers.forEach((server) => (server.closeAllConnections(), server.close())));
 async function start() {
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "runtime", "orders.json");
-  const server = createApp(loadConfig({}), { log: () => {}, storeFile }).listen(0);
+  const { dir: visitorsDir, fetch } = testVisitor();
+  const server = createApp(loadConfig({}), { log: () => {}, visitorsDir }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;

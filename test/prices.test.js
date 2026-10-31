@@ -110,15 +110,12 @@ test("rows saved before Step 7 (no priceCheck field) still recalculate", () => {
 });
 
 test("API: \"Keep menu price\" (PUT { keepMenuPrice: true }) clears the check; the menu price stays", async () => {
-  const { mkdtempSync, writeFileSync } = await import("node:fs");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
+  const { testVisitor } = await import("../scripts/test-visitor.mjs");
   const { loadConfig } = await import("../src/config.js");
   const { createApp } = await import("../src/app.js");
-  const file = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json");
   const rows = toRows([order([classic(1)], [{ text: "RM15", itemId: "classic_brownies", msg: 2 }])], menu);
-  writeFileSync(file, JSON.stringify({ batch: "TESTBTCH", rows, source: null }));
-  const server = createApp(loadConfig({}), { log: () => {}, storeFile: file }).listen(0);
+  const { dir: visitorsDir, fetch } = testVisitor({ rows, source: null });
+  const server = createApp(loadConfig({}), { log: () => {}, visitorsDir }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   try {
     const put = async (body) => {

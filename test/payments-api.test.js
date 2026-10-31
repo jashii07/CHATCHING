@@ -3,14 +3,12 @@
 // Recording twice is refused by the server. PayPal is the FAKE in scripts/fake-paypal.mjs.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createPayPal, NOT_CONFIGURED } from "../src/paypal.js";
 import { createStatusChecker } from "../src/status.js";
 import { fakePayPal } from "../scripts/fake-paypal.mjs";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id-123", PAYPAL_CLIENT_SECRET: "fake-secret-456" };
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -21,9 +19,9 @@ after(() => servers.forEach((server) => (server.closeAllConnections(), server.cl
 
 async function start({ env = FAKE_KEYS } = {}) {
   const fake = fakePayPal();
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json");
+  const { dir: visitorsDir, fetch } = testVisitor();
   const paypal = createPayPal({ clientId: env.PAYPAL_CLIENT_ID ?? "", clientSecret: env.PAYPAL_CLIENT_SECRET ?? "", fetch: fake.fetch });
-  const server = createApp(loadConfig(env), { log: () => {}, storeFile, paypal, now: () => Date.UTC(2026, 9, 28, 20, 0) }).listen(0);
+  const server = createApp(loadConfig(env), { log: () => {}, visitorsDir, paypal, now: () => Date.UTC(2026, 9, 28, 20, 0) }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;

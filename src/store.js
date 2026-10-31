@@ -1,11 +1,13 @@
-// Keeps the current order rows and saves them to a JSON file after every change, so edits survive
-// a restart and a page reload. No database (PLAN.md Section 8). On Render the free disk resets on
-// restart, so the demo simply loads again.
+// One visitor's order rows, saved to their own JSON file after every change, so edits survive a restart and
+// a page reload. No database (PLAN.md Section 8). A visitor with no file has an empty table, and no file is
+// written until there is something to save (src/visitors.js has the why). On Render the free disk resets on
+// restart, so every table starts empty again; invoices stay safe at PayPal.
 // A "batch" is one read of the chats: its id goes into every invoice number (CHATCHING-{batch}-{nn}).
-// New batch saves the old batch to batches/{id}.json next to the store file, so invoice links are kept.
+// New batch keeps the old batch inside the visitor's file, so invoice links are kept and the cleanup leaves
+// nothing behind.
 import { randomInt } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { toRows } from "./orders.js";
 import { splitMessages } from "./dates.js";
 import { mockParse } from "./ai.js";
@@ -13,13 +15,16 @@ import { mockParse } from "./ai.js";
 const DEMO_FILE = new URL("../data/expected-orders.json", import.meta.url);
 const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
 const BATCH_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const BATCH_LENGTH = 12;
+const MAX_BATCHES = 20; // per visitor, so one file can't grow for ever; PayPal keeps every invoice anyway
 
-// 8 random capital letters or digits, e.g. "K3F9Q2ZA" (36^8 = 2.8 trillion: a repeat is very unlikely,
-// and PayPal refuses a repeated invoice number anyway).
-export const newBatchId = () => Array.from({ length: 8 }, () => BATCH_CHARS[randomInt(BATCH_CHARS.length)]).join("");
+// 12 random capital letters or digits, e.g. "K3F9Q2ZA7L1X" (36^12 = 4.7 million million million). Every
+// visitor's invoices share one PayPal account, so a batch id must never repeat across visitors. 12 is the
+// most that fits: the invoice number is then exactly PayPal's 25 characters.
+export const newBatchId = () => Array.from({ length: BATCH_LENGTH }, () => BATCH_CHARS[randomInt(BATCH_CHARS.length)]).join("");
 
-// The demo's rows: Gemini's real saved reply (mock mode, src/ai.js) -> toRows(). Used on first start and
-// if the saved orders file is broken. (expected-orders.json stays the answer key the reply is scored against.)
+// The demo's rows: Gemini's real saved reply (mock mode, src/ai.js) -> toRows(). Used by the smoke test and
+// the test visitor. (expected-orders.json stays the answer key the reply is scored against.)
 export function demoRows(menu) {
   return toRows(mockParse(), menu);
 }
@@ -31,39 +36,46 @@ export function demoSource() {
   return { text, chatDate, messages: splitMessages(text, chatDate).length };
 }
 
-export function createStore({ file, menu, log = console.log }) {
-  let rows = null;
+// onNewFile: called once, right after this visitor's file is first written (the cleanup runs then).
+export function createStore({ file, log = console.log, onNewFile = () => {} }) {
+  let rows = [];
   let source = null;
   let batch = null;
+  let batches = []; // this visitor's earlier batches, oldest first: rows + invoice links
   if (existsSync(file)) {
     try {
       const saved = JSON.parse(readFileSync(file, "utf8"));
       if (!Array.isArray(saved?.rows)) throw new Error("no rows list");
       rows = saved.rows;
-      source = saved.source ?? null; // files saved before 27 Oct have no source
-      batch = /^[A-Z0-9]{8}$/.test(saved.batch) ? saved.batch : null; // files saved before Step 5 have none
+      source = saved.source ?? null;
+      batch = /^[A-Z0-9]{12}$/.test(saved.batch) ? saved.batch : null;
+      batches = Array.isArray(saved.batches) ? saved.batches : [];
     } catch (err) {
-      log(`Warning: could not read the saved orders (${err.message}), so the demo orders are loaded.`);
+      log(`Warning: could not read a visitor's saved orders (${err.message}), so their table starts empty.`);
     }
   }
-  if (!rows) {
-    rows = demoRows(menu);
-    source = demoSource();
-  }
-  if (!batch || !existsSync(file)) {
-    batch ??= newBatchId();
-    save();
-  }
+  batch ??= newBatchId();
 
   function save() {
-    writeJson(file, { batch, rows, source });
+    const isNew = !existsSync(file);
+    if (isNew && !rows.length && !batches.length) return;
+    // Write to a temporary file first, then rename: a crash mid-write can't leave half a file.
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(`${file}.tmp`, JSON.stringify({ batch, rows, source, batches }, null, 2));
+    renameSync(`${file}.tmp`, file);
+    if (isNew) onNewFile();
   }
 
-  // Write to a temporary file first, then rename: a crash mid-write can't leave half a file.
-  function writeJson(path, data) {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify(data, null, 2));
-    renameSync(`${path}.tmp`, path);
+  // The rows and invoice links stay in this visitor's file; the table starts empty.
+  function keepBatch() {
+    if (rows.length) batches = [...batches, { batch, savedAt: new Date().toISOString(), rows, source }].slice(-MAX_BATCHES);
+  }
+
+  function emptyTable() {
+    rows = [];
+    source = null;
+    batch = newBatchId();
+    save();
   }
 
   return {
@@ -72,6 +84,12 @@ export function createStore({ file, menu, log = console.log }) {
     batch: () => batch,
     hasInvoices: () => rows.some((row) => row.invoiceId),
     find: (id) => rows.find((row) => row.id === id) ?? null,
+    // A page load: the visitor is still here, so the cleanup must not count their table as old.
+    touch() {
+      if (!existsSync(file)) return;
+      const today = new Date();
+      utimesSync(file, today, today);
+    },
     replace(updated) {
       rows = rows.map((row) => (row.id === updated.id ? updated : row));
       save();
@@ -96,25 +114,15 @@ export function createStore({ file, menu, log = console.log }) {
       batch = newBatchId();
       save();
     },
-    // New batch: the current batch is saved to batches/{id}.json, then the table starts empty.
     newBatch() {
-      const archive = join(dirname(file), "batches", `${batch}.json`);
-      writeJson(archive, { batch, savedAt: new Date().toISOString(), rows, source });
-      rows = [];
-      source = null;
-      batch = newBatchId();
-      save();
-      return archive;
+      keepBatch();
+      emptyTable();
     },
-    // Reset demo: an empty table, so the demo can start over. Sent invoices are first saved like a
-    // New batch (their links are kept); nothing else is kept. PayPal is never touched.
+    // Reset demo: an empty table, so the demo can start over. Sent invoices are first kept like a New
+    // batch (their links stay); nothing else is kept. PayPal is never touched.
     reset() {
-      if (rows.some((row) => row.invoiceId)) return this.newBatch();
-      rows = [];
-      source = null;
-      batch = newBatchId();
-      save();
-      return null;
+      if (rows.some((row) => row.invoiceId)) keepBatch();
+      emptyTable();
     },
   };
 }

@@ -6,14 +6,15 @@
 // a refused change (qty 0) shows an error and is undone, clicks "Keep menu price" for Jun Wei (Step 7a),
 // reloads, and checks both fixes survived.
 // Run: npm run ui-check (uses the installed Google Chrome, no download).
-// It starts its own server on a free port with its own store file in tmp/, so your saved orders
-// in data/runtime/ are never touched. Screenshots go to tmp/screenshots/ (git-ignored).
+// It starts its own server on a free port with its own test visitor (the demo table) in a temporary
+// folder, so your saved orders in data/runtime/ are never touched. Screenshots go to tmp/screenshots/ (git-ignored).
 // (AG Grid 36 class names: body rows sit in .ag-grid-scrolling-container.)
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
+import { testVisitor, visitorPage } from "./test-visitor.mjs";
 
 const OUT = fileURLToPath(new URL("../tmp/screenshots/", import.meta.url));
 const WIDTHS = [
@@ -25,7 +26,8 @@ const ROWS = ".ag-grid-scrolling-container > .ag-row";
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-const server = createApp(loadConfig({}), { log: () => {}, storeFile: `${OUT}orders.json` }).listen(0);
+const visitor = testVisitor();
+const server = createApp(loadConfig({}), { log: () => {}, visitorsDir: visitor.dir }).listen(0);
 await new Promise((resolve) => server.once("listening", resolve));
 const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -38,11 +40,11 @@ const check = (ok, label) => {
 const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-break space after "RM"
 
 // Priya's order row id, from the server (her buyer row in the table uses the same id).
-const state = await (await fetch(`${base}/api/state`)).json();
+const state = await (await visitor.fetch(`${base}/api/state`)).json();
 const PRIYA = state.groups.find((group) => group.buyer === "Priya").rowIds[0];
 
-async function open(viewport, url = base) {
-  const page = await browser.newPage({ viewport });
+async function open(viewport, url = base, who = visitor) {
+  const page = await visitorPage(browser, who, url, { viewport });
   const errors = [];
   // Warnings count too: AG Grid reports misuse as a warning, not an error.
   page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
@@ -344,17 +346,18 @@ try {
     return over > 0.5 ? [`${card.id} "${el.textContent.replace(/\s+/g, " ")}" runs ${Math.round(over)} px past its card`] : [];
   }));
   const heroSize = (page) => page.$eval("#stat-expected [data-figure]", (el) => parseFloat(getComputedStyle(el).fontSize));
-  const bigServer = createApp(loadConfig({}), { log: () => {}, storeFile: `${OUT}big-orders.json` }).listen(0);
+  const bigVisitor = testVisitor();
+  const bigServer = createApp(loadConfig({}), { log: () => {}, visitorsDir: bigVisitor.dir }).listen(0);
   await new Promise((resolve) => bigServer.once("listening", resolve));
   const bigBase = `http://localhost:${bigServer.address().port}`;
-  for (const row of (await (await fetch(`${bigBase}/api/state`)).json()).orders.filter((r) => r.orderStatus === "active")) {
-    await fetch(`${bigBase}/api/orders/${row.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qty: 99 }) });
+  for (const row of (await (await bigVisitor.fetch(`${bigBase}/api/state`)).json()).orders.filter((r) => r.orderStatus === "active")) {
+    await bigVisitor.fetch(`${bigBase}/api/orders/${row.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qty: 99 }) });
   }
   try {
-    for (const [label, url] of [["demo amounts", base], ["every order x 99", bigBase]]) {
+    for (const [label, url, who] of [["demo amounts", base, visitor], ["every order x 99", bigBase, bigVisitor]]) {
       console.log(`\nSummary figures fit their cards (${label})`);
       for (const width of [1440, 1280, 1100, 1024, 1023, 820, 768, 641, 640, 390, 320]) {
-        const { page: cardPage, errors: cardErrors } = await open({ name: "cards", width, height: 900 }, url);
+        const { page: cardPage, errors: cardErrors } = await open({ name: "cards", width, height: 900 }, url, who);
         const problems = await figuresCutOff(cardPage);
         const figures = plain(await cardPage.$$eval(".stat [data-figure]", (els) => els.map((el) => el.textContent).join(" | ")));
         check(problems.length === 0 && cardErrors.length === 0,

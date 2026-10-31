@@ -2,11 +2,10 @@
 // Starts the real app on a free port with FAKE keys; the real .env is never loaded.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig } from "../src/config.js";
 import { createApp, errorHandler } from "../src/app.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const FAKE = {
   PAYPAL_CLIENT_ID: "fake-client-id-123",
@@ -18,11 +17,13 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 
 let server;
 let base;
+let fetch; // sends the test visitor's cookie
 const logs = [];
 
 before(async () => {
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json"); // never the real data/runtime
-  const app = createApp(loadConfig(FAKE), { log: (line) => logs.push(line), storeFile });
+  const visitor = testVisitor(); // never the real data/runtime
+  fetch = visitor.fetch;
+  const app = createApp(loadConfig(FAKE), { log: (line) => logs.push(line), visitorsDir: visitor.dir });
   server = app.listen(0); // 0 = any free port
   await new Promise((resolve) => server.once("listening", resolve));
   base = `http://localhost:${server.address().port}`;

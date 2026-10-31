@@ -2,12 +2,10 @@
 // PayPal. A FAKE clock: "10 minutes later" passes in a millisecond. Fake keys only; never the real .env.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createRateLimiter, RATE_LIMITS, slowDown } from "../src/rate-limit.js";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const MIN = 60_000;
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -64,9 +62,10 @@ async function start(env = {}) {
   const clock = { t: Date.UTC(2026, 10, 5, 4) };
   const small = Object.fromEntries(Object.keys(RATE_LIMITS).map((route) => [route, { limit: 2, windowMs: 10 * MIN }]));
   const logs = [];
+  const { dir: visitorsDir, fetch } = testVisitor();
   const app = createApp(loadConfig(env), {
     log: (line) => logs.push(line),
-    storeFile: join(mkdtempSync(join(tmpdir(), "chatching-limit-")), "orders.json"),
+    visitorsDir,
     limiter: createRateLimiter({ limits: small, now: () => clock.t }),
   });
   const server = app.listen(0);

@@ -101,8 +101,8 @@ If you don't see this field, skip this step.
 
 At the top of the page, Render shows your URL (for example `https://chatching.onrender.com`).
 
-1. Open `<your URL>/api/health`. Done when you see: `{"ok":true,"version":"1.0.0"}`
-2. Open `<your URL>`. Done when you see the demo orders table, and the quiet footer at the bottom says
+1. Open `<your URL>/api/health`. Done when you see: `{"ok":true,"version":"1.1.0"}` (the version in `package.json`)
+2. Open `<your URL>`. Done when you see an empty table with the chat box and Load demo, and the quiet footer at the bottom says
    **PayPal keys: set** and **Gemini key: set**.
 3. Send Claude the URL (the URL is not a secret; the keys are). Claude then runs the end-to-end check
    with you (Step 11, part 2).
@@ -118,8 +118,8 @@ At the top of the page, Render shows your URL (for example `https://chatching.on
 
 - The app **sleeps after 15 minutes** without visitors. The next visitor waits **up to about 1 minute**
   while it wakes up.
-- **Every sleep or restart resets the orders** to the demo (Render's free disk is wiped). Invoices are safe:
+- **Every sleep or restart empties every visitor's table** (Render's free disk is wiped). Invoices are safe:
   they live in PayPal. The app's own "AI calls left" count also starts again; Google still enforces its
   real daily limit, and the app then shows "Today's free AI reads are used up..." instead of an error.
-- Everyone who opens the link shares **one** table (one shared demo seller).
+- Each browser gets its **own** table (a cookie, no login). One visitor can never see or reset another's orders.
 - The free plan gives 750 hours a month, enough for one app running all month.

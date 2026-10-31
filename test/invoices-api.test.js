@@ -1,15 +1,14 @@
 // Tests for POST /api/invoices and batches (Step 5, Part 2): one invoice per clear buyer, never two,
 // and once invoices exist, "Read orders" is refused until "New batch" (PLAN.md Step 5).
-// PayPal is the FAKE in scripts/fake-paypal.mjs; each server has its own temporary store file.
+// PayPal is the FAKE in scripts/fake-paypal.mjs; each server has its own temporary visitor.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createPayPal, NOT_CONFIGURED } from "../src/paypal.js";
 import { fakePayPal } from "../scripts/fake-paypal.mjs";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id-123", PAYPAL_CLIENT_SECRET: "fake-secret-456" };
 const CHAT = "2026-10-28";
@@ -24,9 +23,9 @@ after(() => servers.forEach((server) => (server.closeAllConnections(), server.cl
 async function start({ env = FAKE_KEYS } = {}) {
   const fake = fakePayPal();
   const logs = [];
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json");
+  const { dir: visitorsDir, fetch, file } = testVisitor();
   const paypal = createPayPal({ clientId: env.PAYPAL_CLIENT_ID ?? "", clientSecret: env.PAYPAL_CLIENT_SECRET ?? "", fetch: fake.fetch });
-  const server = createApp(loadConfig(env), { log: (line) => logs.push(line), storeFile, paypal }).listen(0);
+  const server = createApp(loadConfig(env), { log: (line) => logs.push(line), visitorsDir, paypal }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;
@@ -35,7 +34,7 @@ async function start({ env = FAKE_KEYS } = {}) {
     return { status: res.status, body: await res.json() };
   };
   return {
-    fake, logs, storeFile, call,
+    fake, logs, file, call,
     state: async () => (await call("/api/state")).body,
     send: (body = {}) => call("/api/invoices", "POST", body),
     parse: () => call("/api/parse", "POST", { text: DEMO, chatDate: CHAT }),
@@ -200,13 +199,13 @@ test("New batch saves the old batch (rows + invoice links) and starts an empty o
   assert.equal(status, 200);
   assert.deepEqual([body.orders, body.groups, body.source], [[], [], null]);
   assert.deepEqual(body.summary, { orders: 0, ready: 0, expected: "0.00", paidOrders: 0, paid: "0.00", needsCheck: 0 });
-  assert.match(body.batch, /^[A-Z0-9]{8}$/);
+  assert.match(body.batch, /^[A-Z0-9]{12}$/);
   assert.notEqual(body.batch, oldBatch);
 
-  // The old batch is kept on disk, with every invoice link.
-  const dir = join(dirname(app.storeFile), "batches");
-  assert.deepEqual(readdirSync(dir), [`${oldBatch}.json`]);
-  const saved = JSON.parse(readFileSync(join(dir, `${oldBatch}.json`), "utf8"));
+  // The old batch is kept in the visitor's file, with every invoice link.
+  const { batches } = JSON.parse(readFileSync(app.file, "utf8"));
+  assert.equal(batches.length, 1);
+  const [saved] = batches;
   assert.equal(saved.batch, oldBatch);
   assert.deepEqual(saved.rows, sent.orders);
   assert.equal(saved.rows.filter((row) => row.payerLink).length, 8); // 12 rows minus Priya's, Danish's and Jun Wei's 2
@@ -230,7 +229,7 @@ test("every parse starts a new batch id (so invoice numbers never repeat across 
   const app = await start();
   const first = (await app.state()).batch;
   const read = (await app.parse()).body;
-  assert.match(read.batch, /^[A-Z0-9]{8}$/);
+  assert.match(read.batch, /^[A-Z0-9]{12}$/);
   assert.notEqual(read.batch, first);
-  assert.ok(!existsSync(join(dirname(app.storeFile), "batches"))); // nothing invoiced, so nothing to archive
+  assert.deepEqual(JSON.parse(readFileSync(app.file, "utf8")).batches, []); // nothing invoiced, so nothing to keep
 });

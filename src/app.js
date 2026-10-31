@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { buyerGroups, checkEdit, checkMenu, recalcRow, summary, toRows, totals } from "./orders.js";
 import { createStore, demoSource } from "./store.js";
+import { MAX_AGE_MS, VISITOR_COOKIE, createVisitors, newVisitorId, visitorIdFrom } from "./visitors.js";
 import { createAi } from "./ai.js";
 import { readPaste } from "./paste.js";
 import { checkOrders } from "./validate.js";
@@ -28,8 +29,8 @@ const CANCELLED = "This order is cancelled, so it can't be changed.";
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
-// The current rows live here (git-ignored). Tests pass their own temporary file.
-const STORE_FILE = fileURLToPath(new URL("../data/runtime/orders.json", import.meta.url));
+// Each visitor's rows live here (git-ignored). Tests pass their own temporary folder.
+const VISITORS_DIR = fileURLToPath(new URL("../data/runtime/visitors/", import.meta.url));
 
 const pathOf = (req) => req.originalUrl.split("?")[0];
 
@@ -66,24 +67,37 @@ export function errorHandler(log) {
 
 export function createApp(config, {
   log = console.log,
-  storeFile = STORE_FILE,
+  visitorsDir = VISITORS_DIR,
   ai = createAi({ mode: config.aiMode, apiKey: config.gemini.apiKey, log }),
   paypal = createPayPal({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, baseUrl: config.paypalBaseUrl }),
   now = Date.now, // the clock for the status cache (tests pass their own)
   limiter = createRateLimiter({ now }), // per-visitor limits on the Gemini / PayPal routes (src/rate-limit.js)
 } = {}) {
   const menu = loadMenu();
-  const store = createStore({ file: storeFile, menu, log });
-  const invoicer = createInvoicer({ store, paypal, menu, log });
-  const status = createStatusChecker({ store, paypal, now, log });
-  const payments = createPaymentRecorder({ store, paypal, menu, now });
-  const qrCodes = new Map(); // invoice id -> Base64 PNG (a QR code never changes)
-  let reading = false; // never more than one parse at a time (it can cost real AI calls)
-  let readingStage = null; // "reading" or "backup" while a parse runs: the page's loading words (Step 9)
+  // One visitor's table and everything that guards it. The AI, its daily counter, PayPal and the rate limits
+  // are shared by all visitors; the rows, the locks and the batch rule are not (src/visitors.js has the why).
+  const visitors = createVisitors({
+    dir: visitorsDir,
+    now,
+    open({ file, onNewFile }) {
+      const store = createStore({ file, log, onNewFile });
+      const invoicer = createInvoicer({ store, paypal, menu, log });
+      const status = createStatusChecker({ store, paypal, now, log });
+      const payments = createPaymentRecorder({ store, paypal, menu, now });
+      const visitor = {
+        store, invoicer, status, payments,
+        qrCodes: new Map(), // invoice id -> Base64 PNG (a QR code never changes)
+        reading: false, // one parse at a time per visitor (it can cost real AI calls)
+        readingStage: null, // "reading" or "backup" while a parse runs: the page's loading words (Step 9)
+        isBusy: () => visitor.reading || invoicer.isBusy() || payments.isBusy() || status.isBusy(),
+      };
+      return visitor;
+    },
+  });
   const callsLeft = () => ai.callsLeft?.() ?? null; // a test's own fake AI may have no counter
 
   // What the table, cards, slim bar, kitchen list and ready-to-send texts need: the same shape after every change.
-  const table = () => {
+  const table = (store) => {
     const rows = store.rows();
     return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: buyerMessages(rows, store.source(), menu), source: store.source(), batch: store.batch() };
   };
@@ -121,10 +135,22 @@ export function createApp(config, {
     res.json({ ok: true, version: VERSION });
   });
 
+  // Everything after this belongs to one visitor. Each reply renews the cookie's 14 days, and says no-store
+  // so a table can never sit in a shared cache. The health check above stays out, or every ping from Render
+  // would be a new visitor. Secure follows the real connection: on Render req.secure reads X-Forwarded-Proto.
+  app.use("/api", (req, res, next) => {
+    const id = visitorIdFrom(req.headers.cookie) ?? newVisitorId();
+    res.cookie(VISITOR_COOKIE, id, { httpOnly: true, sameSite: "lax", secure: req.secure, maxAge: MAX_AGE_MS });
+    res.set("Cache-Control", "no-store");
+    req.visitor = visitors.get(id);
+    next();
+  });
+
   app.get("/api/state", (req, res) => {
+    req.visitor.store.touch();
     res.json({
       menu,
-      ...table(),
+      ...table(req.visitor.store),
       aiMode: config.aiMode,
       aiCallsLeft: callsLeft(), // real calls left today, all models together (src/usage.js)
       paypalConfigured: config.paypalConfigured,
@@ -136,7 +162,7 @@ export function createApp(config, {
   // matching the table), never on a cancelled order, never while invoices are being sent.
   // -> null (go ahead) or [status, reason]. The page locks the drawer too, but the server is the guard.
   const sameBuyer = (a, b) => a.buyer.trim().toLowerCase() === b.buyer.trim().toLowerCase();
-  function refuseChange(row, id) {
+  function refuseChange({ store, invoicer }, row, id) {
     if (!row) return [404, `No order row "${id}".`];
     const own = store.rows().filter((other) => sameBuyer(other, row));
     if (own.some((other) => other.invoiceId)) return [400, LOCKED];
@@ -153,8 +179,9 @@ export function createApp(config, {
   // Save one edited cell (item, qty or date). The server recalculates the price, total and
   // unclear flag, so the page never does money maths. Bad input -> 400 with the reason.
   app.put("/api/orders/:id", (req, res) => {
+    const { store } = req.visitor;
     const row = store.find(req.params.id);
-    const refused = refuseChange(row, req.params.id);
+    const refused = refuseChange(req.visitor, row, req.params.id);
     if (refused) return refuse(res, refused);
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
@@ -173,8 +200,9 @@ export function createApp(config, {
   // from the menu, the day and pickup/delivery from the buyer's order. The new row sits right after the
   // buyer's other rows. The reply is the whole table, so the cards, kitchen list and Copy texts follow.
   app.post("/api/buyers/:id/items", (req, res) => {
+    const { store } = req.visitor;
     const row = store.find(req.params.id);
-    const refused = refuseChange(row, req.params.id);
+    const refused = refuseChange(req.visitor, row, req.params.id);
     if (refused) return refuse(res, refused);
     const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
     const extra = Object.keys(body).filter((field) => field !== "itemId" && field !== "qty");
@@ -197,32 +225,34 @@ export function createApp(config, {
     }, menu);
     const at = rows.findLastIndex((other) => sameBuyer(other, row)) + 1;
     store.setRows(recheckBuyer([...rows.slice(0, at), added, ...rows.slice(at)], row));
-    res.json(table());
+    res.json(table(store));
   });
 
   // Remove one item (the drawer's "Remove item"). The buyer's last item can't just disappear: the reply
   // is 409 { lastItem: true }, and the page asks "Cancel this buyer's order?" (the route below).
   app.delete("/api/orders/:id", (req, res) => {
+    const { store } = req.visitor;
     const row = store.find(req.params.id);
-    const refused = refuseChange(row, req.params.id);
+    const refused = refuseChange(req.visitor, row, req.params.id);
     if (refused) return refuse(res, refused);
     const rows = store.rows();
     if (rows.filter((other) => sameBuyer(other, row) && other.orderStatus === "active").length === 1) {
       return res.status(409).json({ error: `This is ${row.buyer}'s last item. Cancel the order instead.`, lastItem: true });
     }
     store.setRows(recheckBuyer(rows.filter((other) => other.id !== row.id), row));
-    res.json(table());
+    res.json(table(store));
   });
 
   // Cancel a buyer's order (after "Cancel this buyer's order?"): their rows stay, greyed out as cancelled,
   // like an order the buyer cancelled in the chat. No undo button: reading the chats again starts over.
   app.post("/api/buyers/:id/cancel", (req, res) => {
+    const { store } = req.visitor;
     const row = store.find(req.params.id);
-    const refused = refuseChange(row, req.params.id);
+    const refused = refuseChange(req.visitor, row, req.params.id);
     if (refused) return refuse(res, refused);
     store.setRows(store.rows().map((other) => (sameBuyer(other, row) && other.orderStatus === "active"
       ? { ...other, orderStatus: "cancelled", unclear: false, reason: "" } : other)));
-    res.json(table());
+    res.json(table(store));
   });
 
   // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
@@ -233,12 +263,14 @@ export function createApp(config, {
   // readWithoutAi: true, so the page offers "Read without AI"; { withoutAi: true } then reads the chats with
   // src/fallback-parse.js (no AI call) through the same checks. Never automatic: the seller chooses.
   app.post("/api/parse", limited("parse", { readWithoutAi: true }), async (req, res) => {
+    const { visitor } = req;
+    const { store, invoicer } = visitor;
     const { text, chatDate, withoutAi = false } = req.body ?? {};
     if (typeof text !== "string" || typeof chatDate !== "string") {
       return res.status(400).json({ error: 'Send { "text": "the chat messages", "chatDate": "YYYY-MM-DD" }.' });
     }
     if (typeof withoutAi !== "boolean") return res.status(400).json({ error: "withoutAi must be true or false." });
-    if (reading) return res.json({ notice: READING });
+    if (visitor.reading) return res.json({ notice: READING });
     if (invoicer.isBusy()) return res.json({ notice: SENDING });
     // Reading replaces every row: never once an invoice exists (its link would be lost). New batch first.
     if (store.hasInvoices()) return res.json({ notice: INVOICED });
@@ -247,31 +279,31 @@ export function createApp(config, {
     if (withoutAi) {
       const rows = toRows(checkOrders(fallbackParse(messages, menu), messages), menu);
       store.setAll(rows, { text, chatDate, messages: messages.length, reader: "fallback" });
-      return res.json(table());
+      return res.json(table(store));
     }
 
-    reading = true;
-    readingStage = "reading";
+    visitor.reading = true;
+    visitor.readingStage = "reading";
     let rows;
     try {
-      const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (readingStage = stage) });
+      const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (visitor.readingStage = stage) });
       if (reply.notice) return res.json({ notice: reply.notice, readWithoutAi: true });
       rows = toRows(checkOrders(reply.orders, messages), menu);
     } catch (err) {
       log(`Warning: the AI reply could not be read (${err.message}).`);
       return res.json({ notice: UNREADABLE, readWithoutAi: true });
     } finally {
-      reading = false;
-      readingStage = null;
+      visitor.reading = false;
+      visitor.readingStage = null;
     }
     store.setAll(rows, { text, chatDate, messages: messages.length });
-    res.json(table());
+    res.json(table(store));
   });
 
   // While Read orders waits, the page asks this about once a second: which words to show ("Reading the
   // chats..." or "The AI is busy, trying the backup...") and how many AI calls are left. Never calls the AI.
   app.get("/api/parse/progress", (req, res) => {
-    res.json({ reading, stage: readingStage, aiCallsLeft: callsLeft() });
+    res.json({ reading: req.visitor.reading, stage: req.visitor.readingStage, aiCallsLeft: callsLeft() });
   });
 
   // Send invoices: one PayPal sandbox invoice per clear buyer that has none yet (src/invoices.js has the
@@ -281,7 +313,8 @@ export function createApp(config, {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
     const { buyer } = req.body ?? {};
     if (buyer !== undefined && typeof buyer !== "string") return res.status(400).json({ error: 'Send {} for every buyer, or { "buyer": "Lina" }.' });
-    if (reading) return res.json({ notice: READING });
+    const { store, invoicer, status } = req.visitor;
+    if (req.visitor.reading) return res.json({ notice: READING });
     let result;
     try {
       result = await invoicer.sendInvoices({ buyer });
@@ -290,14 +323,15 @@ export function createApp(config, {
       throw err;
     }
     if (result.sent.length) status.markFresh(); // PayPal just told us these statuses
-    res.json({ ...result, ...table() });
+    res.json({ ...result, ...table(store) });
   });
 
   // Refresh status (the button, and the page's polling every 20 s): PayPal's status for every open
   // invoice, saved. 10-second cache + one shared round (src/status.js), so many tabs can't flood PayPal.
   app.post("/api/invoices/refresh", limited("refresh"), async (req, res) => {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
-    res.json({ ...(await status.refresh()), ...table() });
+    const { store, status } = req.visitor;
+    res.json({ ...(await status.refresh()), ...table(store) });
   });
 
   // Record a cash / bank-transfer payment: the page sends ONLY the method; the amount is the saved
@@ -309,13 +343,14 @@ export function createApp(config, {
     if (Object.hasOwn(body, "amount")) {
       return res.status(400).json({ error: "Send only the method: the amount always comes from the invoice." });
     }
+    const { store, invoicer, payments } = req.visitor;
     if (invoicer.isBusy()) return res.status(409).json({ error: SENDING });
     try {
       const recorded = await payments.record(req.params.id, body.method);
-      res.json({ recorded, ...table() });
+      res.json({ recorded, ...table(store) });
     } catch (err) {
       if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ error: err.message });
-      if (err instanceof PayPalError) return res.json({ failed: err.message, ...table() });
+      if (err instanceof PayPalError) return res.json({ failed: err.message, ...table(store) });
       throw err;
     }
   });
@@ -323,6 +358,7 @@ export function createApp(config, {
   // The buyer panel (Step 7, #1 "Show your work"): the AI's note + the buyer's own messages with the
   // parts that mattered marked (src/panel.js), and which invoice (if sent) has a QR code. No AI, no PayPal.
   app.get("/api/buyers/:id/panel", (req, res) => {
+    const { store } = req.visitor;
     const row = store.find(req.params.id);
     if (!row) return res.status(404).json({ error: `No order row "${req.params.id}".` });
     const rows = store.rows().filter((other) => other.buyer.trim().toLowerCase() === row.buyer.trim().toLowerCase());
@@ -334,6 +370,7 @@ export function createApp(config, {
   // problem is friendly words, not a red console error). Only for invoices in this table that were sent.
   // A QR code never changes, so each is asked for once and kept in memory.
   app.get("/api/invoices/:id/qr", async (req, res) => {
+    const { store, qrCodes } = req.visitor;
     const row = store.rows().find((other) => other.invoiceId === req.params.id);
     if (!row || !row.payerLink || row.invoiceStatus === "Draft") {
       return res.status(404).json({ error: "No sent invoice with that id in this table." });
@@ -352,25 +389,27 @@ export function createApp(config, {
   // the judge clicks Read orders to see that step (the saved Gemini reply, 0 AI calls). Same batch rule
   // as Read orders: once invoices are sent, no new reading until New batch.
   app.get("/api/demo", (req, res) => {
-    if (store.hasInvoices()) return res.json({ notice: INVOICED });
+    if (req.visitor.store.hasInvoices()) return res.json({ notice: INVOICED });
     res.json(demoSource());
   });
 
-  // Reset demo: clear the saved orders so the demo can start over (0 AI calls, 0 PayPal calls). It never
-  // deletes or cancels anything in PayPal; sent invoices are saved to batches/ first.
+  // Reset demo: clear this visitor's orders so their demo can start over (0 AI calls, 0 PayPal calls). It
+  // never deletes or cancels anything in PayPal; sent invoices are kept in the visitor's file first.
   app.post("/api/reset", (req, res) => {
+    const { store, invoicer, payments, reading } = req.visitor;
     if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });
     if (reading) return res.json({ notice: READING });
     store.reset();
-    res.json(table());
+    res.json(table(store));
   });
 
-  // New batch: save this batch (rows + invoice links) to data/runtime/batches/ and start an empty table.
+  // New batch: keep this batch (rows + invoice links) in the visitor's file and start an empty table.
   app.post("/api/new-batch", (req, res) => {
+    const { store, invoicer, payments, reading } = req.visitor;
     if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });
     if (reading) return res.json({ notice: READING });
     store.newBatch();
-    res.json(table());
+    res.json(table(store));
   });
 
   app.use(express.static(PUBLIC_DIR));

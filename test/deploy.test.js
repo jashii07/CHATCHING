@@ -30,7 +30,7 @@ test("package.json: Node 24 and only express at runtime (Render installs with np
   assert.equal(lock.packages[""].dependencies.express, pkg.dependencies.express, "the lock file matches package.json");
 });
 
-test("a fresh disk (no data/runtime/ at all): the app starts, shows the demo and a full AI count, and reads the demo with 0 calls", async (t) => {
+test("a fresh disk (no data/runtime/ at all): the app starts with an empty table and a full AI count, and reads the demo with 0 calls", async (t) => {
   const runtime = join(mkdtempSync(join(tmpdir(), "chatching-fresh-")), "runtime"); // does not exist yet
   const calls = [];
   const fakeGemini = async (url) => (calls.push(url), new Response("{}", { status: 500 }));
@@ -38,21 +38,24 @@ test("a fresh disk (no data/runtime/ at all): the app starts, shows the demo and
   const ai = createAi({ mode: "real", apiKey: "fake-gemini-789", fetch: fakeGemini, cacheDir: join(runtime, "ai-cache"), usage, log: () => {} });
   const logs = [];
   const app = createApp(loadConfig({ RENDER: "true", AI_MODE: "real", GEMINI_API_KEY: "fake-gemini-789" }), {
-    log: (line) => logs.push(line), storeFile: join(runtime, "orders.json"), ai,
+    log: (line) => logs.push(line), visitorsDir: join(runtime, "visitors"), ai,
   });
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   t.after(() => (server.closeAllConnections(), server.close()));
   const base = `http://localhost:${server.address().port}`;
 
-  const state = await (await fetch(`${base}/api/state`)).json();
-  assert.equal(state.orders.length, 12, "the demo orders");
+  const first = await fetch(`${base}/api/state`);
+  const state = await first.json();
+  assert.deepEqual(state.orders, [], "a new visitor starts empty");
   assert.equal(state.aiCallsLeft, 40);
-  assert.ok(existsSync(join(runtime, "orders.json")), "the store file and its folder are made on first start");
+  assert.ok(!existsSync(join(runtime, "visitors")), "nothing to save yet, so the folder is not made");
   assert.ok(logs.every((line) => !/Warning/.test(line)), `no warnings on a fresh start: ${logs.join(" | ")}`);
 
-  const res = await fetch(`${base}/api/parse`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: DEMO, chatDate: "2026-10-28" }) });
+  const cookie = first.headers.getSetCookie()[0].split(";")[0];
+  const res = await fetch(`${base}/api/parse`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ text: DEMO, chatDate: "2026-10-28" }) });
   assert.equal(res.status, 200);
   assert.equal((await res.json()).orders.length, 12);
+  assert.ok(existsSync(join(runtime, "visitors", `${cookie.split("=")[1]}.json`)), "the folder and the file are made on the first save");
   assert.equal(calls.length, 0, "the demo comes from the saved reply that ships with the app");
 });

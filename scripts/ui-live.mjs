@@ -5,16 +5,21 @@
 // It never pays for a Gemini call: every POST /api/parse is stopped unless it is exactly the demo chats and
 // date (the server answers those from the saved reply), and the "AI calls left" count must not change.
 // It fails on any console error or warning, any failed request, and any sideways scroll.
+// First it checks that the version in package.json is really live, so it can never pass on an old deploy.
+// Each width is a new browser, so a new visitor with a new empty table; a second browser checks mid-way that
+// another visitor sees none of it.
 // Run: npm run ui-live            (or: npm run ui-live -- https://another-url)
 // Screenshots go to tmp/screenshots-live/ (git-ignored).
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { VISITOR_COOKIE, isVisitorId } from "../src/visitors.js";
 
 const BASE = (process.argv[2] ?? "https://chatching.onrender.com").replace(/\/$/, "");
 const OUT = fileURLToPath(new URL("../tmp/screenshots-live/", import.meta.url));
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
 const DEMO_DATE = "2026-10-28";
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const WIDTHS = [
   { name: "laptop", width: 1280, height: 800 },
   { name: "phone", width: 390, height: 844 },
@@ -32,7 +37,7 @@ const check = (ok, label) => {
   if (!ok) failed++;
 };
 const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-break space after "RM"
-const liveState = async () => (await fetch(`${BASE}/api/state`)).json();
+const liveState = async (page) => (await page.request.get(`${BASE}/api/state`)).json(); // with this browser's cookie
 const message = async (page, id) => plain(await page.$eval(id, (el) => el.textContent));
 const cards = async (page) => plain(await page.$eval(".summary", (el) => el.innerText));
 const bodyRows = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerText.replace(/\s+/g, " ").trim()));
@@ -60,6 +65,10 @@ async function allBuyers(page) {
 }
 
 try {
+  const health = await (await fetch(`${BASE}/api/health`)).json();
+  check(health.ok === true && health.version === version, `the live server runs version ${health.version} (package.json: ${version})`);
+  if (health.version !== version) throw new Error("The new version is not live yet. Wait for Render to finish deploying, then run this again.");
+
   for (const viewport of WIDTHS) {
     console.log(`\n${viewport.width} px (${viewport.name}), ${BASE}`);
     const shot = (step, opts = {}) => page.screenshot({ path: `${OUT}${viewport.width}-${step}.png`, ...opts });
@@ -83,29 +92,17 @@ try {
       return route.abort();
     });
 
-    const aiBefore = (await liveState()).aiCallsLeft;
     const started = Date.now();
     await page.goto(BASE, { waitUntil: "load" });
     await page.waitForSelector("#load-demo");
     await page.waitForTimeout(800);
     check(true, `page loaded in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+    const aiBefore = (await liveState(page)).aiCallsLeft;
 
-    // Earlier invoices in the table: the app's own New batch keeps them and empties the table.
-    const newBatch = page.locator("[data-new-batch]:visible").first();
-    if (await newBatch.count()) {
-      page.once("dialog", (dialog) => dialog.accept());
-      await newBatch.click();
-      await page.waitForSelector(".ag-overlay", { timeout: SLOW });
-      await page.waitForTimeout(400);
-      console.log("note  an earlier batch was in the table: moved aside with New batch");
-    }
-
-    // A server that just woke up already shows the demo table, with the chats folded (and Load demo with them).
-    if (await page.locator("#chat-edit").isVisible()) {
-      await page.click("#chat-edit");
-      await page.waitForTimeout(400);
-      console.log("note  the demo table was already there (a fresh server): opened the chats with Edit");
-    }
+    // A new visitor: their own empty table, with the chat box open and Load demo in view; a safe cookie.
+    check((await cards(page)).includes("Orders 0") && (await page.locator("#chat").isVisible()) && (await page.locator("#load-demo").isVisible()), "a new visitor: an empty table, the chat box open, Load demo visible");
+    const cookie = (await page.context().cookies()).find((c) => c.name === VISITOR_COOKIE);
+    check(isVisitorId(cookie?.value) && cookie.httpOnly && cookie.secure && cookie.sameSite === "Lax", "the visitor cookie is HttpOnly, Secure and SameSite=Lax");
 
     // Load demo -> Read orders: from the saved reply, no AI call.
     await page.click("#load-demo");
@@ -117,7 +114,7 @@ try {
     const buyers = await allBuyers(page);
     const summary = await cards(page);
     check(buyers.length === 10 && summary.includes("Expected RM 366.00") && summary.includes("Needs check 2"), `Read orders: ${buyers.length} buyers; "${summary}"`);
-    check(parses === 1 && stopped === 0 && (await liveState()).aiCallsLeft === aiBefore, `no Gemini call: ${parses} demo read, AI calls left still ${aiBefore}`);
+    check(parses === 1 && stopped === 0 && (await liveState(page)).aiCallsLeft === aiBefore, `no Gemini call: ${parses} demo read, AI calls left still ${aiBefore}`);
     await page.evaluate(() => scrollTo(0, 0));
     await shot("1-read", { fullPage: true });
 
@@ -130,10 +127,15 @@ try {
     await page.waitForFunction(() => /\d of 7 sent/.test(document.getElementById("send-message").textContent), null, { timeout: SLOW * 2 });
     await page.waitForTimeout(800);
     check((await message(page, "#send-message")).startsWith("7 of 7 sent"), `sent in ${((Date.now() - sendStart) / 1000).toFixed(1)} s: "${await message(page, "#send-message")}"`);
-    const sent = (await liveState()).orders.filter((row) => row.invoiceId);
+    const sent = (await liveState(page)).orders.filter((row) => row.invoiceId);
     const ids = [...new Set(sent.map((row) => row.invoiceId))];
     check(ids.length === 7 && ids.every((id) => id.startsWith("INV2-")) && sent.every((row) => row.payerLink?.startsWith("https://www.sandbox.paypal.com/")),
       `7 real sandbox invoices with payer links (first: ${ids[0]})`);
+    const otherJudge = await browser.newPage({ viewport });
+    await otherJudge.goto(BASE, { waitUntil: "load" });
+    await otherJudge.waitForSelector(".ag-overlay", { timeout: SLOW });
+    check((await liveState(otherJudge)).orders.length === 0 && (await otherJudge.locator("#load-demo").isVisible()), "a second browser at the same moment: its own empty table, Load demo visible");
+    await otherJudge.close();
     const afterSend = await allBuyers(page);
     check(afterSend.filter((text) => text.includes("Payer link") && text.includes("Copy link")).length === 7, "7 rows show the payer link and Copy");
     await page.evaluate(() => scrollTo(0, 0));
@@ -187,7 +189,7 @@ try {
     await page.click("#reset-demo");
     await page.waitForSelector(".ag-overlay", { timeout: SLOW });
     await page.waitForTimeout(500);
-    const end = await liveState();
+    const end = await liveState(page);
     check((await cards(page)).includes("Orders 0") && end.orders.length === 0, `Reset demo: the table is empty ("${await cards(page)}")`);
     check(end.aiCallsLeft === aiBefore, `AI calls left unchanged at the end (${end.aiCallsLeft})`);
     await shot("6-reset", { fullPage: true });

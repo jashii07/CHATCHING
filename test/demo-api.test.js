@@ -3,13 +3,12 @@
 // it follows the batch rule: once invoices are sent, no new reading until New batch.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig } from "../src/config.js";
 import { createApp } from "../src/app.js";
 import { createPayPal } from "../src/paypal.js";
 import { fakePayPal } from "../scripts/fake-paypal.mjs";
+import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id-123", PAYPAL_CLIENT_SECRET: "fake-secret-456" };
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
@@ -23,9 +22,9 @@ async function start() {
   const fake = fakePayPal();
   let aiCalls = 0;
   const ai = { async parse() { aiCalls++; return { notice: "not used" }; } };
-  const storeFile = join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json");
+  const { dir: visitorsDir, fetch } = testVisitor();
   const paypal = createPayPal({ clientId: FAKE_KEYS.PAYPAL_CLIENT_ID, clientSecret: FAKE_KEYS.PAYPAL_CLIENT_SECRET, fetch: fake.fetch });
-  const server = createApp(loadConfig(FAKE_KEYS), { log: () => {}, storeFile, paypal, ai }).listen(0);
+  const server = createApp(loadConfig(FAKE_KEYS), { log: () => {}, visitorsDir, paypal, ai }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;
@@ -49,7 +48,8 @@ test("Load demo -> the demo chats and their Chat date (2026-10-28), unchanged; n
 });
 
 test("the loaded demo, read as-is, is the saved Gemini reply: 10 buyers, RM 366.00 (0 real AI calls)", async () => {
-  const server = createApp(loadConfig({}), { log: () => {}, storeFile: join(mkdtempSync(join(tmpdir(), "chatching-")), "orders.json") }).listen(0);
+  const { dir: visitorsDir, fetch } = testVisitor();
+  const server = createApp(loadConfig({}), { log: () => {}, visitorsDir }).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   servers.push(server);
   const base = `http://localhost:${server.address().port}`;
