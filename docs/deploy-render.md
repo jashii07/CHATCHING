@@ -101,7 +101,7 @@ If you don't see this field, skip this step.
 
 At the top of the page, Render shows your URL (for example `https://chatching.onrender.com`).
 
-1. Open `<your URL>/api/health`. Done when you see: `{"ok":true,"version":"1.1.0"}` (the version in `package.json`)
+1. Open `<your URL>/api/health`. Done when you see: `{"ok":true,"version":"1.2.0"}` (the version in `package.json`)
 2. Open `<your URL>`. Done when you see an empty table with the chat box and Load demo, and the quiet footer at the bottom says
    **PayPal keys: set** and **Gemini key: set**.
 3. Send Claude the URL (the URL is not a secret; the keys are). Claude then runs the end-to-end check

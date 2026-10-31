@@ -1,5 +1,8 @@
 // The end-to-end check on the HOSTED app (Step 11 part 2), at laptop and phone widths:
-//   Load demo -> Read orders -> Send invoices -> record cash for Lina -> Refresh status -> Kitchen list -> Reset demo.
+//   Load demo -> Read orders -> Send invoices -> Pickup scan of Aisyah's real QR -> record cash for Lina ->
+//   Refresh status -> Kitchen list -> Reset demo.
+// The pickup scan uses Chromium's fake camera, playing the QR image PayPal just made for that invoice: a real
+// QR, the real status from the sandbox, and a real cash payment. Only the camera itself is pretend.
 // This one is NOT a fake: it sends REAL sandbox invoices through the live server (7 per width, no emails;
 // the buyers are fictional and no real money moves). The keys stay on the server: this script has none.
 // It never pays for a Gemini call: every POST /api/parse is stopped unless it is exactly the demo chats and
@@ -10,10 +13,13 @@
 // another visitor sees none of it.
 // Run: npm run ui-live            (or: npm run ui-live -- https://another-url)
 // Screenshots go to tmp/screenshots-live/ (git-ignored).
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { VISITOR_COOKIE, isVisitorId } from "../src/visitors.js";
+import { cameraArgs, writeCameraFile } from "./fake-camera.mjs";
 
 const BASE = (process.argv[2] ?? "https://chatching.onrender.com").replace(/\/$/, "");
 const OUT = fileURLToPath(new URL("../tmp/screenshots-live/", import.meta.url));
@@ -141,6 +147,51 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     await shot("2-sent", { fullPage: true });
 
+    // Pickup scan: PayPal's real QR for Aisyah's invoice, in front of a fake camera, in a second browser that
+    // holds this visitor's cookie (the camera flags belong to a whole browser, so it can't be this one).
+    const aisyah = sent.find((row) => row.buyer === "Aisyah");
+    const qr = await page.evaluate(async (id) => (await fetch(`/api/invoices/${id}/qr`)).json(), aisyah.invoiceId);
+    check(Boolean(qr.png), `PayPal made a real QR for Aisyah's invoice ${aisyah.invoiceId}`);
+    const cameraFile = join(mkdtempSync(join(tmpdir(), "chatching-live-camera-")), "qr.y4m");
+    await writeCameraFile(browser, qr.png, cameraFile);
+    const cameraBrowser = await chromium.launch({ channel: "chrome", headless: true, args: cameraArgs(cameraFile) });
+    try {
+      const context = await cameraBrowser.newContext({ viewport, storageState: await page.context().storageState() });
+      const scan = await context.newPage();
+      scan.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`scan: ${msg.type()}: ${msg.text()}`));
+      scan.on("pageerror", (err) => errors.push(`scan: ${err.message}`));
+      scan.on("response", (res) => res.status() >= 400 && errors.push(`scan: HTTP ${res.status()} ${res.url()}`));
+      await scan.goto(BASE, { waitUntil: "load" });
+      await scan.waitForSelector(ROWS, { timeout: SLOW });
+      await scan.locator("[data-pickup-scan]:visible").first().click();
+      await scan.waitForSelector("#scan-result:not([hidden])", { timeout: SLOW });
+      check(plain(await scan.$eval("#scan-words", (el) => el.textContent)) === "Not paid yet: RM 54.00", `the real QR, the live status: "${plain(await scan.$eval("#scan-words", (el) => el.textContent))}"`);
+      check(plain(await scan.$eval("#scan-result", (el) => el.innerText)).includes("Aisyah, 3 x Classic brownies"), "it names Aisyah and her items");
+      await scan.waitForTimeout(300);
+      await scan.screenshot({ path: `${OUT}${viewport.width}-2b-scan-amber.png` });
+      scan.once("dialog", (dialog) => dialog.accept());
+      await scan.click("#scan-cash");
+      await scan.waitForSelector("#scan-collected", { timeout: SLOW });
+      check(plain(await scan.$eval("#scan-words", (el) => el.textContent)) === "Paid: Aisyah, 3 x Classic brownies", `after the Record cash shortcut: "${plain(await scan.$eval("#scan-words", (el) => el.textContent))}"`);
+      await scan.waitForTimeout(300);
+      await scan.screenshot({ path: `${OUT}${viewport.width}-2c-scan-green.png` });
+      await scan.click("#scan-collected");
+      await scan.waitForSelector("#scan-result .badge-collected", { timeout: SLOW });
+      await scan.evaluate(() => { window.tracksInUse = document.getElementById("scan-video").srcObject?.getTracks() ?? []; });
+      await scan.click("#scan-close");
+      check(await scan.evaluate(() => window.tracksInUse.length > 0 && window.tracksInUse.every((track) => track.readyState === "ended")), "the camera stops when the sheet closes");
+      const row = (await liveState(scan)).orders.find((other) => other.buyer === "Aisyah");
+      check(row.collected === true && row.invoiceStatus === "Paid (cash/bank)", `saved: ${row.invoiceStatus}, collected`);
+      await context.close();
+    } finally {
+      await cameraBrowser.close();
+    }
+    await page.reload({ waitUntil: "load" });
+    await page.waitForSelector(ROWS, { timeout: SLOW });
+    await page.waitForTimeout(800);
+    await goToBuyerPage(page, "Aisyah");
+    check((await page.locator(ROWS, { hasText: "Aisyah" }).locator(".badge-collected").count()) === 1, "the first browser's table shows the Collected badge");
+
     // Record cash for Lina in her drawer (the QR code comes from PayPal too).
     await goToBuyerPage(page, "Lina");
     const lina = page.locator(ROWS, { hasText: "Lina" });
@@ -166,7 +217,7 @@ try {
     await goToBuyerPage(page, "Lina");
     const badge = plain(await lina.locator(".badge").innerText());
     const paidCard = plain(await page.$eval("#stat-paid", (el) => el.innerText));
-    check(badge === "Paid (cash/bank)" && paidCard.includes("RM 54.00"), `Refresh shows Paid: "${badge}"; "${paidCard}"`);
+    check(badge === "Paid (cash/bank)" && paidCard.includes("RM 108.00"), `Refresh shows Paid: "${badge}"; "${paidCard}"`); // Lina + Aisyah
     check(!reply.notice && !reply.rateLimited, `Refresh answered without a notice${reply.notice ? `: ${reply.notice}` : ""}`);
     await page.evaluate(() => scrollTo(0, 0));
     await shot("4-paid", { fullPage: true });

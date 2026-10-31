@@ -4,7 +4,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buyerPanel, highlight } from "../src/panel.js";
-import { invoiceIdIn } from "../src/qr.js";
 import { pngFromQrReply } from "../src/paypal.js";
 import { QR_PNG } from "../scripts/fake-paypal.mjs";
 import { mockParse } from "../src/ai.js";
@@ -71,12 +70,6 @@ test("no chats saved (e.g. an old store) -> the note only, no messages, no crash
   assert.deepEqual(buyerPanel([], source, menu), { buyer: "", note: "", messages: [] });
 });
 
-test("invoiceIdIn: finds the id in PayPal's QR text and in the payer link", () => {
-  assert.equal(invoiceIdIn("https://www.sandbox.paypal.com/invoice/payerView/details/INV2-RPHX-C6TE-8V3H-M4LL?qr=1"), "INV2-RPHX-C6TE-8V3H-M4LL");
-  assert.equal(invoiceIdIn("https://www.sandbox.paypal.com/invoice/p/#INV2-BKCU-NGE3-RZG3-U35Y"), "INV2-BKCU-NGE3-RZG3-U35Y");
-  assert.equal(invoiceIdIn("hello"), null);
-  assert.equal(invoiceIdIn(null), null);
-});
 
 test("pngFromQrReply: reads the Base64 PNG out of PayPal's multipart reply; anything else -> null", () => {
   const multipart = Buffer.from(`--b\r\nContent-Disposition: form-data; name="image"\r\n\r\n${QR_PNG}\r\n--b--\r\n`);

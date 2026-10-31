@@ -13,7 +13,9 @@ const WINDOW_MS = 10 * MINUTE;
 // - invoices: the page sends ONE request per buyer, so 50 buyers = 50 requests in a minute.
 // - payment: recording cash / bank transfer, one click per buyer.
 // - refresh: the page asks every 20 s (30 times in 10 minutes per open tab), so 2 tabs fit.
+// - pickup: one scan per buyer, plus the odd "Check again": a busy pickup is well under 60 in 10 minutes.
 export const RATE_LIMITS = Object.freeze({
+  pickup: { limit: 60, windowMs: WINDOW_MS },
   parse: { limit: 6, windowMs: WINDOW_MS },
   invoices: { limit: 60, windowMs: WINDOW_MS },
   payment: { limit: 20, windowMs: WINDOW_MS },

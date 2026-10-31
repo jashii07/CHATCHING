@@ -168,6 +168,17 @@ try {
   await ana.page.waitForFunction((words) => document.getElementById("read-message").textContent.includes(words), LOST, { timeout: 5000 }).catch(() => {});
   check((await cards(ana.page)).includes("Orders 0"), "coming back to the tab shows the empty table without any click");
 
+  // The server's table is gone and the judge clicks a row FIRST: the page recovers, and logs no red 404.
+  await readDemo(ana);
+  await new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); });
+  visitorsDir = mkdtempSync(join(tmpdir(), "chatching-ui-visitors-woken3-"));
+  server = await listen(port);
+  await ana.page.locator(ROWS).first().locator(".chips").click();
+  await ana.page.waitForFunction((words) => document.getElementById("read-message").textContent.includes(words), LOST, { timeout: 5000 }).catch(() => {});
+  await ana.page.waitForTimeout(400);
+  check((await message(ana.page, "#read-message")).includes(LOST), `a row clicked first says what happened: "${await message(ana.page, "#read-message")}"`);
+  check((await cards(ana.page)).includes("Orders 0") && !(await ana.page.locator("#drawer.is-open").count()), "the drawer closes and the table shows the truth: empty");
+
   for (const { name, errors } of [ana, ben]) check(errors.length === 0, `${name}: no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
   for (const { name, page } of [ana, ben]) check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: no sideways scroll`);
 } finally {

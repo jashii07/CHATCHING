@@ -12,6 +12,7 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 
 test("the limits: per visitor, per route, in any 10 minutes", () => {
   assert.deepEqual(RATE_LIMITS, {
+    pickup: { limit: 60, windowMs: 10 * MIN },
     parse: { limit: 6, windowMs: 10 * MIN },
     invoices: { limit: 60, windowMs: 10 * MIN },
     payment: { limit: 20, windowMs: 10 * MIN },

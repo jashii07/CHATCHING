@@ -8,7 +8,7 @@ import { mapPayPalStatus } from "./orders.js";
 import { PayPalError } from "./paypal.js";
 
 export const CACHE_MS = 10_000;
-const FINAL = ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"];
+export const FINAL = ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"];
 
 export function createStatusChecker({ store, paypal, now = Date.now, log = console.log }) {
   let lastCheck = -Infinity;

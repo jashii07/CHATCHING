@@ -117,6 +117,7 @@ function buyerRows() {
       key: String(group.buyer).trim().toLowerCase(),
       texts: texts.get(String(group.buyer).trim().toLowerCase()) ?? {}, // what the Copy buttons copy
       payerLink, // set once the buyer's invoice is sent
+      collected: active.length > 0 && active.every((row) => row.collected === true), // our own mark (Step 10c), never PayPal's
       // Clear, not cancelled, and no sent invoice yet (a draft whose send failed is sent again).
       toSend: !group.cancelled && group.total != null && !active.some((row) => row.invoiceId && row.invoiceStatus !== "Draft"),
       id: group.rowIds[0],
@@ -202,13 +203,21 @@ function chips(data) {
 // One icon per status, so the tag reads at a glance (the words carry the meaning, not the icon).
 const STATUS_ICONS = {
   Draft: "pencil-line", Sent: "send", "Part paid": "hourglass", Paid: "circle-check",
-  "Paid (cash/bank)": "banknote", "Cancelled/Refunded": "circle-x", Cancelled: "circle-x",
+  "Paid (cash/bank)": "banknote", "Cancelled/Refunded": "circle-x", Cancelled: "circle-x", Collected: "package-check",
 };
 
 function statusTag(label) {
   const tag = el("span", `badge badge-${String(label).toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "")}`);
   tag.append(icon(STATUS_ICONS[label] ?? "circle"), label);
   return tag;
+}
+
+// PayPal's status, plus our own Collected badge once the order was picked up (Step 10c).
+function statusTags(data) {
+  const tags = el("span", "status-tags");
+  tags.append(statusTag(data.status));
+  if (data.collected) tags.append(statusTag("Collected"));
+  return tags;
 }
 
 // ---- Cell renderers (laptop + iPad) ----
@@ -263,7 +272,7 @@ function cardCell(p) {
   text.append(el("span", "buyer-name", data.buyer || "No name"), el("span", "buyer-sub", `${buyerSub(data)}, ${datesText(data)}`));
   who.append(avatar(data.buyer), text);
   const right = el("span", "card-right");
-  right.append(el("span", "card-total money", data.total == null ? "—" : formatMoney(data.total)), statusTag(data.status));
+  right.append(el("span", "card-total money", data.total == null ? "—" : formatMoney(data.total)), statusTags(data));
   top.append(who, right);
   card.append(top, chips(data));
   const words = checkText(data);
@@ -305,8 +314,8 @@ function columns(size) {
     },
     {
       colId: "status", headerName: "Status", minWidth: wide ? 156 : 128, flex: 0.9, hide: isPhone,
-      valueGetter: (p) => (p.node.rowPinned ? "" : p.data.status),
-      cellRenderer: (p) => (p.node.rowPinned ? "" : statusTag(p.data.status)),
+      valueGetter: (p) => (p.node.rowPinned ? "" : p.data.collected ? `${p.data.status}, collected` : p.data.status),
+      cellRenderer: (p) => (p.node.rowPinned ? "" : statusTags(p.data)),
     },
     { colId: "open", headerName: "", width: wide ? 64 : 48, minWidth: wide ? 64 : 48, maxWidth: wide ? 64 : 48, hide: isPhone, cellClass: "open-cell", cellRenderer: openCell },
   ];
@@ -383,6 +392,9 @@ function showSendButtons() {
   const invoiced = [...rowsById.values()].some((row) => row.invoiceId);
   for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !invoiced;
   $("refresh-status").hidden = !paypalReady || !invoiced;
+  // A sent invoice is what a pickup scan looks for. On phones the sticky bar makes room for the button.
+  for (const button of document.querySelectorAll("[data-pickup-scan]")) button.hidden = !invoiced;
+  document.body.classList.toggle("can-scan", invoiced);
 }
 
 // Our own page arrows drive AG Grid's pagination. One row = one buyer, so a buyer is never split.
@@ -671,11 +683,14 @@ function renderDrawer() {
   $("drawer-sub").textContent = data.cancelled ? "Cancelled order"
     : data.total == null ? "Needs a check before it can be invoiced"
     : `${plural(data.items, "item")}, ${formatMoney(data.total)} in total${data.payerLink ? `. Invoice: ${data.status}` : ""}`;
+  if (data.collected) $("drawer-sub").append(" ", statusTag("Collected"));
   // Once the invoice is sent, the items are locked: said once, above them (the server refuses changes too).
   const locked = data.rows.some((row) => row.orderStatus === "active" && row.invoiceId);
   drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : []), ...data.rows.map(editCard));
   const adding = addCard(data);
   if (adding) drawerItems.append(adding);
+  const picked = collectedCard(data);
+  if (picked) drawerItems.append(picked);
   const ready = textCard(data);
   if (ready) drawerItems.append(ready);
   const pay = payCard(data);
@@ -763,6 +778,9 @@ function qrCard(invoiceId) {
     }));
     card.append(el("p", "hint", "Scanning it opens this PayPal invoice to pay. Show it at pickup, or send it with the payment message."));
   }
+  // The number for Pickup scan's typing box, for when there is no camera.
+  const number = [...rowsById.values()].find((row) => row.invoiceId === invoiceId)?.invoiceNumber;
+  if (number) card.append(el("p", "hint invoice-number", `Invoice number: ${number}`));
   return card;
 }
 
@@ -777,6 +795,10 @@ async function loadPanel(id = openGroupId) {
     const res = await fetch(`/api/buyers/${encodeURIComponent(id)}/panel`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    if (data.notice) { // the server no longer has this row: usually the whole table was cleared
+      if ((await tableStillHere()) && id === openGroupId) drawerChat.replaceChildren(el("p", "hint", data.notice));
+      return;
+    }
     if (id !== openGroupId) return; // the seller opened someone else meanwhile
     panel = { id, data };
     renderPanel();
@@ -927,11 +949,11 @@ async function keepMenuPrice(button) {
   loadPanel(); // the buyer's price is no longer marked "to check"
 }
 
-// Keep Tab inside the open drawer, and Escape closes it.
-function drawerKeys(event) {
-  if (event.key === "Escape") return closeDrawer();
+// Keep Tab inside the open drawer (or the pickup sheet), and Escape closes it.
+function drawerKeys(event, box = $("drawer"), close = closeDrawer) {
+  if (event.key === "Escape") return close();
   if (event.key !== "Tab") return;
-  const focusable = [...$("drawer").querySelectorAll("button, select, input")].filter((node) => !node.disabled);
+  const focusable = [...box.querySelectorAll("button, select, input")].filter((node) => !node.disabled && node.offsetParent !== null);
   const first = focusable[0];
   const last = focusable.at(-1);
   if (event.shiftKey && document.activeElement === first) {
@@ -1203,6 +1225,301 @@ async function recordPayment(button) {
   }
 }
 
+// ---- Pickup scan (Step 10c): the camera reads the QR here on the device; the server says who has paid ----
+
+const SCAN_LOOKING = "Point the camera at the buyer's QR code.";
+const SCAN_EVERY_MS = 200; // about 5 tries a second: quick enough for a hand, kind to a phone's battery
+const SCAN_MAX_SIDE = 800; // a QR held up to the camera needs no more pixels than this
+const SCAN_SKIP_MS = 3000; // time to move the last buyer's QR out of view
+const OTHER_BROWSER = "An invoice belongs to the browser that sent it, so scan on that same phone or laptop.";
+let scanner = null; // public/invoice-qr.js, loaded on the first open
+let scanOpen = false;
+let scanStream = null; // the camera, while the sheet is open
+let scanRun = 0; // goes up on every start and close, so a late permission answer can't start a closed camera
+let scanTimer = null;
+let scanChecking = false; // an answer is on its way from the server
+let scanCameraProblem = ""; // why there is no camera: the words shown above the typing box
+let scanShown = null; // the invoice the sheet shows
+let scanSkip = { id: null, until: 0 }; // just done with: the same QR is often still in view when Scan next is tapped
+let scanReturnFocus = null;
+const scanCanvas = document.createElement("canvas");
+
+async function postJson(path, body) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const reply = await res.json();
+  if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+  return reply;
+}
+
+function scanSay(words) {
+  $("scan-hint").textContent = words;
+  $("scan-hint").hidden = !words;
+}
+
+// jsQR comes from our own server, and only when a scan is wanted: it is 250 KB most visitors never need.
+async function loadScanner() {
+  const decoder = await import("./invoice-qr.js");
+  if (!window.jsQR) {
+    await new Promise((resolve, reject) => {
+      const script = Object.assign(document.createElement("script"), { src: "vendor/jsQR.js", onload: resolve, onerror: reject });
+      document.head.append(script);
+    });
+  }
+  return decoder;
+}
+
+function cameraWords(err) {
+  if (["NotAllowedError", "SecurityError"].includes(err?.name)) return "Camera permission was refused. Type the invoice number or paste the link below.";
+  if (["NotReadableError", "AbortError"].includes(err?.name)) return "The camera is busy in another app. Type the invoice number or paste the link below.";
+  return "No camera found. Type the invoice number or paste the link below.";
+}
+
+function stopReading() {
+  clearTimeout(scanTimer);
+  scanTimer = null;
+}
+
+function stopCamera() {
+  stopReading();
+  scanStream?.getTracks().forEach((track) => track.stop());
+  scanStream = null;
+  $("scan-video").srcObject = null;
+}
+
+// One try: the current frame goes onto a canvas nobody sees, and jsQR looks for a QR in its pixels.
+function readFrame() {
+  const video = $("scan-video");
+  if (video.videoWidth) {
+    const scale = Math.min(1, SCAN_MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+    const width = Math.round(video.videoWidth * scale);
+    const height = Math.round(video.videoHeight * scale);
+    if (scanCanvas.width !== width || scanCanvas.height !== height) Object.assign(scanCanvas, { width, height });
+    const ctx = scanCanvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, width, height);
+    const code = window.jsQR(ctx.getImageData(0, 0, width, height).data, width, height, { inversionAttempts: "dontInvert" });
+    if (code?.data) return onScanned(code.data);
+  }
+  scanTimer = setTimeout(readFrame, SCAN_EVERY_MS);
+}
+
+function onScanned(text) {
+  const invoiceId = scanner.invoiceIdFromQr(text);
+  const justDone = invoiceId === scanSkip.id && Date.now() < scanSkip.until;
+  if (invoiceId && !justDone) return checkPickup(invoiceId);
+  if (!invoiceId) scanSay(scanner.NOT_OUR_QR); // a stranger's QR never leaves the phone; keep looking
+  scanTimer = setTimeout(readFrame, SCAN_EVERY_MS);
+}
+
+async function startCamera() {
+  const run = ++scanRun;
+  scanCameraProblem = "";
+  $("scan-camera").hidden = false;
+  scanSay("Starting the camera...");
+  try {
+    scanner ??= await loadScanner();
+    if (!navigator.mediaDevices?.getUserMedia) throw new DOMException("No camera", "NotFoundError");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
+    if (run !== scanRun) return stream.getTracks().forEach((track) => track.stop()); // closed while the seller was asked
+    scanStream = stream;
+    $("scan-video").srcObject = stream;
+    await $("scan-video").play();
+    if (run !== scanRun) return;
+    scanSay(SCAN_LOOKING);
+    readFrame();
+  } catch (err) {
+    if (run !== scanRun) return;
+    stopCamera();
+    scanCameraProblem = scanner ? cameraWords(err) : "The scanner could not load. Check the connection, then close this and try again.";
+    $("scan-camera").hidden = true;
+    scanSay(scanCameraProblem);
+    $("scan-input").focus();
+  }
+}
+
+async function openScan() {
+  scanReturnFocus = document.activeElement;
+  scanOpen = true;
+  scanShown = null;
+  $("scan-input").value = "";
+  $("scan-result").hidden = true;
+  $("scan-sheet").hidden = false;
+  document.body.classList.add("drawer-open");
+  $("scan-close").focus();
+  await startCamera();
+}
+
+function closeScan() {
+  scanOpen = false;
+  scanRun++;
+  stopCamera();
+  $("scan-sheet").hidden = true;
+  document.body.classList.remove("drawer-open");
+  if (scanReturnFocus?.isConnected) scanReturnFocus.focus();
+}
+
+// The camera, or the typing box when there is none, ready for the next buyer.
+function scanNext() {
+  scanSkip = { id: scanShown?.invoiceId ?? null, until: Date.now() + SCAN_SKIP_MS };
+  scanShown = null;
+  $("scan-result").hidden = true;
+  $("scan-input").value = "";
+  if (scanCameraProblem) {
+    scanSay(scanCameraProblem);
+    return $("scan-input").focus();
+  }
+  $("scan-close").focus();
+  if (!scanStream) return startCamera();
+  $("scan-camera").hidden = false;
+  $("scan-video").play().catch(() => {});
+  scanSay(SCAN_LOOKING);
+  stopReading();
+  readFrame();
+}
+
+const scanAction = (id, label, ghost = false) => Object.assign(el("button", ghost ? "ghost" : "", label), { type: "button", id });
+
+// The big answer. The camera steps aside for it (and stays on, so the next scan starts at once).
+function showScanBox(kind, words, lines = [], buttons = []) {
+  if (!scanOpen) return;
+  stopReading();
+  const box = $("scan-result");
+  box.className = `scan-result ${kind}`;
+  const mark = el("span", "icon-circle");
+  mark.append(icon(kind === "is-paid" ? "circle-check" : "triangle-alert"));
+  const head = el("div", "scan-head-line");
+  head.append(mark, Object.assign(el("h3", "scan-words", words), { id: "scan-words" }));
+  const actions = el("div", "scan-actions");
+  actions.append(...buttons, scanAction("scan-next", "Scan next", true));
+  box.replaceChildren(head, ...lines.filter(Boolean), actions);
+  box.hidden = false;
+  $("scan-camera").hidden = true;
+  scanSay("");
+  box.querySelector("button").focus();
+}
+
+function showScanResult(reply) {
+  scanShown = reply;
+  if (reply.paid) {
+    const amount = el("p", "scan-detail", formatMoney(reply.total));
+    if (reply.collected) return showScanBox("is-paid", reply.title, [amount, statusTag("Collected")], [scanAction("scan-undo", "Undo", true)]);
+    return showScanBox("is-paid", reply.title, [amount], [scanAction("scan-collected", "Collected")]);
+  }
+  const hint = {
+    unpaid: reply.cached ? "PayPal was asked a few seconds ago. If they just paid, check again in a moment." : "",
+    "part-paid": "Record the rest in PayPal itself.",
+    cancelled: "Don't hand this order over.",
+    unknown: "Please check again before handing the order over.",
+  }[reply.state];
+  const again = scanAction("scan-again", "Check again", true);
+  const buttons = reply.state === "unpaid" ? [scanAction("scan-cash", "Record cash"), again] : reply.state === "cancelled" ? [] : [again];
+  showScanBox("is-check", reply.title, [el("p", "scan-detail", reply.detail), hint && el("p", "hint", hint)], buttons);
+}
+
+// Every reply carries the whole table, so the page behind the sheet is right when it closes.
+function showPickupTable(reply) {
+  if (reply.batch !== batch) return showServerTable(reply);
+  showOrders(reply);
+  if (reply.changed?.length) flashPaid(reply.changed);
+}
+
+async function checkPickup(ref) {
+  if (scanChecking) return;
+  scanChecking = true;
+  stopReading();
+  scanSay("Checking with PayPal...");
+  try {
+    const reply = await postJson("/api/pickup/check", { invoiceId: ref });
+    if (reply.notInOrders) {
+      const here = await tableStillHere();
+      showScanBox("is-check", here ? reply.notice : TABLE_CLEARED, here ? [el("p", "hint", OTHER_BROWSER)] : []);
+    } else if (reply.notice) showScanBox("is-check", reply.notice);
+    else {
+      showPickupTable(reply);
+      showScanResult(reply);
+    }
+  } catch (err) {
+    showScanBox("is-check", `Couldn't reach the server (${err.message}).`);
+  } finally {
+    scanChecking = false;
+  }
+}
+
+// The typing box: an id, a number or a pasted link; the same check as a scan.
+async function checkTyped(event) {
+  event.preventDefault();
+  const text = $("scan-input").value;
+  if (!text.trim()) return;
+  try {
+    scanner ??= await loadScanner();
+  } catch {
+    return showScanBox("is-check", "The scanner could not load. Check the connection, then try again.");
+  }
+  const ref = scanner.invoiceRefFromTyped(text);
+  if (ref) checkPickup(ref);
+  else showScanBox("is-check", scanner.NOT_OUR_QR);
+}
+
+async function saveCollected(undo) {
+  try {
+    const reply = await postJson("/api/pickup/collected", { invoiceId: scanShown.invoiceId, ...(undo && { undo: true }) });
+    if (reply.notice) return showScanBox("is-check", reply.notice);
+    showPickupTable(reply);
+    showScanResult(reply);
+  } catch (err) {
+    showScanBox("is-check", `That was not saved (${err.message}).`);
+  }
+}
+
+// The shortcut to the same Record cash as the drawer: same server route, same words, full amount only.
+async function scanRecordCash(button) {
+  const { buyer, total, invoiceId } = scanShown;
+  if (recording || !window.confirm(`Record ${formatMoney(total)} paid by cash for ${buyer}? It is saved in PayPal and can't be undone here.`)) return;
+  recording = true;
+  button.disabled = true;
+  button.textContent = "Recording...";
+  try {
+    const reply = await postJson(`/api/invoices/${encodeURIComponent(invoiceId)}/payment`, { method: "CASH" });
+    if (reply.notice) return showScanBox("is-check", reply.notice);
+    if (reply.failed) throw new Error(reply.failed);
+    showOrders(reply);
+    flashPaid([{ buyer, to: "Paid (cash/bank)" }]);
+    await checkPickup(invoiceId);
+  } catch (err) {
+    showScanBox("is-check", `The payment was not recorded (${err.message}).`);
+  } finally {
+    recording = false;
+  }
+}
+
+// In the drawer: the mark can be taken back there too, for a tap on the wrong buyer.
+function collectedCard(data) {
+  if (!data.collected) return null;
+  const card = el("section", "edit-card collected-card");
+  const undo = Object.assign(el("button", "ghost small", "Undo"), { type: "button", id: "undo-collected" });
+  undo.dataset.invoice = data.rows.find((row) => row.invoiceId)?.invoiceId ?? "";
+  undo.setAttribute("aria-label", `Undo Collected for ${data.buyer}`);
+  card.append(el("p", "hint", "Handed over at pickup. This is ChatChing's own note; PayPal isn't told."), undo);
+  return card;
+}
+
+async function undoCollected(button) {
+  button.disabled = true;
+  hideError("drawer-error");
+  try {
+    const reply = await postJson("/api/pickup/collected", { invoiceId: button.dataset.invoice, undo: true });
+    if (reply.notice) {
+      if (!(await tableStillHere())) return;
+      showError(reply.notice, "drawer-error");
+      return renderDrawer();
+    }
+    showOrders(reply);
+    $("drawer-close").focus();
+  } catch (err) {
+    showError(`That was not saved (${err.message}).`, "drawer-error");
+    renderDrawer();
+  }
+}
+
 // Same limit and words as src/paste.js. Checked here too, so a huge paste is never sent at all
 // (over 100 KB the server refuses the request, and the browser logs that as a red error).
 const MAX_CHARS = 10_000;
@@ -1459,6 +1776,24 @@ async function copyKitchen(button) {
 $("chat-date").value = todayLocal();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && !sending && !reading) tableStillHere();
+  if (!scanOpen) return;
+  // The phone was put away with the sheet open: the camera goes off, and comes back only when wanted.
+  if (document.visibilityState === "hidden") {
+    scanRun++;
+    stopCamera();
+  } else if (!scanCameraProblem && $("scan-result").hidden) startCamera();
+});
+for (const button of document.querySelectorAll("[data-pickup-scan]")) button.addEventListener("click", openScan);
+$("scan-close").addEventListener("click", closeScan);
+$("scan-sheet").addEventListener("keydown", (event) => drawerKeys(event, $("scan-sheet"), closeScan));
+$("scan-typed").addEventListener("submit", checkTyped);
+$("scan-result").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (button?.id === "scan-next") scanNext();
+  if (button?.id === "scan-again") checkPickup(scanShown.invoiceId);
+  if (button?.id === "scan-cash") scanRecordCash(button);
+  if (button?.id === "scan-collected") saveCollected(false);
+  if (button?.id === "scan-undo") saveCollected(true);
 });
 $("read-orders").addEventListener("click", () => readOrders());
 $("read-without-ai").addEventListener("click", () => readOrders({ withoutAi: true }));
@@ -1501,6 +1836,7 @@ $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest(".copy-text")) copyBuyerText(event.target.closest(".copy-text"));
   if (event.target.closest(".remove-item")) removeItem(event.target.closest(".remove-item"));
   if (event.target.closest("#add-item")) addItem();
+  if (event.target.closest("#undo-collected")) undoCollected(event.target.closest("#undo-collected"));
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);

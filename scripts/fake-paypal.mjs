@@ -26,6 +26,9 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
   let wrongTotal = false;
 
   const payerLink = (id) => `https://www.sandbox.paypal.com/invoice/p/#${id}`;
+  // Shaped like a real id (INV2 + 4 groups of 4), so it passes the same check a scanned QR has to pass.
+  const newId = () => `INV2-FAKE-0000-0000-${String(++idCount).padStart(4, "0")}`;
+  const nextIds = []; // ids the next created invoices get, e.g. the id inside a real QR image
 
   function total(body) {
     const sen = (body.items ?? []).reduce((sum, item) => sum + toSen(item.unit_amount.value) * Number(item.quantity), 0);
@@ -74,7 +77,7 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
       if ([...invoices.values()].some((inv) => inv.detail.invoice_number === number)) {
         return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ field: "/detail/invoice_number", issue: "DUPLICATE_INVOICE_NUMBER", description: "Invoice number must be unique." }] });
       }
-      const id = `INV2-FAKE-${String(++idCount).padStart(4, "0")}`;
+      const id = nextIds.shift() ?? newId();
       const invoice = { id, status: "DRAFT", detail: { ...body.detail, metadata: {} }, items: body.items, amount: total(body) };
       invoices.set(id, invoice);
       return json(201, structuredClone(invoice));
@@ -137,9 +140,11 @@ export function fakePayPal({ expiresIn = 32400 } = {}) {
     pay: (id, status = "PAID") => (invoices.get(id).status = status),
     // PayPal's total comes out 1 sen more than ours (to test the total check).
     setWrongTotal: (on) => (wrongTotal = on),
+    // The next created invoice gets this id (the browser check matches it to a real QR image).
+    useNextId: (id) => nextIds.push(id),
     // An invoice already at PayPal (e.g. made by an earlier click that timed out).
     add(invoice) {
-      const id = invoice.id ?? `INV2-FAKE-${String(++idCount).padStart(4, "0")}`;
+      const id = invoice.id ?? newId();
       invoices.set(id, { status: "DRAFT", items: [], ...invoice, id, detail: { metadata: {}, ...invoice.detail } });
       if (invoice.status && invoice.status !== "DRAFT") invoices.get(id).detail.metadata.recipient_view_url = payerLink(id);
       return id;

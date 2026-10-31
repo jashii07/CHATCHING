@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadConfig } from "../src/config.js";
-import { createApp } from "../src/app.js";
+import { createApp, ORDER_GONE } from "../src/app.js";
 import { createPayPal } from "../src/paypal.js";
 import { createRateLimiter, RATE_LIMITS, slowDown } from "../src/rate-limit.js";
 import { MAX_VISITORS, VISITOR_COOKIE, isVisitorId, newVisitorId } from "../src/visitors.js";
@@ -197,7 +197,7 @@ test("a visitor can't reach another visitor's row, buyer panel, invoice or QR co
   const lina = (await ana.state()).orders.find((row) => row.buyer === "Lina");
   const before = (await ana.state()).orders;
   assert.equal((await ben.call(`/api/orders/${lina.id}`, "PUT", { qty: 9 })).status, 404);
-  assert.equal((await ben.call(`/api/buyers/${lina.id}/panel`)).status, 404);
+  assert.deepEqual((await ben.call(`/api/buyers/${lina.id}/panel`)).body, { notice: ORDER_GONE }, "friendly words, and none of Lina's messages");
   assert.equal((await ben.call(`/api/invoices/${lina.invoiceId}/qr`)).status, 404);
   const payment = app.fake.count("payment");
   assert.equal((await ben.call(`/api/invoices/${lina.invoiceId}/payment`, "POST", { method: "CASH" })).status, 404);

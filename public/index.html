@@ -137,6 +137,8 @@
           <button type="button" id="send-invoices" data-send-invoices>Send invoices</button>
           <!-- Asks PayPal who has paid (the page also checks by itself every 20 s while invoices are open). -->
           <button type="button" class="ghost" id="refresh-status" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh status</button>
+          <!-- Step 10c: scan the buyer's PayPal QR at pickup. On phones this button sits in the sticky total bar. -->
+          <button type="button" id="pickup-scan" data-pickup-scan hidden><i data-lucide="scan-qr-code" aria-hidden="true"></i>Pickup scan</button>
         </div>
         <!-- Step 10: these rows were read without AI (simple rules), so every row deserves a look. -->
         <p class="filter-note" id="fallback-note" role="status" hidden>
@@ -189,9 +191,34 @@
     <p class="hint drawer-foot" id="drawer-foot"></p>
   </aside>
 
+  <!-- Pickup scan (Step 10c): a full-screen sheet with the camera. The picture is read on this device by
+       jsQR (public/vendor/, Apache-2.0) and never leaves it. The camera stops when the sheet closes. -->
+  <section class="scan-sheet" id="scan-sheet" role="dialog" aria-modal="true" aria-labelledby="scan-title" hidden>
+    <div class="scan-inner">
+      <div class="scan-head">
+        <h2 id="scan-title">Pickup scan</h2>
+        <button type="button" class="round ghost" id="scan-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+      <div class="scan-camera" id="scan-camera">
+        <video id="scan-video" playsinline muted aria-label="Camera view"></video>
+        <span class="scan-frame" aria-hidden="true"></span>
+      </div>
+      <p class="hint" id="scan-hint" role="status"></p>
+      <div class="scan-result" id="scan-result" role="status" hidden></div>
+      <form class="scan-typed" id="scan-typed" novalidate>
+        <label class="field" for="scan-input">
+          <span class="field-label">Or type the invoice number, or paste the link</span>
+          <input type="text" id="scan-input" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+        </label>
+        <button type="submit" class="ghost" id="scan-check">Check</button>
+      </form>
+    </div>
+  </section>
+
   <!-- Phones only: replaces the pinned totals row (PLAN.md Section 12). -->
   <div class="phone-total" id="phone-total">
     <span class="phone-sum" id="phone-sum" aria-live="polite"></span>
+    <button type="button" data-pickup-scan hidden><i data-lucide="scan-qr-code" aria-hidden="true"></i>Pickup scan</button>
     <button type="button" data-send-invoices>Send invoices</button>
   </div>
 </body>

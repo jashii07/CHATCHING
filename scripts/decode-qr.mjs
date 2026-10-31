@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
-import { invoiceIdIn } from "../src/qr.js";
+import { invoiceIdFromQr } from "../public/invoice-qr.js";
 
 const files = process.argv.slice(2);
 if (!files.length) {
@@ -41,7 +41,7 @@ if (!files.length) {
       }
       console.log(`  QR version ${result.version}, ${result.text.length} characters`);
       console.log(`  text: ${result.text}`);
-      console.log(`  invoice id in it: ${invoiceIdIn(result.text) ?? "(none found)"}`);
+      console.log(`  invoice id in it: ${invoiceIdFromQr(result.text) ?? "(none found)"}`);
     }
   } finally {
     await browser.close();

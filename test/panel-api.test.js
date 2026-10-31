@@ -3,7 +3,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "../src/config.js";
-import { createApp } from "../src/app.js";
+import { createApp, ORDER_GONE } from "../src/app.js";
 import { createPayPal, NOT_CONFIGURED } from "../src/paypal.js";
 import { fakePayPal, QR_PNG } from "../scripts/fake-paypal.mjs";
 import { testVisitor } from "../scripts/test-visitor.mjs";
@@ -42,13 +42,18 @@ test("panel: Arif's note and his messages, with marks; no QR before the invoice 
   assert.equal(app.fake.calls.length, 0); // the panel never calls PayPal
 });
 
-test("panel for any of a buyer's rows covers the whole buyer; unknown row -> 404", async () => {
+test("panel for any of a buyer's rows covers the whole buyer", async () => {
   const app = await start();
   const rows = (await app.state()).orders.filter((row) => row.buyer === "Jun Wei");
   const panels = await Promise.all(rows.map((row) => app.call(`/api/buyers/${row.id}/panel`)));
   assert.deepEqual(panels[0].body, panels[1].body);
   assert.ok(panels[0].body.messages[0].parts.some((p) => p.mark === "price-check" && p.text === "RM15"));
-  assert.equal((await app.call("/api/buyers/r999/panel")).status, 404);
+});
+
+test("panel for a row the table no longer has -> a friendly 200 notice, so the browser logs no red line", async () => {
+  const app = await start();
+  assert.deepEqual(await app.call("/api/buyers/r999/panel"), { status: 200, body: { notice: ORDER_GONE } });
+  assert.equal(app.fake.calls.length, 0);
 });
 
 test("QR: after sending, the panel names the invoice and the QR comes from PayPal once, then from memory", async () => {

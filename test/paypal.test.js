@@ -99,12 +99,12 @@ test("invoiceBuyer: creates the draft, sends it WITHOUT emailing anyone, and ret
   const { fake, paypal } = setup();
   const result = await paypal.invoiceBuyer({ buyer: "Mei Ling", rows: rowsOf("Mei Ling"), menu, number: NUMBER });
   assert.deepEqual(result, {
-    invoiceId: "INV2-FAKE-0001", invoiceNumber: NUMBER, status: "UNPAID",
-    payerLink: "https://www.sandbox.paypal.com/invoice/p/#INV2-FAKE-0001", reused: false,
+    invoiceId: "INV2-FAKE-0000-0000-0001", invoiceNumber: NUMBER, status: "UNPAID",
+    payerLink: "https://www.sandbox.paypal.com/invoice/p/#INV2-FAKE-0000-0000-0001", reused: false,
   });
   const send = fake.calls.find((c) => c.kind === "send");
   assert.deepEqual(send.body, { send_to_recipient: false, send_to_invoicer: false });
-  assert.equal(fake.invoices.get("INV2-FAKE-0001").amount.value, "72.00");
+  assert.equal(fake.invoices.get("INV2-FAKE-0000-0000-0001").amount.value, "72.00");
 });
 
 test("duplicate number: PayPal refuses it, so the EXISTING invoice is looked up; nothing new is made or re-sent", async () => {
@@ -141,7 +141,7 @@ test("PayPal's total differs from the menu's -> NOT sent, with a clear reason (c
   const { fake, paypal } = setup();
   fake.setWrongTotal(true);
   await assert.rejects(paypal.invoiceBuyer({ buyer: "Lina", rows: rowsOf("Lina"), menu, number: NUMBER }),
-    (err) => /PayPal's total \(54\.01 MYR\) is not the menu's \(54\.00 MYR\)/.test(err.message) && err.invoiceId === "INV2-FAKE-0001");
+    (err) => /PayPal's total \(54\.01 MYR\) is not the menu's \(54\.00 MYR\)/.test(err.message) && err.invoiceId === "INV2-FAKE-0000-0000-0001");
   assert.equal(fake.count("send"), 0);
 });
 

@@ -14,6 +14,7 @@ import { createPayPal, NOT_CONFIGURED, PayPalError } from "./paypal.js";
 import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
+import { createPickup } from "./pickup.js";
 import { buyerPanel } from "./panel.js";
 import { kitchenList } from "./kitchen.js";
 import { buyerMessages } from "./messages.js";
@@ -25,6 +26,7 @@ const SENDING = "Invoices are being sent right now. Please wait for that to fini
 const READING = "Already reading orders. Please wait for that to finish.";
 const LOCKED = "Invoice sent: items are locked so the invoice and the table always match.";
 const CANCELLED = "This order is cancelled, so it can't be changed.";
+export const ORDER_GONE = "This order is no longer in your table.";
 
 const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -84,8 +86,9 @@ export function createApp(config, {
       const invoicer = createInvoicer({ store, paypal, menu, log });
       const status = createStatusChecker({ store, paypal, now, log });
       const payments = createPaymentRecorder({ store, paypal, menu, now });
+      const pickup = createPickup({ store, status, menu });
       const visitor = {
-        store, invoicer, status, payments,
+        store, invoicer, status, payments, pickup,
         qrCodes: new Map(), // invoice id -> Base64 PNG (a QR code never changes)
         reading: false, // one parse at a time per visitor (it can cost real AI calls)
         readingStage: null, // "reading" or "backup" while a parse runs: the page's loading words (Step 9)
@@ -355,12 +358,37 @@ export function createApp(config, {
     }
   });
 
+  // Pickup scan (Step 10c, src/pickup.js). Only a wrongly shaped request is a 400: everything a seller can
+  // meet (a stranger's QR, not in this table, not paid yet) is a { notice }, so no red console line.
+  const readRef = (req, res) => {
+    const { invoiceId, undo } = req.body ?? {};
+    const ok = typeof invoiceId === "string" && (undo === undefined || typeof undo === "boolean");
+    if (!ok) res.status(400).json({ error: 'Send { "invoiceId": "INV2-..." }.' });
+    return ok;
+  };
+  const pickupReply = (res, { store }, reply) => res.json(reply.notice ? reply : { ...reply, ...table(store) });
+
+  // The scanned or typed invoice: buyer, items, total and paid or not, from PayPal's live status.
+  app.post("/api/pickup/check", limited("pickup"), async (req, res) => {
+    if (!readRef(req, res)) return;
+    if (!config.paypalConfigured) return res.json({ notice: NOT_CONFIGURED });
+    pickupReply(res, req.visitor, await req.visitor.pickup.check(req.body.invoiceId));
+  });
+
+  // "Collected" (or { undo: true }): our own status, never sent to PayPal, only for a paid invoice.
+  app.post("/api/pickup/collected", (req, res) => {
+    if (!readRef(req, res)) return;
+    pickupReply(res, req.visitor, req.visitor.pickup.collected(req.body.invoiceId, { undo: req.body.undo }));
+  });
+
   // The buyer panel (Step 7, #1 "Show your work"): the AI's note + the buyer's own messages with the
   // parts that mattered marked (src/panel.js), and which invoice (if sent) has a QR code. No AI, no PayPal.
+  // A row the table no longer has (the free server forgot the table while the tab stayed open) is a
+  // { notice }, like the other "table was cleared" cases, so a click on a row never logs a red line.
   app.get("/api/buyers/:id/panel", (req, res) => {
     const { store } = req.visitor;
     const row = store.find(req.params.id);
-    if (!row) return res.status(404).json({ error: `No order row "${req.params.id}".` });
+    if (!row) return res.json({ notice: ORDER_GONE });
     const rows = store.rows().filter((other) => other.buyer.trim().toLowerCase() === row.buyer.trim().toLowerCase());
     const sent = rows.find((other) => other.invoiceId && other.payerLink && other.invoiceStatus !== "Draft");
     res.json({ ...buyerPanel(rows, store.source(), menu), qrInvoiceId: sent?.invoiceId ?? null });

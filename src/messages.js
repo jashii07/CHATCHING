@@ -17,7 +17,7 @@ const NO_REMINDER = new Set(["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]);
 const cleanName = (buyer) => (typeof buyer === "string" ? buyer.trim() : "");
 const cleanWords = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // "Classic brownies (box of 6)" -> "Classic brownies", as on the table's chips.
-const shortName = (name) => String(name).replace(/\s*\(.*\)\s*$/, "");
+export const shortName = (name) => String(name).replace(/\s*\(.*\)\s*$/, "");
 // Intl puts a no-break space after "RM"; a chat message gets a normal one, so it pastes cleanly everywhere.
 const money = (amount, menu) => formatMoney(amount, menu.currency).replaceAll(" ", " ");
 // "2026-10-31" -> "Sat 31 Oct" (UTC, so no time zone can shift the day). Same words as the table.
