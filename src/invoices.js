@@ -11,6 +11,9 @@ import { INVOICE_DIFFERS, invoiceNumber, PayPalError } from "./paypal.js";
 
 const key = (buyer) => String(buyer ?? "").trim().toLowerCase();
 const refuse = (status, message) => Object.assign(new Error(message), { status });
+// Invoice numbers use PayPal's full 25 characters, so a batch has room for buyer 01 to 99.
+const MAX_BUYERS = 99;
+const BATCH_FULL = "A batch holds up to 99 buyers. Send these, then start a New batch.";
 
 // spend(): asked just before each buyer goes to PayPal, so the rate limit counts buyers sent, not requests.
 // -> null to go ahead, or how many ms until the next one is allowed.
@@ -81,7 +84,12 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
         result.skipped.push({ buyer: group.buyer, reason: "Needs a check first." });
         continue;
       }
-      const one = await invoiceOne(group.buyer, order.indexOf(key(group.buyer)) + 1, spend);
+      const nn = order.indexOf(key(group.buyer)) + 1;
+      if (nn > MAX_BUYERS) {
+        result.failed.push({ buyer: group.buyer, reason: BATCH_FULL });
+        continue;
+      }
+      const one = await invoiceOne(group.buyer, nn, spend);
       if (one.limited !== undefined) {
         result.limitedMs = one.limited;
         break;
