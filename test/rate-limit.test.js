@@ -14,7 +14,7 @@ test("the limits: per visitor, per route, in any 10 minutes", () => {
   assert.deepEqual(RATE_LIMITS, {
     pickup: { limit: 60, windowMs: 10 * MIN },
     parse: { limit: 6, windowMs: 10 * MIN },
-    invoices: { limit: 60, windowMs: 10 * MIN },
+    invoices: { limit: 100, windowMs: 10 * MIN }, // per buyer sent: test/review-fixes.test.js, #9
     payment: { limit: 20, windowMs: 10 * MIN },
     refresh: { limit: 60, windowMs: 10 * MIN },
     pairNew: { limit: 20, windowMs: 10 * MIN },
@@ -102,10 +102,10 @@ test("Read orders: the 3rd read in 10 minutes gets a friendly 200 notice (with R
   assert.equal((await post("/api/parse", chats)).body.rateLimited, undefined);
 });
 
-test("Send invoices, Refresh status and Record payment are limited too: 200 notice, the route never runs", async (t) => {
+test("Refresh status and Record payment are limited too: 200 notice, the route never runs", async (t) => {
   const { post, close } = await start(); // no PayPal keys: a route that runs answers 503 "not configured"
   t.after(close);
-  for (const path of ["/api/invoices", "/api/invoices/refresh", "/api/invoices/INV2-TEST/payment"]) {
+  for (const path of ["/api/invoices/refresh", "/api/invoices/INV2-TEST/payment"]) {
     for (let i = 0; i < 2; i++) assert.equal((await post(path, { method: "CASH" })).status, 503, `${path} runs at first`);
     const limited = await post(path, { method: "CASH" });
     assert.deepEqual(limited, { status: 200, body: { notice: slowDown(10 * MIN), rateLimited: true } }, path);
