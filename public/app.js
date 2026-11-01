@@ -451,8 +451,11 @@ function setNeedsCheckFilter(on) {
 // Export CSV: every buyer (whatever the search or filter shows), one row each, opens in Excel.
 // The total is a plain number ("70.00") so Excel can add it up. AG Grid builds the CSV text; we add a
 // byte-order mark so Excel reads it as UTF-8 (otherwise "×" and accented names come out garbled).
-function exportCsv() {
+// Every cell goes through safeCell: a buyer's chat name must never reach Excel as a live formula.
+const csvSafe = import("./csv-safe.js"); // loaded with the page, so the click only waits a moment
+async function exportCsv() {
   if (!grid) return;
+  const { safeCell } = await csvSafe;
   const csv = grid.getDataAsCsv({
     columnKeys: ["buyer", "items", "date", "total", "status"],
     exportedRows: "all",
@@ -460,9 +463,9 @@ function exportCsv() {
     processHeaderCallback: (p) => (p.column.getColId() === "total" ? `Total (${currency})` : p.column.getColDef().headerName),
     processCellCallback: (p) => {
       const id = p.column.getColId();
-      if (id === "total") return p.node.data.total ?? "";
-      if (id === "date") return p.node.data.dates.join(", ");
-      return p.value ?? "";
+      if (id === "total") return safeCell(p.node.data.total ?? "");
+      if (id === "date") return safeCell(p.node.data.dates.join(", "));
+      return safeCell(p.value ?? "");
     },
   });
   const link = Object.assign(document.createElement("a"), {
