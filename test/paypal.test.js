@@ -13,6 +13,8 @@ const menu = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.ur
 const KEYS = { clientId: "fake-client-id-123", clientSecret: "fake-secret-456" };
 const demo = toRows(mockParse(), menu);
 const rowsOf = (buyer) => demo.filter((row) => row.buyer === buyer);
+// What PayPal holds for an invoice made from these rows: a lookup compares the items, not just the total.
+const MEI_LING_ITEMS = () => invoiceDraft({ buyer: "Mei Ling", rows: rowsOf("Mei Ling"), menu, number: "CHATCHING-TEST12345678-01" }).body.items;
 const NUMBER = "CHATCHING-K3F9Q2ZA7L1X-02";
 
 function setup(options = {}) {
@@ -109,7 +111,7 @@ test("invoiceBuyer: creates the draft, sends it WITHOUT emailing anyone, and ret
 
 test("duplicate number: PayPal refuses it, so the EXISTING invoice is looked up; nothing new is made or re-sent", async () => {
   const { fake, paypal } = setup();
-  const id = fake.add({ status: "UNPAID", detail: { invoice_number: NUMBER, currency_code: "MYR" }, amount: { currency_code: "MYR", value: "72.00" } });
+  const id = fake.add({ status: "UNPAID", detail: { invoice_number: NUMBER, currency_code: "MYR" }, items: MEI_LING_ITEMS(), amount: { currency_code: "MYR", value: "72.00" } });
   const result = await paypal.invoiceBuyer({ buyer: "Mei Ling", rows: rowsOf("Mei Ling"), menu, number: NUMBER });
   assert.equal(result.invoiceId, id);
   assert.equal(result.reused, true);
@@ -121,7 +123,7 @@ test("duplicate number: PayPal refuses it, so the EXISTING invoice is looked up;
 
 test("duplicate number whose invoice is still a DRAFT (send failed last time) -> it is sent now", async () => {
   const { fake, paypal } = setup();
-  const id = fake.add({ detail: { invoice_number: NUMBER, currency_code: "MYR" }, amount: { currency_code: "MYR", value: "72.00" } });
+  const id = fake.add({ detail: { invoice_number: NUMBER, currency_code: "MYR" }, items: MEI_LING_ITEMS(), amount: { currency_code: "MYR", value: "72.00" } });
   const result = await paypal.invoiceBuyer({ buyer: "Mei Ling", rows: rowsOf("Mei Ling"), menu, number: NUMBER });
   assert.equal(result.invoiceId, id);
   assert.equal(result.status, "UNPAID");
@@ -130,7 +132,7 @@ test("duplicate number whose invoice is still a DRAFT (send failed last time) ->
 
 test("a saved invoice id (draft from a failed send) -> no new invoice, just send it", async () => {
   const { fake, paypal } = setup();
-  const id = fake.add({ detail: { invoice_number: NUMBER, currency_code: "MYR" }, amount: { currency_code: "MYR", value: "72.00" } });
+  const id = fake.add({ detail: { invoice_number: NUMBER, currency_code: "MYR" }, items: MEI_LING_ITEMS(), amount: { currency_code: "MYR", value: "72.00" } });
   const result = await paypal.invoiceBuyer({ buyer: "Mei Ling", rows: rowsOf("Mei Ling"), menu, number: NUMBER, invoiceId: id });
   assert.equal(result.invoiceId, id);
   assert.equal(fake.count("create"), 0);

@@ -26,6 +26,7 @@ const INVOICED = "Invoices already sent for these orders. Start a new batch to r
 const SENDING = "Invoices are being sent right now. Please wait for that to finish.";
 const READING = "Already reading orders. Please wait for that to finish.";
 const LOCKED = "Invoice sent: items are locked so the invoice and the table always match.";
+const NO_ANSWER = "PayPal didn't answer, so this buyer's invoice may already exist. Click Send invoices to check, or start a New batch.";
 const CANCELLED = "This order is cancelled, so it can't be changed.";
 export const ORDER_GONE = "This order is no longer in your table.";
 
@@ -192,6 +193,7 @@ export function createApp(config, {
     if (!row) return [404, `No order row "${id}".`];
     const own = store.rows().filter((other) => sameBuyer(other, row));
     if (own.some((other) => other.invoiceId)) return [400, LOCKED];
+    if (own.some((other) => other.sendUnknown)) return [400, NO_ANSWER];
     if (!own.some((other) => other.orderStatus === "active") || row.orderStatus === "cancelled") return [400, CANCELLED];
     if (invoicer.isBusy()) return [409, SENDING];
     return null;

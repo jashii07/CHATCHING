@@ -16,6 +16,7 @@ const BUYERS_PER_PAGE = 6;
 
 const phone = window.matchMedia("(max-width: 640px)");
 const LOCKED_WORDS = "Invoice sent: items are locked so the invoice and the table always match.";
+const NO_ANSWER_WORDS = "PayPal didn't answer, so this buyer's invoice may already exist. Click Send invoices to check, or start a New batch.";
 const laptop = window.matchMedia("(min-width: 1024px)");
 
 const $ = (id) => document.getElementById(id);
@@ -391,7 +392,8 @@ function showSendButtons() {
   $("send-warning").hidden = paypalReady || count === 0;
   // Once invoices exist, reading again is refused: New batch is the way on.
   const invoiced = [...rowsById.values()].some((row) => row.invoiceId);
-  for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !invoiced;
+  const newBatchNeeded = invoiced || [...rowsById.values()].some((row) => row.sendUnknown); // reading is refused then too
+  for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !newBatchNeeded;
   $("refresh-status").hidden = !paypalReady || !invoiced;
   // A sent invoice is what a pickup scan looks for. On phones the sticky bar makes room for the button.
   for (const button of document.querySelectorAll("[data-pickup-scan]")) button.hidden = !invoiced;
@@ -546,7 +548,7 @@ function field(label, control) {
 
 function editCard(row, askSendAnyway = false) {
   const cancelled = row.orderStatus === "cancelled";
-  const invoiced = Boolean(row.invoiceId); // the invoice must keep matching what PayPal has
+  const invoiced = Boolean(row.invoiceId || row.sendUnknown); // the invoice must keep matching what PayPal has
   const card = el("section", `edit-card${row.unclear && !cancelled ? " is-unclear" : ""}${cancelled ? " is-cancelled" : ""}`);
   const item = menuItem(row.itemId);
   const title = el("div", "edit-title");
@@ -598,7 +600,7 @@ function editCard(row, askSendAnyway = false) {
 function addCard(data) {
   const active = data.rows.filter((row) => row.orderStatus === "active");
   const choices = menuItems.filter((option) => !active.some((row) => row.itemId === option.id));
-  if (data.cancelled || data.payerLink || active.some((row) => row.invoiceId) || !choices.length) return null;
+  if (data.cancelled || data.payerLink || active.some((row) => row.invoiceId || row.sendUnknown) || !choices.length) return null;
   const card = el("section", "edit-card add-card");
   const title = el("div", "edit-title");
   const name = el("span", "edit-name");
@@ -690,8 +692,9 @@ function renderDrawer() {
   if (data.collected) $("drawer-sub").append(" ", statusTag("Collected"));
   // Once the invoice is sent, the items are locked: said once, above them (the server refuses changes too).
   const locked = data.rows.some((row) => row.orderStatus === "active" && row.invoiceId);
+  const noAnswer = data.rows.some((row) => row.sendUnknown);
   const askOn = data.rows.find((row) => row.orderStatus === "active" && !row.invoiceId && row.earlierInvoice && !row.earlierInvoice.kept)?.id;
-  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : []), ...data.rows.map((row) => editCard(row, row.id === askOn)));
+  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : noAnswer ? [el("p", "hint locked-note", NO_ANSWER_WORDS)] : []), ...data.rows.map((row) => editCard(row, row.id === askOn)));
   const adding = addCard(data);
   if (adding) drawerItems.append(adding);
   const picked = collectedCard(data);

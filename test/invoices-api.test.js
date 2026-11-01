@@ -123,7 +123,7 @@ test("the server refuses one buyer that is unclear, cancelled or unknown (not on
 test("PayPal already has this invoice number (an earlier click that timed out) -> that invoice is reused, not doubled", async () => {
   const app = await start();
   const { batch } = await app.state();
-  const id = app.fake.add({ status: "UNPAID", detail: { invoice_number: `CHATCHING-${batch}-01`, currency_code: "MYR" }, amount: { currency_code: "MYR", value: "54.00" } });
+  const id = app.fake.add({ status: "UNPAID", detail: { invoice_number: `CHATCHING-${batch}-01`, currency_code: "MYR" }, items: [{ name: "Classic brownies (box of 6)", quantity: "3", unit_amount: { currency_code: "MYR", value: "18.00" } }], amount: { currency_code: "MYR", value: "54.00" } });
   const { body } = await app.send();
   assert.equal(rowsOf(body, "Lina")[0].invoiceId, id);
   assert.equal(app.fake.invoices.size, 7); // Lina's old one + 6 new

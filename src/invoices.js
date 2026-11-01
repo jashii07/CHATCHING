@@ -7,7 +7,7 @@
 //      finds that invoice instead of making a new one.
 // A send that fails after the draft was made keeps the draft's id, so the next click carries on with it.
 import { buyerGroups, groupByBuyer, mapPayPalStatus } from "./orders.js";
-import { invoiceNumber, PayPalError } from "./paypal.js";
+import { INVOICE_DIFFERS, invoiceNumber, PayPalError } from "./paypal.js";
 
 const key = (buyer) => String(buyer ?? "").trim().toLowerCase();
 const refuse = (status, message) => Object.assign(new Error(message), { status });
@@ -28,12 +28,20 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
       const number = saved?.invoiceNumber ?? invoiceNumber(batch, nn);
       const result = await paypal.invoiceBuyer({ buyer, rows, menu, number, invoiceId: saved?.invoiceId ?? null });
       if (store.batch() !== batch) throw new Error("the batch changed while invoicing"); // can't happen: routes wait
-      store.replaceMany(rows.map((row) => ({
+      store.replaceMany(rows.map(({ sendUnknown, ...row }) => ({
         ...row, invoiceId: result.invoiceId, invoiceNumber: result.invoiceNumber,
         payerLink: result.payerLink, invoiceStatus: mapPayPalStatus(result.status),
       })));
       return { sent: { buyer, invoiceNumber: result.invoiceNumber, reused: result.reused } };
     } catch (err) {
+      // PayPal holds this number for other items: never link it. The row says why, and the seller can act on it.
+      if (err.issue === INVOICE_DIFFERS) {
+        store.replaceMany(rows.map(({ sendUnknown, ...row }) => ({ ...row, unclear: true, reason: [row.reason, err.message].filter(Boolean).join(" ") })));
+        return { failed: err.message };
+      }
+      // No answer: the invoice may exist, under the number these rows would get. Their items stay as they are until
+      // the next send finds out, or the seller starts a New batch.
+      if (err.unknown && !err.invoiceId && !saved && store.batch() === batch) store.replaceMany(rows.map((row) => ({ ...row, sendUnknown: true })));
       // A draft exists at PayPal: remember it, so the next click sends it instead of making another.
       if (err.invoiceId && store.batch() === batch) {
         store.replaceMany(rows.map((row) => ({

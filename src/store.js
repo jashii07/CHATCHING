@@ -84,7 +84,7 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
     source: () => source,
     batch: () => batch,
     batches: () => batches,
-    hasInvoices: () => rows.some((row) => row.invoiceId),
+    hasInvoices: () => rows.some((row) => row.invoiceId || row.sendUnknown), // a send with no answer may have made one
     find: (id) => rows.find((row) => row.id === id) ?? null,
     // A page load: the visitor is still here, so the cleanup must not count their table as old.
     touch() {

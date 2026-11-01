@@ -275,3 +275,100 @@ test("#5 an order citing only the seller's messages gets the seller's words once
   assert.match(rows[0].reason, /only from the seller/);
   assert.doesNotMatch(rows[0].reason, /match who wrote/);
 });
+
+// ---- #6 A lost PayPal reply, then an edit ----
+
+// PayPal makes the draft, but its reply is lost (a timeout): the worst moment, because we don't know it exists.
+function losesReply() {
+  const state = { drop: false };
+  const wrapFetch = (f) => async (url, init) => {
+    const res = await f(url, init);
+    if (state.drop && new URL(url).pathname === "/v2/invoicing/invoices") {
+      state.drop = false;
+      throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    }
+    return res;
+  };
+  return { state, wrapFetch };
+}
+
+async function afterLostReply(lines = ["Lina: 2 classic brownies"]) {
+  const { state, wrapFetch } = losesReply();
+  const s = await start({ wrapFetch });
+  const c = client(s.base);
+  await readPlain(c, lines);
+  state.drop = true;
+  const first = (await c.post("/api/invoices", { buyer: "Lina" })).body;
+  assert.equal(first.failed.length, 1);
+  return { s, c, row: (await c.get("/api/state")).body.orders[0] };
+}
+
+test("#6 after a send times out, every route that changes the buyer's items refuses", async () => {
+  const { c, row } = await afterLostReply();
+  for (const reply of [await c.put(`/api/orders/${row.id}`, { itemId: "bahulu", qty: 3 }), await c.post(`/api/buyers/${row.id}/items`, { itemId: "cookies", qty: 1 }), await c.del(`/api/orders/${row.id}`), await c.post(`/api/buyers/${row.id}/cancel`)]) {
+    assert.equal(reply.status, 400);
+    assert.match(reply.body.error, /PayPal didn't answer/);
+  }
+  assert.ok((await c.post("/api/parse", { text: "Lina: 1 cookies", chatDate: CHAT_DATE, withoutAi: true })).body.notice, "a new read would change the invoice number");
+});
+
+test("#6 the retry finds the invoice, sends it once, and the lock lifts", async () => {
+  const { s, c, row } = await afterLostReply();
+  const retry = (await c.post("/api/invoices", { buyer: "Lina" })).body;
+  assert.equal(retry.sent.length, 1);
+  assert.equal(s.fake.invoices.size, 1);
+  assert.ok(!retry.orders[0].sendUnknown);
+  assert.equal(retry.orders[0].invoiceId, [...s.fake.invoices.keys()][0]);
+  assert.equal(retry.orders[0].id, row.id);
+});
+
+test("#6 New batch also ends the wait", async () => {
+  const { c } = await afterLostReply();
+  await c.post("/api/new-batch");
+  assert.equal((await readPlain(c, ["Lina: 2 classic brownies"])).orders.length, 1);
+});
+
+test("#6 a clear refusal from PayPal doesn't lock: we know nothing was made", async () => {
+  const s = await start();
+  const c = client(s.base);
+  const { orders } = await readPlain(c, ["Lina: 2 classic brownies"]);
+  s.fake.failNext("create", 422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INVALID", description: "No." }] });
+  assert.equal((await c.post("/api/invoices", {})).body.failed.length, 1);
+  assert.equal((await c.put(`/api/orders/${orders[0].id}`, { qty: 3 })).status, 200);
+});
+
+// PayPal already holds this invoice number, for 2 x Classic. The table says 3 x Bahulu: the SAME RM 36.00.
+async function numberHeldForOtherItems(item = { itemId: "bahulu", qty: 3 }) {
+  const s = await start();
+  const c = client(s.base);
+  const { batch, orders } = await readPlain(c, ["Lina: 2 classic brownies"]);
+  const number = `CHATCHING-${batch}-01`;
+  s.fake.add({
+    detail: { invoice_number: number, currency_code: "MYR", note: "Thank you for your order, Lina!" },
+    items: [{ name: "Classic brownies (box of 6)", quantity: "2", unit_amount: { currency_code: "MYR", value: "18.00" }, unit_of_measure: "QUANTITY" }],
+    amount: { currency_code: "MYR", value: "36.00" },
+  });
+  await c.put(`/api/orders/${orders[0].id}`, item);
+  return { s, c, id: orders[0].id };
+}
+
+test("#6 same total, other items: nothing is sent, and the row says why", async () => {
+  const { s, c } = await numberHeldForOtherItems();
+  const reply = (await c.post("/api/invoices", {})).body;
+  assert.equal(reply.sent.length, 0);
+  assert.equal([...s.fake.invoices.values()][0].status, "DRAFT", "the old draft must not go out");
+  assert.equal(reply.orders[0].unclear, true);
+  assert.equal(reply.orders[0].invoiceId, null, "not linked");
+  assert.match(reply.orders[0].reason, /PayPal already has this invoice number for different items: 2 x Classic brownies/);
+});
+
+test("#6 other total too: the same words, and the buyer is not stuck", async () => {
+  const { c, id } = await numberHeldForOtherItems({ itemId: "classic_brownies", qty: 3 });
+  const reply = (await c.post("/api/invoices", {})).body;
+  assert.equal(reply.orders[0].unclear, true);
+  assert.match(reply.orders[0].reason, /different items/);
+  assert.equal((await c.put(`/api/orders/${id}`, { qty: 2 })).status, 200, "the seller can change it back");
+  const again = (await c.post("/api/invoices", {})).body;
+  assert.equal(again.sent.length, 1);
+  assert.ok(again.orders[0].invoiceId);
+});

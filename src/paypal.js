@@ -8,14 +8,16 @@
 import { toSen, fromSen } from "./money.js";
 
 export const SANDBOX_BASE = "https://api-m.sandbox.paypal.com";
+export const INVOICE_DIFFERS = "INVOICE_DIFFERS"; // our own issue name: PayPal holds this number for other items
 export const NOT_CONFIGURED = "PayPal is not configured, so invoices can't be sent. Add the PayPal sandbox keys to .env (on Render: Environment settings) and restart the server.";
 const TOKEN_MARGIN_MS = 5 * 60 * 1000; // fetch a new token 5 minutes before the old one expires
 
 export class PayPalError extends Error {
-  constructor(message, { status = 502, issue = null, invoiceId = null } = {}) {
+  // unknown: PayPal may have done it anyway (no answer, or its own server error), so the caller can't assume not.
+  constructor(message, { status = 502, issue = null, invoiceId = null, unknown = false } = {}) {
     super(message);
     this.name = "PayPalError";
-    Object.assign(this, { status, issue, invoiceId });
+    Object.assign(this, { status, issue, invoiceId, unknown });
   }
 }
 
@@ -26,7 +28,7 @@ function refused(action, reply) {
   const issue = detail?.issue ?? body.name ?? body.error ?? null;
   const description = detail?.description ?? body.message ?? body.error_description ?? "";
   return new PayPalError(`PayPal could not ${action} (HTTP ${reply.status}${issue ? `, ${issue}` : ""})${description ? `: ${description}` : "."}`,
-    { status: 502, issue });
+    { status: 502, issue, unknown: reply.status >= 500 });
 }
 
 const sameMoney = (a, b) => {
@@ -39,6 +41,10 @@ const sameMoney = (a, b) => {
 
 // "CHATCHING-K3F9Q2ZA7L1X-07": the batch changes on every parse and New batch, nn is the buyer's place in
 // the batch. 25 characters, exactly PayPal's limit. PayPal itself refuses a repeat (the last guard).
+// An invoice's lines in a form that can be compared: quantity, name and unit price, whatever order they came in.
+const lines = (items) => (Array.isArray(items) ? items : []).map((item) => `${Number(item.quantity)} x ${item.name} at ${Number(item.unit_amount?.value).toFixed(2)}`).sort();
+const sameItems = (a, b) => JSON.stringify(lines(a)) === JSON.stringify(lines(b));
+
 export function invoiceNumber(batch, n) {
   if (!/^[A-Z0-9]{12}$/.test(String(batch))) throw new RangeError(`Bad batch id ${JSON.stringify(batch)}: use 12 capital letters or digits.`);
   if (!Number.isInteger(n) || n < 1 || n > 99) throw new RangeError(`Bad invoice number ${JSON.stringify(n)}: use 1 to 99.`);
@@ -103,9 +109,9 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
       res = await fetch(`${baseUrl}${path}`, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch (err) {
       if (err?.name === "TimeoutError" || err?.name === "AbortError") {
-        throw new PayPalError(`PayPal took too long to answer (over ${timeoutMs / 1000} s). Please try again.`, { status: 504 });
+        throw new PayPalError(`PayPal took too long to answer (over ${timeoutMs / 1000} s). Please try again.`, { status: 504, unknown: true });
       }
-      throw new PayPalError(`Can't reach PayPal (${err?.cause?.code ?? err?.message ?? "network error"}). Check the internet connection.`);
+      throw new PayPalError(`Can't reach PayPal (${err?.cause?.code ?? err?.message ?? "network error"}). Check the internet connection.`, { unknown: true });
     }
     if (raw) {
       const bytes = Buffer.from(await res.arrayBuffer());
@@ -223,6 +229,11 @@ export function createPayPal({ clientId, clientSecret, baseUrl = SANDBOX_BASE, f
         invoice = await findByNumber(number);
         if (!invoice) throw new PayPalError(`PayPal says invoice ${number} already exists, but it could not be found. Please try again later.`, { status: 409 });
         reused = true;
+        // The table may have changed since that invoice was made. The same total is not enough: the items must match.
+        if (!sameItems(invoice.items, body.items)) {
+          const held = (invoice.items ?? []).map((item) => `${Number(item.quantity)} x ${item.name}`).join(", ");
+          throw new PayPalError(`PayPal already has this invoice number for different items: ${held}. Change the order to match, or start a New batch.`, { status: 409, issue: INVOICE_DIFFERS });
+        }
       }
     }
 
