@@ -330,7 +330,8 @@ export function createApp(config, {
     visitor.readingStage = "reading";
     let rows;
     try {
-      const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (visitor.readingStage = stage) });
+      const validate = (orders) => readRows(store, orders, messages, chatDate);
+      const reply = await ai.parse({ text, chatDate, messages, menu, validate, onStage: (stage) => (visitor.readingStage = stage) });
       if (reply.notice) return res.json({ notice: reply.notice, readWithoutAi: true });
       rows = readRows(store, reply.orders, messages, chatDate);
     } catch (err) {

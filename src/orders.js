@@ -214,9 +214,12 @@ export function groupByBuyer(rows) {
   });
 }
 
+// The buyer's invoice was cancelled or refunded at PayPal: no money is coming, and nothing is to be made.
+export const cancelledAtPayPal = (group) => group.rows.some((row) => row.invoiceStatus === "Cancelled/Refunded");
+
 // For the pinned totals row: how many orders can be invoiced, and their total.
 export function totals(rows) {
-  const ready = groupByBuyer(rows).filter((group) => group.invoiceable);
+  const ready = groupByBuyer(rows).filter((group) => group.invoiceable && !cancelledAtPayPal(group));
   return { orders: ready.length, total: fromSen(ready.reduce((sum, group) => sum + toSen(group.total), 0)) };
 }
 

@@ -3,7 +3,7 @@
 // a prompt-injected or broken reply can be played without a real call. Every server gets a temporary folder.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
@@ -15,6 +15,7 @@ import { splitMessages } from "../src/dates.js";
 import { fallbackParse } from "../src/fallback-parse.js";
 import { toRows } from "../src/orders.js";
 import { highlight } from "../src/panel.js";
+import { RATE_LIMITS, createRateLimiter } from "../src/rate-limit.js";
 import { checkOrders } from "../src/validate.js";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id", PAYPAL_CLIENT_SECRET: "fake-secret", AI_MODE: "mock" };
@@ -371,4 +372,220 @@ test("#6 other total too: the same words, and the buyer is not stuck", async () 
   const again = (await c.post("/api/invoices", {})).body;
   assert.equal(again.sent.length, 1);
   assert.ok(again.orders[0].invoiceId);
+});
+
+// ---- #4 Huge prices ----
+
+const HUGE = "RM99999999999999"; // over the largest whole number JavaScript counts exactly, once in sen
+
+test("#4 a huge price is an amber 'can't read this price', and the other buyers are read", async () => {
+  const s = await start();
+  const c = client(s.base);
+  const reply = await c.post("/api/parse", { text: paste(["Lina: 2 classic brownies", `Arif: 1 classic brownies, is it ${HUGE}?`]), chatDate: CHAT_DATE, withoutAi: true });
+  assert.equal(reply.status, 200);
+  assert.equal(rowOf(reply.body, "Lina").unclear, false);
+  assert.equal(rowOf(reply.body, "Arif").unclear, true);
+  assert.match(rowOf(reply.body, "Arif").reason, /can't read this price/);
+});
+
+test("#4 the same through the AI path: the read isn't refused", async () => {
+  const orders = [order("Lina", [1], [{ itemId: "classic_brownies", qty: 2 }]), order("Arif", [2], [{ itemId: "classic_brownies", qty: 1 }], { mentionedPrices: [{ text: HUGE, itemId: null, msg: 2 }] })];
+  const s = await start({ ai: fakeAi(orders) });
+  const c = client(s.base);
+  const read = (await c.post("/api/parse", { text: paste(["Lina: 2 classic", `Arif: 1 classic, ${HUGE}?`]), chatDate: CHAT_DATE })).body;
+  assert.equal(read.notice, undefined);
+  assert.match(rowOf(read, "Arif").reason, /can't read this price/);
+});
+
+test("#4 a reply that fails our validation is never cached", async () => {
+  const cacheDir = mkdtempSync(join(tmpdir(), "chatching-review-"));
+  const reply = JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ orders: [] }) }] } }] });
+  const ai = createAi({ mode: "real", apiKey: "fake-key", cacheDir, usage: { left: () => 5, take() {}, useUp() {}, totalLeft: () => 5 }, fetch: async () => new Response(reply, { status: 200 }) });
+  await assert.rejects(ai.parse({ text: "Lina: hi", chatDate: CHAT_DATE, menu: MENU, validate: () => { throw new Error("bad reply"); } }), /bad reply/);
+  assert.deepEqual(readdirSync(cacheDir), []);
+  await ai.parse({ text: "Lina: hi", chatDate: CHAT_DATE, menu: MENU, validate: () => [] });
+  assert.equal(readdirSync(cacheDir).length, 1, "a good reply still is");
+});
+
+// ---- #7 Expected ----
+
+test("#7 Expected and the orders-ready count leave out an invoice cancelled or refunded at PayPal", async () => {
+  for (const status of ["CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED", "MARKED_AS_REFUNDED"]) {
+    let t = 1_000_000;
+    const s = await start({ now: () => t });
+    const c = client(s.base);
+    await readPlain(c, ["Lina: 2 classic brownies", "Arif: 1 cookies"]);
+    await c.post("/api/invoices", {});
+    s.fake.pay(rowOf((await c.get("/api/state")).body, "Lina").invoiceId, status);
+    t += 11_000;
+    const after2 = (await c.post("/api/invoices/refresh")).body;
+    assert.deepEqual([after2.summary.expected, after2.summary.ready], ["25.00", 1], status);
+    assert.deepEqual(after2.totals, { orders: 1, total: "25.00" }, status);
+  }
+});
+
+// ---- #8 The status cache ----
+
+test("#8 a failed PayPal check starts no cache: Check again really asks, and sees the payment", async () => {
+  let t = 1_000_000;
+  const s = await start({ now: () => t });
+  const c = client(s.base);
+  await readPlain(c, ["Lina: 2 classic brownies"]);
+  await c.post("/api/invoices", {});
+  const { invoiceId } = (await c.get("/api/state")).body.orders[0];
+  t += 11_000;
+  s.fake.pay(invoiceId, "PAID");
+  s.fake.failNext("get", 500, { name: "INTERNAL_SERVER_ERROR" });
+  assert.equal((await c.post("/api/pickup/check", { invoiceId })).body.state, "unknown");
+  t += 2_000;
+  assert.equal((await c.post("/api/pickup/check", { invoiceId })).body.state, "paid");
+});
+
+test("#8 PayPal still down on Check again: still 'couldn't check', never 'not paid'", async () => {
+  let t = 1_000_000;
+  const s = await start({ now: () => t });
+  const c = client(s.base);
+  await readPlain(c, ["Lina: 2 classic brownies"]);
+  await c.post("/api/invoices", {});
+  const { invoiceId } = (await c.get("/api/state")).body.orders[0];
+  t += 11_000;
+  s.fake.failNext("get", 500, {});
+  s.fake.failNext("get", 500, {});
+  await c.post("/api/pickup/check", { invoiceId });
+  t += 2_000;
+  assert.equal((await c.post("/api/pickup/check", { invoiceId })).body.state, "unknown");
+});
+
+test("#8 a good check still starts the cache", async () => {
+  let t = 1_000_000;
+  const s = await start({ now: () => t });
+  const c = client(s.base);
+  await readPlain(c, ["Lina: 2 classic brownies"]);
+  await c.post("/api/invoices", {});
+  t += 11_000;
+  await c.post("/api/invoices/refresh");
+  const calls = s.fake.count("get");
+  t += 2_000;
+  assert.equal((await c.post("/api/invoices/refresh")).body.cached, true);
+  assert.equal(s.fake.count("get"), calls);
+});
+
+// ---- #9 and #10 Limits ----
+
+const names = (count) => Array.from({ length: count }, (_, i) => `Buyer${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + Math.floor(i / 26))}`);
+const buyers = (count) => names(count).map((name) => `${name}: 1 classic brownies`);
+
+test("#9 the limit counts buyers sent, not requests: one Send-all can't spend past it", async () => {
+  const limiter = createRateLimiter({ limits: { ...RATE_LIMITS, invoices: { limit: 3, windowMs: 600_000 } } });
+  const s = await start({ limiter });
+  const c = client(s.base);
+  await readPlain(c, buyers(5));
+  const reply = (await c.post("/api/invoices", {})).body;
+  assert.equal(reply.sent.length, 3);
+  assert.equal(s.fake.invoices.size, 3);
+  assert.equal(reply.rateLimited, true);
+  assert.match(reply.notice, /going a bit fast/);
+  assert.equal(reply.orders.filter((row) => row.invoiceId).length, 3, "the three that went out show in the table");
+});
+
+test("#9 a request that sends nothing costs nothing", async () => {
+  const limiter = createRateLimiter({ limits: { ...RATE_LIMITS, invoices: { limit: 1, windowMs: 600_000 } } });
+  const s = await start({ limiter });
+  const c = client(s.base);
+  await readPlain(c, buyers(1));
+  await c.post("/api/invoices", {});
+  for (let i = 0; i < 3; i++) assert.equal((await c.post("/api/invoices", {})).body.rateLimited, undefined);
+});
+
+test("#9 one full batch fits the limit", async () => {
+  assert.ok(RATE_LIMITS.invoices.limit >= 99);
+});
+
+test("#10 buyer 100 gets clear words, the first 99 go out, and PayPal is never asked about the rest", async () => {
+  const s = await start();
+  const c = client(s.base);
+  await readPlain(c, buyers(101));
+  const reply = (await c.post("/api/invoices", {})).body;
+  assert.equal(reply.sent.length, 99);
+  assert.deepEqual(reply.failed.map((one) => one.reason), Array(2).fill("A batch holds up to 99 buyers. Send these, then start a New batch."));
+  assert.equal(s.fake.invoices.size, 99);
+});
+
+test("#10 the page's own way, one buyer per request, gets the same words", async () => {
+  const s = await start();
+  const c = client(s.base);
+  await readPlain(c, buyers(100));
+  const reply = await c.post("/api/invoices", { buyer: names(100)[99] });
+  assert.equal(reply.status, 200);
+  assert.deepEqual(reply.body.failed.map((one) => one.reason), ["A batch holds up to 99 buyers. Send these, then start a New batch."]);
+  assert.equal(s.fake.invoices.size, 0);
+});
+
+// ---- #11 A bad AI date ----
+
+const BAD_DATE = [order("Lina", [1], [{ itemId: "classic_brownies", qty: 2 }], { deliveryDate: "next saturday", fulfilment: "delivery" })];
+
+test("#11 a bad AI date is 'No date yet' and unclear, in the table and the kitchen list", async () => {
+  const s = await start({ ai: fakeAi(BAD_DATE) });
+  const c = client(s.base);
+  const read = (await c.post("/api/parse", { text: paste(["Lina: 2 classic brownies next saturday"]), chatDate: CHAT_DATE })).body;
+  assert.equal(read.orders[0].deliveryDate, null);
+  assert.equal(read.orders[0].unclear, true);
+  assert.match(read.orders[0].reason, /not a real date/);
+  assert.equal(read.kitchen.days[0].label, "No date yet");
+  assert.doesNotMatch(read.kitchen.text, /NaN|undefined/);
+});
+
+test("#11 after an edit the Copy message has no date at all, not 'undefined NaN'", async () => {
+  const s = await start({ ai: fakeAi(BAD_DATE) });
+  const c = client(s.base);
+  const read = (await c.post("/api/parse", { text: paste(["Lina: 2 classic brownies next saturday"]), chatDate: CHAT_DATE })).body;
+  await c.put(`/api/orders/${read.orders[0].id}`, { qty: 3 });
+  const sent = (await c.post("/api/invoices", { buyer: "Lina" })).body;
+  assert.doesNotMatch(sent.texts[0].message, /NaN|undefined/);
+});
+
+// ---- #12, #15, #16 ----
+
+test("#12 the payment method must be a string from the list", async () => {
+  const s = await start();
+  const c = client(s.base);
+  await readPlain(c, ["Lina: 2 classic brownies"]);
+  await c.post("/api/invoices", {});
+  const { invoiceId } = (await c.get("/api/state")).body.orders[0];
+  for (const method of [["CASH"], [["CASH"]], { toString: "x" }, 1, null, true, "__proto__", "cash"]) {
+    assert.equal((await c.post(`/api/invoices/${invoiceId}/payment`, { method })).status, 400, JSON.stringify(method));
+  }
+  assert.equal(s.fake.count("payment"), 0);
+  assert.ok((await c.post(`/api/invoices/${invoiceId}/payment`, { method: "CASH" })).body.recorded);
+});
+
+test("#15 a paid buyer gets no 'Pay here' message", async () => {
+  const s = await start();
+  const c = client(s.base);
+  await readPlain(c, ["Lina: 2 classic brownies"]);
+  await c.post("/api/invoices", {});
+  const sent = (await c.get("/api/state")).body;
+  assert.match(sent.texts[0].message, /Pay here/, "still offered while unpaid");
+  await c.post(`/api/invoices/${sent.orders[0].invoiceId}/payment`, { method: "CASH" });
+  assert.equal((await c.get("/api/state")).body.texts[0].message, null);
+});
+
+test("#16 changing an item to one the buyer already has is refused", async () => {
+  const s = await start();
+  const c = client(s.base);
+  const { orders } = await readPlain(c, ["Lina: 2 classic brownies, 1 cookies"]);
+  const reply = await c.put(`/api/orders/${orders[1].id}`, { itemId: "classic_brownies" });
+  assert.equal(reply.status, 400);
+  assert.match(reply.body.error, /change its quantity instead/);
+  assert.equal(rowOf((await c.get("/api/state")).body, "Lina").itemId, "classic_brownies");
+  assert.equal((await c.get("/api/state")).body.orders[1].itemId, "cookies");
+});
+
+test("#16 a row saving its own item again is not a duplicate, and another buyer's item doesn't count", async () => {
+  const s = await start();
+  const c = client(s.base);
+  const { orders } = await readPlain(c, ["Lina: 2 classic brownies", "Arif: 1 cookies"]);
+  assert.equal((await c.put(`/api/orders/${orders[0].id}`, { itemId: "classic_brownies" })).status, 200);
+  assert.equal((await c.put(`/api/orders/${orders[1].id}`, { itemId: "classic_brownies" })).status, 200);
 });

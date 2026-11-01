@@ -53,6 +53,7 @@ export function checkMentionedPrices(mentions, rows, menu) {
     const said = readPrice(text, menu.currency);
     let reason = "";
     if (said == null) reason = `buyer mentioned ${JSON.stringify(text || String(mention?.text ?? ""))}, which the app can't read as a price.`;
+    else if (!Number.isSafeInteger(said)) reason = "can't read this price."; // too big to count exactly, or to show
     else if (!candidates.length) reason = `buyer mentioned ${money(said)}, but this order has no menu price to compare.`;
     else if (!candidates.includes(said)) {
       const nearest = candidates.reduce((best, sen) => (Math.abs(sen - said) < Math.abs(best - said) ? sen : best));

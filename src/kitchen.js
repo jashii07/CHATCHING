@@ -2,7 +2,7 @@
 // Counts active, clear orders (invoiced, paid or not yet: the seller still has to make them).
 // Left out: cancelled orders, and buyers whose PayPal invoice was cancelled or refunded.
 // An order that needs a check is not counted, but shown under its date as "+1 order still to check".
-import { groupByBuyer } from "./orders.js";
+import { cancelledAtPayPal, groupByBuyer } from "./orders.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -25,7 +25,7 @@ export function kitchenList(rows, menu) {
     return days.get(date);
   };
   groupByBuyer(rows).forEach((group, i) => {
-    if (group.rows.some((row) => row.invoiceStatus === "Cancelled/Refunded")) return;
+    if (cancelledAtPayPal(group)) return;
     for (const row of group.rows) {
       const entry = day(row.deliveryDate ?? null);
       // One order = one buyer: if any of their rows needs a check, none of them is counted yet.

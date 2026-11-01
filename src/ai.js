@@ -93,7 +93,7 @@ export function createAi({
 }) {
   const cacheFile = (key) => join(cacheDir, `parse-${key}.json`);
 
-  async function realParse({ text, chatDate, menu, onStage }) {
+  async function realParse({ text, chatDate, menu, onStage, validate }) {
     const key = parseKey(text, chatDate);
     if (existsSync(cacheFile(key))) return { orders: mockParse(cacheFile(key)), from: "cache" };
     if (!apiKey) return { notice: NO_KEY };
@@ -141,6 +141,7 @@ export function createAi({
           break;
         }
         const orders = replyToOrders(reply.text); // throws on a broken reply: nothing is cached then
+        validate(orders); // so does one our own checks can't handle: the same chats get a fresh read next time
         mkdirSync(cacheDir, { recursive: true });
         const tmp = `${cacheFile(key)}.tmp`;
         writeFileSync(tmp, reply.text);
@@ -156,12 +157,13 @@ export function createAi({
 
   return {
     // The demo reply and cached chats come first, so they still work when the counter is at 0.
-    async parse({ text, chatDate, menu, onStage = () => {} }) {
+    // validate(orders): the caller's checks, run before a real reply is cached. It throws to refuse the reply.
+    async parse({ text, chatDate, menu, onStage = () => {}, validate = () => {} }) {
       if (mode !== "mock" && mode !== "real") return { notice: NOT_BUILT[mode] ?? MOCK_UNKNOWN };
       const file = replies.get(parseKey(text, chatDate));
       if (file) return { orders: mockParse(file), from: "saved" };
       if (mode === "mock") return { notice: MOCK_UNKNOWN };
-      return realParse({ text, chatDate, menu, onStage });
+      return realParse({ text, chatDate, menu, onStage, validate });
     },
     callsLeft: () => usage.totalLeft(),
   };
