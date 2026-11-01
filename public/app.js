@@ -1003,6 +1003,15 @@ async function saveField(control) {
     $(`edit-${id}-${name}`)?.focus();
     return;
   }
+  // The same goes for a second row of one item: the server refuses it too, with these words.
+  const twin = name === "itemId" && [...rowsById.values()].find((row) => row.id !== id && row.orderStatus === "active" && row.itemId === value
+    && String(row.buyer).trim().toLowerCase() === String(rowsById.get(id)?.buyer).trim().toLowerCase());
+  if (twin) {
+    showError(`That change was not saved (${twin.buyer} already has ${twin.itemName}: change its quantity instead.).`, "drawer-error");
+    renderDrawer();
+    $(`edit-${id}-${name}`)?.focus();
+    return;
+  }
   await putRow(id, { [name]: value });
   $(`edit-${id}-${name}`)?.focus();
 }

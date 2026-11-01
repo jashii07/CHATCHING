@@ -39,11 +39,11 @@ function sentLink(rows) {
   return row && row.invoiceStatus !== "Cancelled/Refunded" ? row : null;
 }
 
-// One buyer's rows -> the payment message for their sent invoice, or null.
+// One buyer's rows -> the payment message for their sent invoice, or null. Nobody is asked to pay twice.
 export function paymentMessage(rows, menu) {
   const active = activeOf(rows);
   const sent = sentLink(active);
-  if (!sent || !active.every((row) => row.lineTotal)) return null;
+  if (!sent || sent.invoiceStatus.startsWith("Paid") || !active.every((row) => row.lineTotal)) return null;
   const lines = active.map((row) => `${row.qty} x ${shortName(itemOf(row, menu)?.name ?? row.itemName)} (${money(row.lineTotal, menu)})`);
   const total = fromSen(active.reduce((sum, row) => sum + toSen(row.lineTotal), 0));
   const when = [active[0].fulfilment, list(days(active))].filter(Boolean).join(" ");

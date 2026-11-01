@@ -214,6 +214,10 @@ export function createApp(config, {
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
     const { keepMenuPrice, ...fields } = changes;
+    if (fields.itemId !== undefined && fields.itemId !== row.itemId) {
+      const twin = store.rows().find((other) => other.id !== row.id && sameBuyer(other, row) && other.orderStatus === "active" && other.itemId === fields.itemId);
+      if (twin) return res.status(400).json({ error: `${row.buyer} already has ${twin.itemName}: change its quantity instead.` });
+    }
     const next = { ...row, ...fields };
     if (keepMenuPrice) {
       if (!row.priceCheck || row.priceCheck.kept) return res.status(400).json({ error: "This item has no price to check." });

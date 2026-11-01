@@ -53,6 +53,7 @@ function wrongAuthor(order, own, menu) {
 // One order -> the list of problems (plain sentences) + its message numbers that really exist.
 function problemsOf(order, messages, menu) {
   const problems = [];
+  let badDate = false;
   const asked = Array.isArray(order.sourceMsgs) ? order.sourceMsgs : [];
   const real = [...new Set(asked.filter((n) => Number.isInteger(n) && n >= 1 && n <= messages.length))];
   const missing = asked.filter((n) => !real.includes(n));
@@ -73,7 +74,10 @@ function problemsOf(order, messages, menu) {
   if (order.deliveryDate != null) {
     const day = dayOf(order.deliveryDate);
     const dated = own.filter((msg) => msg.date).map((msg) => ({ n: msg.n, day: dayOf(msg.date) }));
-    if (day === null) problems.push(`The delivery date ${JSON.stringify(order.deliveryDate)} is not a real date.`);
+    if (day === null) {
+      problems.push(`The delivery date ${JSON.stringify(order.deliveryDate)} is not a real date.`);
+      badDate = true;
+    }
     else if (dated.length) {
       const first = dated.reduce((a, b) => (b.day < a.day ? b : a));
       const last = dated.reduce((a, b) => (b.day > a.day ? b : a));
@@ -88,7 +92,7 @@ function problemsOf(order, messages, menu) {
   if (onlyFromSeller(order, messages, menu)) problems.push("This order came only from the seller's messages.");
   const author = wrongAuthor(order, own, menu);
   if (author) problems.push(author);
-  return { problems, real, reopen: Boolean(author) };
+  return { problems, real, reopen: Boolean(author), badDate };
 }
 
 // The AI's orders + the pasted messages -> the same orders, checked. A clear order comes back unchanged
@@ -100,8 +104,9 @@ export function checkOrders(aiOrders, messages, menu = null) {
   const removed = new Set(sellerOrders(aiOrders, messages, menu));
   return aiOrders.filter((order) => !removed.has(order)).map((order) => {
     if (!order || typeof order !== "object" || Array.isArray(order)) return order;
-    const { problems, real, reopen } = problemsOf(order, messages, menu);
-    const checked = { ...order };
+    const { problems, real, reopen, badDate } = problemsOf(order, messages, menu);
+    // A date that isn't one never reaches a screen or a message: it is "No date yet", and the reason says why.
+    const checked = { ...order, ...(badDate && { deliveryDate: null }) };
     if (Array.isArray(order.mentionedPrices)) {
       checked.mentionedPrices = order.mentionedPrices.filter((p) => !isSellerMessage(messages[p?.msg - 1], menu));
     }
