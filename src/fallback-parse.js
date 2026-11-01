@@ -19,7 +19,7 @@ const quote = (text) => {
 };
 
 // What a message does, read on its cleaned words ("don't" is "don t"). The strongest one found is reported.
-const CANCEL = /\b(?:cancel(?:led)?|batal|tak jadi|no need|(?:don t|do not) want|never ?mind|not needed)\b/;
+const CANCEL = /\b(?:cancel(?:l?ed|l?ing)?|batal|tak jadi|no need|(?:don t|dont|do not) want|never ?mind|not needed|forget (?:it|about it))\b/;
 const SAME = /\b(?:same (?:as|like|for me|here|order)|sama (?:macam|mcm|dengan)|me too)\b/;
 const CHANGE = /\b(?:make it|change[ds]?|instead|actually|wait|add(?:ed)?|also|another|more|extra|skip|remove|minus|less|swap|replace|tukar|tambah|update)\b/;
 // Also used by src/messages.js: an unclear buyer who wrote "cancel" is asked whether they still want it.
@@ -31,6 +31,12 @@ const DELIVERY = /\b(?:deliver(?:y|ed)?|hantar|drop off)\b/;
 const TIME = /\b\d{1,2}[:.]\d{2}(?:\s*[ap]\.?m\b\.?)?|\b\d{1,2}\s*[ap]\.?m\b\.?/gi;
 const DATE_NUMBERS = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g;
 const SIZE = /\b\d+(?:\.\d+)?\s*-?\s*(?:inch(?:es)?|cm)\b|\b\d+"/gi;
+// A date with a month's name, people, and a place: their numbers are never quantities ("for 31 Oct", "6 pax", "block 5").
+const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|mac|apr(?:il)?|may|mei|june?|july?|julai|aug(?:ust)?|ogos|sept?(?:ember)?|oct(?:ober)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?|dis(?:ember)?";
+const DAY = String.raw`\d{1,2}(?:st|nd|rd|th)?`;
+const MONTH_DATES = new RegExp(String.raw`\b${DAY}\s+(?:of\s+)?(?:${MONTHS})\b|\b(?:${MONTHS})\.?\s+${DAY}\b`, "gi");
+const PEOPLE = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*(?:people|persons?|pax|ppl|guests?|orang)\b/gi;
+const PLACES = /\b(?:block|blk|lot|room|unit|no|house|floor|level|table|apt|apartment|suite|flat|jalan|jln|lorong|lrg|taman)\.?\s*\d+[a-z]?\b/gi;
 const UNITS = ["box", "boxes", "jar", "jars", "pack", "packs", "packet", "packets", "pcs", "pc", "piece", "pieces", "tub", "tubs", "tray", "trays", "set", "sets", "tin", "tins", "kotak", "bekas", "balang", "biji"];
 const BOX_OF = new RegExp(`\\b(${UNITS.join("|")})\\s+of\\s+\\d+\\b`, "gi");
 const NUMBER_WORDS = {
@@ -47,29 +53,40 @@ function pricePattern(menu) {
   return money ? new RegExp(`(?:${money})\\s*\\d+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?\\s*(?:${money})\\b`, "gi") : null;
 }
 
-// The quantities in a phrase: digits ("2", "2x", "x2"; 4+ digits are phone numbers, not quantities),
-// number words ("two", "dua"), and "a"/"an" right before a unit or an item ("a jar of cookies").
-function quantities(words, itemStarts) {
+// The numbers in a phrase: digits ("2", "2x", "x2"; 4+ digits are phone numbers, not quantities), number
+// words ("two", "dua"), and "a"/"an" right before a unit or an item ("a jar of cookies").
+// -> { numbers, quantities }. A number counts as a quantity only next to an item name, a unit or "x": a lone
+// number anywhere else ("classic brownies for 5") is not a guess we make. Two different numbers stay two, so
+// the phrase stays unclear ("2 or 3 classic brownies").
+function readNumbers(words, itemStarts, itemWords) {
   const found = [];
   const list = words.replace(/\b(\d+)x\b/g, "$1").replace(/\bx(\d+)\b/g, "$1").split(" ");
+  const anchor = (word) => word === "x" || UNITS.includes(word) || itemWords.has(word);
+  const afterFillers = (i) => {
+    let next = i + 1;
+    while (list[next] === "of" || list[next] === "the") next++;
+    return list[next];
+  };
+  const nearAnchor = (i) => anchor(list[i - 1]) || anchor(afterFillers(i));
   list.forEach((word, i) => {
-    if (/^\d{1,3}$/.test(word)) found.push(Number(word));
-    else if (Object.hasOwn(NUMBER_WORDS, word)) found.push(NUMBER_WORDS[word]);
-    else if ((word === "a" || word === "an") && (UNITS.includes(list[i + 1]) || itemStarts.has(list[i + 1]))) found.push(1);
+    if (/^\d{1,3}$/.test(word)) found.push({ n: Number(word), near: nearAnchor(i) });
+    else if (Object.hasOwn(NUMBER_WORDS, word)) found.push({ n: NUMBER_WORDS[word], near: nearAnchor(i) });
+    else if ((word === "a" || word === "an") && (UNITS.includes(list[i + 1]) || itemStarts.has(list[i + 1]))) found.push({ n: 1, near: true });
   });
-  return [...new Set(found)];
+  const numbers = [...new Set(found.map(({ n }) => n))];
+  return { numbers, quantities: numbers.length === 1 && !found.some(({ near }) => near) ? [] : numbers };
 }
 
 // One phrase -> { line, price, problem, ambiguous }: at most one of each. line = { itemId, qty } (qty may be
 // null); price = the text of a price the buyer wrote; ambiguous = the menu's reason ("Which brownies...?").
-function readPhrase(raw, menu, prices, itemStarts) {
+function readPhrase(raw, menu, prices, itemStarts, itemWords) {
   const out = { line: null, price: null, problem: "", ambiguous: "" };
   let text = raw;
   if (prices) text = text.replace(prices, (match) => ((out.price ??= match.trim()), " "));
-  text = text.replace(TIME, " ").replace(DATE_NUMBERS, " ").replace(SIZE, " ").replace(BOX_OF, "$1");
+  text = text.replace(TIME, " ").replace(DATE_NUMBERS, " ").replace(MONTH_DATES, " ").replace(PEOPLE, " ").replace(PLACES, " ").replace(SIZE, " ").replace(BOX_OF, "$1");
   const words = cleanWords(text);
   if (!words) return out;
-  const qty = quantities(words, itemStarts);
+  const { numbers, quantities: qty } = readNumbers(words, itemStarts, itemWords);
   const match = matchMenuItem(words, menu);
   const ambiguous = (menu.ambiguous ?? []).find((a) => a.reason === match.reason);
   if (out.price) out.price = { text: out.price, itemId: match.itemId ?? null }; // about this phrase's item, if any
@@ -89,14 +106,14 @@ function readPhrase(raw, menu, prices, itemStarts) {
     out.ambiguous = ambiguous.reason.charAt(0).toLowerCase() + ambiguous.reason.slice(1);
   } else if (match.reason.startsWith("More than one menu item")) {
     out.problem = `${quote(raw)} names more than one menu item`;
-  } else if (qty.length) {
+  } else if (numbers.length) {
     out.problem = `${quote(raw)} has a number but no menu item`;
   }
   return out;
 }
 
 // One message -> what it says: sender, order lines, prices, problems, days, pickup/delivery, change words.
-function readMessage(msg, menu, prices, itemStarts) {
+function readMessage(msg, menu, prices, itemStarts, itemWords) {
   const text = String(msg.text ?? "");
   // A name has letters, no digits and at most 5 words.
   const m = text.match(SENDER);
@@ -108,7 +125,7 @@ function readMessage(msg, menu, prices, itemStarts) {
   const read = { n: msg.n, sender: named ? name : "", lines: [], prices: [], problems: [], ambiguous: [], dates: [], fulfilment: [] };
   for (const phrase of body.split(PHRASE_BREAK)) {
     if (!phrase?.trim()) continue;
-    const { line, price, problem, ambiguous } = readPhrase(phrase, menu, prices, itemStarts);
+    const { line, price, problem, ambiguous } = readPhrase(phrase, menu, prices, itemStarts, itemWords);
     if (line) read.lines.push(line);
     if (price) read.prices.push({ ...price, msg: msg.n });
     if (problem) read.problems.push(problem);
@@ -181,15 +198,14 @@ function buildOrder(buyer, reads) {
 export function fallbackParse(messages, menu) {
   if (!Array.isArray(messages)) throw new TypeError("messages must be an array");
   const prices = pricePattern(menu);
-  const itemStarts = new Set([
-    ...menu.items.flatMap((item) => item.aliases),
-    ...(menu.ambiguous ?? []).flatMap((a) => a.words),
-  ].map((alias) => cleanWords(alias).split(" ")[0]).filter(Boolean));
+  const itemNames = [...menu.items.flatMap((item) => item.aliases), ...(menu.ambiguous ?? []).flatMap((a) => a.words)].map(cleanWords);
+  const itemStarts = new Set(itemNames.map((alias) => alias.split(" ")[0]).filter(Boolean));
+  const itemWords = new Set(itemNames.flatMap((alias) => alias.split(" ")).filter(Boolean));
 
   const buyers = new Map();
   for (const msg of messages) {
     if (isSellerMessage(msg, menu)) continue; // the seller's replies are never a buyer's order
-    const read = readMessage(msg, menu, prices, itemStarts);
+    const read = readMessage(msg, menu, prices, itemStarts, itemWords);
     if (!read.sender && !read.orderLike) continue;
     const key = read.sender.toLowerCase();
     if (!buyers.has(key)) buyers.set(key, { buyer: read.sender, reads: [] });

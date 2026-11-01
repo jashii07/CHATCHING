@@ -3,7 +3,7 @@
 // a prompt-injected or broken reply can be played without a real call. Every server gets a temporary folder.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
@@ -11,6 +11,11 @@ import { createApp } from "../src/app.js";
 import { createAi } from "../src/ai.js";
 import { createPayPal } from "../src/paypal.js";
 import { fakePayPal } from "../scripts/fake-paypal.mjs";
+import { splitMessages } from "../src/dates.js";
+import { fallbackParse } from "../src/fallback-parse.js";
+import { toRows } from "../src/orders.js";
+import { highlight } from "../src/panel.js";
+import { checkOrders } from "../src/validate.js";
 
 const FAKE_KEYS = { PAYPAL_CLIENT_ID: "fake-client-id", PAYPAL_CLIENT_SECRET: "fake-secret", AI_MODE: "mock" };
 const noUsage = { left: () => 0, take() {}, useUp() {}, totalLeft: () => 40 };
@@ -145,4 +150,67 @@ test("#1 Send anyway with nothing to clear is refused", async () => {
   const c = client(s.base);
   const state = await readPlain(c, ["Lina: 2 classic brownies"]);
   assert.equal((await c.post(`/api/buyers/${state.orders[0].id}/send-anyway`)).status, 400);
+});
+
+// ---- #2 Read without AI: careful, never confidently wrong ----
+
+const MENU = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8"));
+function reader(lines) {
+  const messages = splitMessages(paste(lines), CHAT_DATE);
+  return toRows(checkOrders(fallbackParse(messages, MENU), messages, MENU), MENU);
+}
+const isClear = (rows) => rows.length > 0 && rows.every((row) => !row.unclear);
+
+for (const words of ["classic brownies for 31 Oct pls", "classic brownies on Oct 31", "classic brownies 31st October", "classic brownies 31/10", "classic brownies for 6 people", "classic brownies for 6 pax",
+  "classic brownies to block 5", "classic brownies lot 15", "classic brownies room 3", "block 5 classic brownies", "classic brownies at 3pm", "classic brownies for 5"]) {
+  test(`#2 no quantity in: "${words}" -> unclear, never a guess`, () => {
+    const rows = reader([`Lina: ${words}`]);
+    assert.equal(isClear(rows), false, `read as ${rows[0].qty} x ${rows[0].itemName}`);
+    assert.ok(rows.every((row) => row.qty == null), `qty ${rows[0].qty}`);
+  });
+}
+
+for (const [words, qty] of [["2 classic brownies", 2], ["classic brownies x2", 2], ["classic brownies x 3", 3], ["2x classic", 2], ["classic 2", 2], ["3 boxes of classic brownies", 3], ["4 pcs classic", 4],
+  ["two classic brownies", 2], ["2 of the classic brownies", 2], ["2 classic brownies for 6 people", 2], ["2 classic brownies on 31 Oct", 2], ["3 classic brownies to block 5", 3], ["2 classic brownies at 3pm", 2]]) {
+  test(`#2 a real quantity still reads: "${words}" -> ${qty}`, () => {
+    const rows = reader([`Lina: ${words}`]);
+    assert.ok(isClear(rows), rows[0].reason);
+    assert.equal(rows[0].qty, qty);
+  });
+}
+
+test("#2 two numbers that could both be the quantity stay unclear", () => {
+  assert.equal(isClear(reader(["Lina: 2 or 3 classic brownies"])), false);
+});
+
+for (const word of ["sorry, it's canceled", "my order is cancelled", "i am cancelling this order", "cancel it", "forget it", "never mind", "i don't want it"]) {
+  test(`#2 "${word}" after an order is never a clear order`, () => {
+    const rows = reader(["Lina: 2 classic brownies", `Lina: ${word}`]);
+    assert.equal(isClear(rows), false);
+    assert.match(rows[0].reason, /may have cancelled/);
+  });
+}
+
+test("#2 the buyer panel marks the new cancel spellings too", () => {
+  const marks = (text) => highlight(text, { menu: MENU }).filter((part) => part.mark === "change").map((part) => part.text);
+  assert.deepEqual(marks("sorry canceled"), ["canceled"]);
+  assert.deepEqual(marks("i am cancelling"), ["cancelling"]);
+});
+
+test("#2 fuzz: a random number in a place that is never a quantity never becomes one", () => {
+  let seed = 20261101;
+  const rnd = (n) => (seed = (seed * 1664525 + 1013904223) >>> 0) % n;
+  const pick = (list) => list[rnd(list.length)];
+  const PLACES = [(n) => `for ${n} ${pick(["Oct", "oct", "November", "Dec"])}`, (n) => `on ${pick(["Oct", "January", "feb"])} ${n}`, (n) => `on ${n}/${1 + rnd(12)}`, (n) => `for ${n} ${pick(["people", "pax", "persons", "guests"])}`,
+    (n) => `to ${pick(["block", "blk", "lot", "room", "unit", "house", "level"])} ${n}`, (n) => `at ${1 + (n % 12)}${pick(["pm", "am", ":30", ".15"])}`];
+  const ITEMS = ["classic brownies", "cheese brownies", "cookies", "bahulu", "burnt cheesecake"];
+  for (let i = 0; i < 2000; i++) {
+    const n = 1 + rnd(31);
+    const place = pick(PLACES)(n);
+    const item = pick(ITEMS);
+    const alone = reader([`Lina: ${pick([`${item} ${place}`, `${place} ${item}`])}`]);
+    assert.equal(isClear(alone), false, `"${item}" + "${place}" read as ${alone[0].qty}`);
+    const withQty = reader([`Lina: 2 ${item} ${place}`]);
+    assert.ok(isClear(withQty) && withQty[0].qty === 2, `"2 ${item} ${place}": qty ${withQty[0].qty}, ${withQty[0].reason}`);
+  }
 });
