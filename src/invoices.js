@@ -12,19 +12,23 @@ import { INVOICE_DIFFERS, invoiceNumber, PayPalError } from "./paypal.js";
 const key = (buyer) => String(buyer ?? "").trim().toLowerCase();
 const refuse = (status, message) => Object.assign(new Error(message), { status });
 
+// spend(): asked just before each buyer goes to PayPal, so the rate limit counts buyers sent, not requests.
+// -> null to go ahead, or how many ms until the next one is allowed.
 export function createInvoicer({ store, paypal, menu, log = console.log }) {
   const busy = new Set(); // buyers whose invoice is being made right now
 
   // One buyer: -> { sent } or { skipped } or { failed }. Never throws for PayPal problems.
-  async function invoiceOne(buyer, nn) {
+  async function invoiceOne(buyer, nn, spend) {
     const k = key(buyer);
     if (busy.has(k)) return { skipped: "Being invoiced right now." };
+    if (store.rows().some((row) => row.orderStatus === "active" && key(row.buyer) === k && row.invoiceId && row.invoiceStatus !== "Draft")) return { skipped: "Already invoiced." };
+    const waitMs = spend();
+    if (waitMs !== null) return { limited: waitMs };
     busy.add(k);
     const batch = store.batch();
     const rows = store.rows().filter((row) => row.orderStatus === "active" && key(row.buyer) === k);
     const saved = rows.find((row) => row.invoiceId);
     try {
-      if (saved && saved.invoiceStatus !== "Draft") return { skipped: "Already invoiced." };
       const number = saved?.invoiceNumber ?? invoiceNumber(batch, nn);
       const result = await paypal.invoiceBuyer({ buyer, rows, menu, number, invoiceId: saved?.invoiceId ?? null });
       if (store.batch() !== batch) throw new Error("the batch changed while invoicing"); // can't happen: routes wait
@@ -59,7 +63,7 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
 
   // All clear buyers (or just `buyer`) -> { sent: [...], skipped: [...], failed: [...] }, in table order.
   // A single buyer that can't be invoiced is refused with a 400/404 error instead.
-  async function sendInvoices({ buyer } = {}) {
+  async function sendInvoices({ buyer, spend = () => null } = {}) {
     const rows = store.rows();
     const order = buyerGroups(rows).map((group) => key(group.buyer)); // nn = the buyer's place in the table
     let groups = groupByBuyer(rows);
@@ -77,7 +81,11 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
         result.skipped.push({ buyer: group.buyer, reason: "Needs a check first." });
         continue;
       }
-      const one = await invoiceOne(group.buyer, order.indexOf(key(group.buyer)) + 1);
+      const one = await invoiceOne(group.buyer, order.indexOf(key(group.buyer)) + 1, spend);
+      if (one.limited !== undefined) {
+        result.limitedMs = one.limited;
+        break;
+      }
       if (one.sent) result.sent.push(one.sent);
       else if (one.skipped) result.skipped.push({ buyer: group.buyer, reason: one.skipped });
       else result.failed.push({ buyer: group.buyer, reason: one.failed });

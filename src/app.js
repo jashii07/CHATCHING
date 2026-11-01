@@ -354,7 +354,7 @@ export function createApp(config, {
   // Send invoices: one PayPal sandbox invoice per clear buyer that has none yet (src/invoices.js has the
   // guards). { buyer } invoices just that buyer. Missing keys -> 503 with the message sent on purpose,
   // because the error handler hides every 5xx message. Per-buyer PayPal problems come back in "failed".
-  app.post("/api/invoices", limited("invoices"), async (req, res) => {
+  app.post("/api/invoices", async (req, res) => {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
     const { buyer } = req.body ?? {};
     if (buyer !== undefined && typeof buyer !== "string") return res.status(400).json({ error: 'Send {} for every buyer, or { "buyer": "Lina" }.' });
@@ -362,13 +362,15 @@ export function createApp(config, {
     if (req.visitor.reading) return res.json({ notice: READING });
     let result;
     try {
-      result = await invoicer.sendInvoices({ buyer });
+      result = await invoicer.sendInvoices({ buyer, spend: () => limiter.take("invoices", req.ip) });
     } catch (err) {
       if (err.status === 400 || err.status === 404) return res.status(err.status).json({ error: err.message });
       throw err;
     }
     if (result.sent.length) status.markFresh(); // PayPal just told us these statuses
-    res.json({ ...result, ...table(store) });
+    const { limitedMs, ...sentResult } = result;
+    if (limitedMs !== undefined) log(`Rate limit: too many invoices from one visitor; asked to wait ${Math.ceil(limitedMs / 1000)} s.`);
+    res.json({ ...sentResult, ...(limitedMs !== undefined && { notice: slowDown(limitedMs), rateLimited: true }), ...table(store) });
   });
 
   // Refresh status (the button, and the page's polling every 20 s): PayPal's status for every open
