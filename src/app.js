@@ -20,6 +20,7 @@ import { buyerPanel } from "./panel.js";
 import { kitchenList } from "./kitchen.js";
 import { buyerMessages } from "./messages.js";
 import { createRateLimiter, slowDown } from "./rate-limit.js";
+import { sameSiteOnly, securityHeaders } from "./security.js";
 
 const UNREADABLE = "The AI's answer could not be read, so your orders were not changed. Please try again.";
 const INVOICED = "Invoices already sent for these orders. Start a new batch to read again.";
@@ -109,6 +110,7 @@ export function createApp(config, {
   };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
+  app.use(securityHeaders); // first, so every reply has them: pages, files, errors and 404s
   // On Render, req.ip is the visitor's address from X-Forwarded-For (the left-most one), not Render's proxy.
   // Render adds to that header instead of replacing it, so a visitor could fake it and dodge the rate
   // limit (DECISIONS.md, Known weaknesses); the daily AI counter still caps the AI calls for everyone.
@@ -132,6 +134,8 @@ export function createApp(config, {
     });
     next();
   });
+
+  app.use(sameSiteOnly); // above the rate limits and the visitor step: a refused request costs and creates nothing
 
   // Reads JSON request bodies (the chat paste). 100 KB is plenty for 15,000 characters.
   app.use(express.json({ limit: "100kb" }));

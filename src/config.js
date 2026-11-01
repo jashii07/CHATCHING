@@ -50,12 +50,13 @@ export function loadConfig(env = process.env) {
 
   // Render always sets RENDER (render.com/docs/environment-variables). There the server must listen on
   // 0.0.0.0 (render.com/docs/web-services) and sits behind Render's proxy, which passes the visitor's
-  // address in X-Forwarded-For (used by the rate limit, src/rate-limit.js).
+  // address in X-Forwarded-For (used by the rate limit, src/rate-limit.js). Anywhere else it listens on this
+  // computer only, so nobody on the same Wi-Fi can reach a laptop's server that holds real keys.
   const onRender = read("RENDER") !== "";
 
   return Object.freeze({
     port,
-    host: onRender ? "0.0.0.0" : undefined, // undefined = Node's default (all addresses)
+    host: onRender ? "0.0.0.0" : "127.0.0.1",
     onRender,
     aiMode,
     paypal: hideWhenPrinted({ clientId: read("PAYPAL_CLIENT_ID"), clientSecret: read("PAYPAL_CLIENT_SECRET") }),
