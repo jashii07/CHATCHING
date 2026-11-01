@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -151,4 +151,27 @@ test("accuracy.mjs: clear errors for no saved reply, a missing key, bad options"
   const badDate = run("--cached", "--date", "28/10/2026");
   assert.equal(badDate.status, 1);
   assert.match(badDate.stdout + badDate.stderr, /YYYY-MM-DD/);
+});
+
+test("accuracy.mjs --menu: scores with that seller's menu; a missing or bad menu is a clear error, never the demo's", () => {
+  const dir = mkdtempSync(join(tmpdir(), "acc-menu-"));
+  const file = (name, text) => (writeFileSync(join(dir, name), text), join(dir, name));
+  const menu = { currency: "USD", sellerName: "Bot", items: [{ id: "tea", name: "Tea", price: "2.50", aliases: ["tea"] }] };
+  const order = { buyer: "Customer A", status: "active", sourceMsgs: [1], items: [{ itemId: "tea", qty: 2 }], deliveryDate: null, fulfilment: null, unclear: false, reason: "", note: "" };
+  const reply = { candidates: [{ content: { parts: [{ text: JSON.stringify({ orders: [order] }) }] } }] };
+  const args = (menuPath) => ["scripts/accuracy.mjs", "--cached", "--chats", file("chats.txt", "[1/11 9:00 AM] Customer A: 2 tea\n"),
+    "--expected", file("expected.json", JSON.stringify({ orders: [order] })), "--date", "2026-11-01", "--reply", file("reply.json", JSON.stringify(reply)), "--menu", menuPath];
+  const run = (menuPath) => spawnSync(process.execPath, args(menuPath), { cwd: root, encoding: "utf8" });
+
+  const good = run(file("menu.json", JSON.stringify(menu)));
+  assert.equal(good.status, 0, good.stdout);
+  assert.match(good.stdout, /1 orders ready to invoice, \$5\.00/);
+
+  const missing = run(join(dir, "nope.json"));
+  assert.equal(missing.status, 1);
+  assert.match(missing.stdout, /Could not read the menu file/);
+
+  const bad = run(file("bad.json", JSON.stringify({ ...menu, currency: "RM" })));
+  assert.equal(bad.status, 1);
+  assert.match(bad.stdout, /The menu .*bad\.json is not usable: Bad currency "RM"/);
 });

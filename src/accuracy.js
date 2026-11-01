@@ -11,17 +11,23 @@ import { buildParsePrompt, replyToOrders } from "./ai-prompt.js";
 import { formatMoney } from "./money.js";
 import { summary, toRows } from "./orders.js";
 import { scoreParse, structureChecks } from "./score-parse.js";
+import { checkOrders, sellerOrders } from "./validate.js";
 
 // A raw Gemini reply + the expected answers ({ orders, summary? }) -> the score, our own checks on the
-// reply, and the totals the app would show. Throws if the reply can't be read as orders.
+// reply, and the totals the app would show. Scored after our own checks (checkOrders), because that is what
+// the seller would see. Throws if the reply can't be read as orders.
 export function scoreReply({ raw, expected, menu, text, chatDate }) {
-  const orders = replyToOrders(raw);
-  const { scores, differences, perfect } = scoreParse(orders, expected.orders, { menu });
+  const replied = replyToOrders(raw);
   const { messages } = buildParsePrompt({ paste: text, chatDate, menu });
+  const orders = checkOrders(replied, messages, menu);
+  const { scores, differences, perfect } = scoreParse(orders, expected.orders, { menu });
   const s = summary(toRows(orders, menu));
   return {
     orders, scores, differences, perfect, messages: messages.length,
-    problems: structureChecks(orders, messages),
+    problems: [
+      ...structureChecks(replied, messages),
+      ...sellerOrders(replied, messages, menu).map((order) => `${order.buyer}: removed, this order came only from the seller's messages.`),
+    ],
     totals: { ready: s.ready, total: s.expected, needsCheck: s.needsCheck },
     want: expected.summary ?? null,
   };

@@ -9,6 +9,7 @@
 import { toSen, fromSen, formatMoney } from "./money.js";
 import { splitMessages } from "./dates.js";
 import { soundsCancelled } from "./fallback-parse.js";
+import { isSellerMessage } from "./seller.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -135,7 +136,7 @@ export function buyerMessages(rows, source, menu) {
   }
   return [...groups.values()].map(({ buyer, rows: own }) => {
     const used = new Set(own.flatMap((row) => (Array.isArray(row.sourceMsgs) ? row.sourceMsgs : [])));
-    const texts = chat.filter((msg) => used.has(msg.n)).map((msg) => msg.text);
+    const texts = chat.filter((msg) => used.has(msg.n) && !isSellerMessage(msg, menu)).map((msg) => msg.text);
     return { buyer, message: paymentMessage(own, menu), reminder: reminderMessage(own, menu), question: buyerQuestion(own, menu, texts) };
   });
 }

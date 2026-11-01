@@ -8,6 +8,7 @@
 //   ... --chats <file> --expected <file> --date <YYYY-MM-DD>    any chats (default: the demo)
 //   ... --reply <file>                                          (--cached) score this saved reply
 //   ... --out <file>                                            (--live) where the report goes
+//   ... --menu <file>                                           that seller's menu (default: data/menu.json)
 //
 // A live run saves its report: the demo's to docs/accuracy.md (committed, quoted on Devpost), any other
 // chats' to tmp/ (git-ignored). Holdout chats (data/holdout/, real chats) never produce a report in the repo.
@@ -18,6 +19,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { liveParse, reportMarkdown, savedReplyFor, scoreReply } from "../src/accuracy.js";
+import { checkMenu } from "../src/orders.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const DEMO_CHATS = "data/demo-chats.txt";
@@ -48,11 +50,11 @@ function options() {
       options: {
         cached: { type: "boolean" }, live: { type: "boolean" },
         chats: { type: "string" }, expected: { type: "string" }, date: { type: "string" },
-        reply: { type: "string" }, out: { type: "string" },
+        reply: { type: "string" }, out: { type: "string" }, menu: { type: "string" },
       },
     }));
   } catch (err) {
-    throw new Stop(`${err.message}\nUse --cached or --live, with optional --chats, --expected, --date, --reply, --out.`);
+    throw new Stop(`${err.message}\nUse --cached or --live, with optional --chats, --expected, --date, --reply, --out, --menu.`);
   }
   if (values.cached && values.live) throw new Stop("Choose one: --cached (no AI call) or --live (one real call).");
   if (values.live && values.reply) throw new Stop("--reply is for --cached only.");
@@ -80,7 +82,15 @@ async function main() {
   if (!chatDate) throw new Stop("No chat date: pass --date YYYY-MM-DD (the day the chats were copied).");
   if (!realDate(chatDate)) throw new Stop(`--date must be a real date written YYYY-MM-DD, got "${chatDate}".`);
   if (expected.chatDate && expected.chatDate !== chatDate) console.log(`Note: the expected answers were written for chat date ${expected.chatDate}, not ${chatDate}.`);
-  const menu = JSON.parse(read(join(ROOT, "data/menu.json"), "menu"));
+  const menuPath = resolve(o.menu ?? join(ROOT, "data/menu.json"));
+  let menu;
+  try {
+    menu = JSON.parse(read(menuPath, "menu"));
+  } catch (err) {
+    throw err instanceof Stop ? err : new Stop(`The menu ${show(menuPath)} is not valid JSON: ${err.message}`);
+  }
+  const menuProblems = checkMenu(menu);
+  if (menuProblems.length) throw new Stop(`The menu ${show(menuPath)} is not usable: ${menuProblems.join(" ")}`);
   if (isHoldout) console.log("HOLDOUT chats: this is the ONE holdout run (PLAN.md). Record the score as-is; never tune the prompt on it.\n");
 
   const facts = { date: now(), chats: show(chats), expected: show(expectedPath), chatDate, currency: menu.currency };

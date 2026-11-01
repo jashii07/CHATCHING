@@ -23,6 +23,9 @@ export function checkMenu(menu) {
   } else if (NO_DECIMALS.includes(menu.currency)) {
     problems.push(`PayPal bills ${menu.currency} without decimals, but menu prices use cents ("18.00"). Use another currency.`);
   }
+  if (menu.sellerName !== undefined && (typeof menu.sellerName !== "string" || !menu.sellerName.trim())) {
+    problems.push(`Bad sellerName ${JSON.stringify(menu.sellerName)}: use the name the seller has in the chats.`);
+  }
   const seen = new Set();
   menu.items.forEach((item, i) => {
     const label = item?.id ? `"${item.id}"` : `item ${i + 1}`;
@@ -34,6 +37,7 @@ export function checkMenu(menu) {
       problems.push(`${label} has a bad price ${JSON.stringify(item?.price)}: use text like "18.00".`);
     }
     if (!Array.isArray(item?.aliases)) problems.push(`${label} needs an aliases list.`);
+    if (item?.addon !== undefined && typeof item.addon !== "boolean") problems.push(`${label} has a bad addon ${JSON.stringify(item.addon)}: use true or false.`);
   });
   return problems;
 }
@@ -70,10 +74,16 @@ export function toRows(aiOrders, menu) {
     const buyer = cleanName(order?.buyer);
     const orderStatus = order?.status === "cancelled" ? "cancelled" : "active";
     const orderReasons = [];
+    // What the buyer asked for that the menu doesn't have. The AI only reports the name; these words are ours.
+    const missing = (Array.isArray(order?.notOnMenu) ? order.notOnMenu : [])
+      .filter((name) => typeof name === "string" && name.trim())
+      .map((name) => `buyer asked for ${name.trim()}, not on the menu.`);
     if (order?.unclear) {
       const aiReason = typeof order.reason === "string" && order.reason.trim();
-      orderReasons.push(aiReason || "The AI marked this order unclear.");
+      if (aiReason) orderReasons.push(aiReason);
+      else if (!missing.length) orderReasons.push("The AI marked this order unclear.");
     }
+    orderReasons.push(...missing);
     if (!buyer) orderReasons.push("Buyer name missing.");
 
     // An order with no items still gets one row, so the seller sees it.

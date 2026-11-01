@@ -303,7 +303,7 @@ export function createApp(config, {
     const { messages, notice } = readPaste(text, chatDate);
     if (notice) return res.json({ notice });
     if (withoutAi) {
-      const rows = toRows(checkOrders(fallbackParse(messages, menu), messages), menu);
+      const rows = toRows(checkOrders(fallbackParse(messages, menu), messages, menu), menu);
       store.setAll(rows, { text, chatDate, messages: messages.length, reader: "fallback" });
       return res.json(table(store));
     }
@@ -314,7 +314,7 @@ export function createApp(config, {
     try {
       const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (visitor.readingStage = stage) });
       if (reply.notice) return res.json({ notice: reply.notice, readWithoutAi: true });
-      rows = toRows(checkOrders(reply.orders, messages), menu);
+      rows = toRows(checkOrders(reply.orders, messages, menu), menu);
     } catch (err) {
       log(`Warning: the AI reply could not be read (${err.message}).`);
       return res.json({ notice: UNREADABLE, readWithoutAi: true });

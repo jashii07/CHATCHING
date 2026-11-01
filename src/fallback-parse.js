@@ -8,6 +8,7 @@
 import { matchMenuItem } from "./orders.js";
 import { resolveDayWord } from "./dates.js";
 import { currencyWords } from "./prices.js";
+import { SENDER, isSellerMessage } from "./seller.js";
 
 // Same cleaning as orders.js: lowercase words only, so "Choc-Chip!" and "choc chip" read the same.
 const cleanWords = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -16,9 +17,6 @@ const quote = (text) => {
   const clean = text.replace(/\s+/g, " ").trim();
   return JSON.stringify(clean.length > 40 ? `${clean.slice(0, 39)}…` : clean);
 };
-
-// "Lina: hi!" -> Lina. A name has letters, no digits and at most 5 words, so "pick up at 3:30" has no sender.
-const SENDER = /^([^:\n]{1,40}):(?:\s|$)/;
 
 // What a message does, read on its cleaned words ("don't" is "don t"). The strongest one found is reported.
 const CANCEL = /\b(?:cancel(?:led)?|batal|tak jadi|no need|(?:don t|do not) want|never ?mind|not needed)\b/;
@@ -100,6 +98,7 @@ function readPhrase(raw, menu, prices, itemStarts) {
 // One message -> what it says: sender, order lines, prices, problems, days, pickup/delivery, change words.
 function readMessage(msg, menu, prices, itemStarts) {
   const text = String(msg.text ?? "");
+  // A name has letters, no digits and at most 5 words.
   const m = text.match(SENDER);
   const name = m?.[1].trim() ?? "";
   const named = name && /\p{L}/u.test(name) && !/\d/.test(name) && name.split(/\s+/).length <= 5;
@@ -189,6 +188,7 @@ export function fallbackParse(messages, menu) {
 
   const buyers = new Map();
   for (const msg of messages) {
+    if (isSellerMessage(msg, menu)) continue; // the seller's replies are never a buyer's order
     const read = readMessage(msg, menu, prices, itemStarts);
     if (!read.sender && !read.orderLike) continue;
     const key = read.sender.toLowerCase();

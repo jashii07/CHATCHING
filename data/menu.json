@@ -1,5 +1,6 @@
 {
   "currency": "MYR",
+  "sellerName": "Seller",
   "items": [
     { "id": "classic_brownies", "icon": "cake-slice", "name": "Classic brownies (box of 6)", "price": "18.00", "aliases": ["classic", "brownies classic", "classic brownies", "classic brownie"] },
     { "id": "cheese_brownies", "icon": "cake-slice", "name": "Cheese brownies (box of 6)", "price": "22.00", "aliases": ["cheese brownie", "cheese brownies", "brownies cheese"] },

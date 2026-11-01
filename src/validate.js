@@ -2,6 +2,9 @@
 // toRows() turns them into rows. Pure: no files, no network, no clock.
 // A problem never drops an order: the order becomes unclear, with every problem in its reason.
 // (toRows() then checks the items and quantities against the menu.)
+// The one exception (1 Nov): an "order" that is really the seller's own reply is not an order at all. It is
+// removed, so it never creates a buyer (sellerOrders names what was removed).
+import { isSeller, isSellerMessage, sameName, senderOf } from "./seller.js";
 
 export const MAX_NOTE = 120;
 const MAX_DAYS_AHEAD = 14;
@@ -21,8 +24,21 @@ const label = (days) => new Date(days * DAY_MS).toLocaleDateString("en-GB", {
   weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
 }).replace(/,/g, "");
 
+// True when every message the order cites was written by the seller.
+function onlyFromSeller(order, messages, menu) {
+  const own = (Array.isArray(order?.sourceMsgs) ? order.sourceMsgs : []).map((n) => messages[n - 1]).filter(Boolean);
+  return own.length > 0 && own.every((msg) => isSellerMessage(msg, menu));
+}
+
+// The AI's orders that are really the seller talking: in the seller's name, or built only from the seller's
+// messages for someone who wrote nothing in this chat.
+export function sellerOrders(aiOrders, messages, menu) {
+  return aiOrders.filter((order) => order && typeof order === "object" && (isSeller(order.buyer, menu)
+    || (onlyFromSeller(order, messages, menu) && !messages.some((msg) => sameName(senderOf(msg.text), order.buyer)))));
+}
+
 // One order -> the list of problems (plain sentences) + its message numbers that really exist.
-function problemsOf(order, messages) {
+function problemsOf(order, messages, menu) {
   const problems = [];
   const asked = Array.isArray(order.sourceMsgs) ? order.sourceMsgs : [];
   const real = [...new Set(asked.filter((n) => Number.isInteger(n) && n >= 1 && n <= messages.length))];
@@ -56,18 +72,24 @@ function problemsOf(order, messages) {
   }
 
   if (!FULFILMENTS.includes(order.fulfilment)) problems.push(`Unknown pickup or delivery ${JSON.stringify(order.fulfilment)}.`);
+  if (onlyFromSeller(order, messages, menu)) problems.push("This order came only from the seller's messages.");
   return { problems, real };
 }
 
 // The AI's orders + the pasted messages -> the same orders, checked. A clear order comes back unchanged
 // (apart from a long note being cut); an order with problems gets unclear: true and a reason that starts
 // with the AI's own reason. Entries that aren't objects pass through: toRows() makes them unclear rows.
-export function checkOrders(aiOrders, messages) {
+// menu gives the seller's name: their "orders" are removed, and prices they wrote are never compared.
+export function checkOrders(aiOrders, messages, menu = null) {
   if (!Array.isArray(aiOrders)) throw new TypeError("aiOrders must be an array");
-  return aiOrders.map((order) => {
+  const removed = new Set(sellerOrders(aiOrders, messages, menu));
+  return aiOrders.filter((order) => !removed.has(order)).map((order) => {
     if (!order || typeof order !== "object" || Array.isArray(order)) return order;
-    const { problems, real } = problemsOf(order, messages);
+    const { problems, real } = problemsOf(order, messages, menu);
     const checked = { ...order };
+    if (Array.isArray(order.mentionedPrices)) {
+      checked.mentionedPrices = order.mentionedPrices.filter((p) => !isSellerMessage(messages[p?.msg - 1], menu));
+    }
     if (typeof order.note !== "string") checked.note = "";
     else if (order.note.length > MAX_NOTE) checked.note = `${order.note.slice(0, MAX_NOTE - 1)}…`;
     if (!problems.length) return checked;
