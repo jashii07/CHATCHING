@@ -113,8 +113,9 @@ test("a whole day with the seller's replies fits: 93 messages for 10 orders is r
   assert.equal(messages.length, 93);
 });
 
-test("readPaste: a huge paste (1 MB) is refused quickly, without splitting it", () => {
-  const start = performance.now();
-  assert.match(readPaste("x".repeat(1_000_000), CHAT).notice, /1,000,000 characters/);
-  assert.ok(performance.now() - start < 50);
+test("readPaste: a huge paste (1 MB) is refused before it is split", () => {
+  // The Chat date is bad on purpose: splitting would ask for the date, so the size words prove it never got that far.
+  const { notice, messages } = readPaste("x".repeat(1_000_000), "not a date");
+  assert.match(notice, /1,000,000 characters/);
+  assert.equal(messages, undefined);
 });
