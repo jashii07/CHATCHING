@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { buyerGroups, checkEdit, checkMenu, recalcRow, summary, toRows, totals } from "./orders.js";
+import { buyerGroups, checkEdit, checkMenu, keepEarlierInvoice, markEarlierInvoices, recalcRow, summary, toRows, totals } from "./orders.js";
 import { createStore, demoSource } from "./store.js";
 import { MAX_AGE_MS, VISITOR_COOKIE, createVisitors, newVisitorId, visitorIdFrom } from "./visitors.js";
 import { createAi } from "./ai.js";
@@ -281,6 +281,22 @@ export function createApp(config, {
     res.json(table(store));
   });
 
+  // "Send anyway" (the drawer): the seller says this buyer's second invoice today is a real second order. It
+  // only clears that check; the invoice still goes out with Send invoices, and every other check stays.
+  app.post("/api/buyers/:id/send-anyway", (req, res) => {
+    const { store } = req.visitor;
+    const row = store.find(req.params.id);
+    const refused = refuseChange(req.visitor, row, req.params.id);
+    if (refused) return refuse(res, refused);
+    const waiting = (other) => sameBuyer(other, row) && other.orderStatus === "active" && other.earlierInvoice && !other.earlierInvoice.kept;
+    if (!store.rows().some(waiting)) return res.status(400).json({ error: `${row.buyer} has no earlier invoice to check.` });
+    store.setRows(store.rows().map((other) => (waiting(other) ? keepEarlierInvoice(other) : other)));
+    res.json(table(store));
+  });
+
+  // Every read, with or without the AI: our checks, the rows, and the double-invoice guard between batches.
+  const readRows = (store, orders, messages, chatDate) => markEarlierInvoices(toRows(checkOrders(orders, messages, menu), menu), store.batches(), chatDate, menu);
+
   // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
   // our checks and toRows(), so bad AI data becomes unclear rows, never dropped (PLAN.md Section 5).
   // Anything the seller can fix by pasting again (too long, mock mode doesn't know the chats, an
@@ -303,7 +319,7 @@ export function createApp(config, {
     const { messages, notice } = readPaste(text, chatDate);
     if (notice) return res.json({ notice });
     if (withoutAi) {
-      const rows = toRows(checkOrders(fallbackParse(messages, menu), messages, menu), menu);
+      const rows = readRows(store, fallbackParse(messages, menu), messages, chatDate);
       store.setAll(rows, { text, chatDate, messages: messages.length, reader: "fallback" });
       return res.json(table(store));
     }
@@ -314,7 +330,7 @@ export function createApp(config, {
     try {
       const reply = await ai.parse({ text, chatDate, messages, menu, onStage: (stage) => (visitor.readingStage = stage) });
       if (reply.notice) return res.json({ notice: reply.notice, readWithoutAi: true });
-      rows = toRows(checkOrders(reply.orders, messages, menu), menu);
+      rows = readRows(store, reply.orders, messages, chatDate);
     } catch (err) {
       log(`Warning: the AI reply could not be read (${err.message}).`);
       return res.json({ notice: UNREADABLE, readWithoutAi: true });

@@ -221,6 +221,9 @@ test("New batch saves the old batch (rows + invoice links) and starts an empty o
   const read = (await app.parse()).body;
   assert.equal(read.groups.length, 10);
   assert.notEqual(read.batch, oldBatch);
+  // Arif already has an invoice from the old batch today, so he needs "Send anyway" first (the 1 Nov review, #1).
+  assert.equal((await app.send({ buyer: "Arif" })).status, 400);
+  await app.call(`/api/buyers/${rowsOf(read, "Arif")[0].id}/send-anyway`, "POST", {});
   const fresh = (await app.send({ buyer: "Arif" })).body;
   assert.equal(rowsOf(fresh, "Arif")[0].invoiceNumber, `CHATCHING-${read.batch}-05`); // Arif is the 5th buyer
 });

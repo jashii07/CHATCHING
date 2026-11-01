@@ -544,7 +544,7 @@ function field(label, control) {
   return wrap;
 }
 
-function editCard(row) {
+function editCard(row, askSendAnyway = false) {
   const cancelled = row.orderStatus === "cancelled";
   const invoiced = Boolean(row.invoiceId); // the invoice must keep matching what PayPal has
   const card = el("section", `edit-card${row.unclear && !cancelled ? " is-unclear" : ""}${cancelled ? " is-cancelled" : ""}`);
@@ -581,6 +581,8 @@ function editCard(row) {
     keep.dataset.row = row.id;
     card.append(keep);
   }
+  // The buyer already has an invoice from an earlier batch today. Send anyway says this is a real second order.
+  if (askSendAnyway) card.append(Object.assign(el("button", "ghost small send-anyway", "Send anyway"), { type: "button", id: "send-anyway" }));
   // Remove this line: the buyer's last item asks "Cancel this buyer's order?" first (removeItem).
   if (!cancelled && !invoiced) {
     const remove = Object.assign(el("button", "ghost small remove-item", ""), { type: "button", id: `remove-${row.id}` });
@@ -688,7 +690,8 @@ function renderDrawer() {
   if (data.collected) $("drawer-sub").append(" ", statusTag("Collected"));
   // Once the invoice is sent, the items are locked: said once, above them (the server refuses changes too).
   const locked = data.rows.some((row) => row.orderStatus === "active" && row.invoiceId);
-  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : []), ...data.rows.map(editCard));
+  const askOn = data.rows.find((row) => row.orderStatus === "active" && !row.invoiceId && row.earlierInvoice && !row.earlierInvoice.kept)?.id;
+  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : []), ...data.rows.map((row) => editCard(row, row.id === askOn)));
   const adding = addCard(data);
   if (adding) drawerItems.append(adding);
   const picked = collectedCard(data);
@@ -1938,6 +1941,7 @@ $("drawer").addEventListener("keydown", drawerKeys);
 $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest("#record-payment")) recordPayment(event.target.closest("#record-payment"));
   if (event.target.closest(".keep-price")) keepMenuPrice(event.target.closest(".keep-price"));
+  if (event.target.closest("#send-anyway")) changeItems("POST", `/api/buyers/${encodeURIComponent(openGroupId)}/send-anyway`);
   if (event.target.closest("#copy-kitchen")) copyKitchen(event.target.closest("#copy-kitchen"));
   if (event.target.closest(".copy-text")) copyBuyerText(event.target.closest(".copy-text"));
   if (event.target.closest(".remove-item")) removeItem(event.target.closest(".remove-item"));

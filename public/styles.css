@@ -1375,7 +1375,8 @@ button.ghost.small {
 }
 
 /* Step 7a: "Keep menu price" under a price check in the drawer. */
-.edit-card .keep-price {
+.edit-card .keep-price,
+.edit-card .send-anyway {
   margin-top: 12px;
 }
 
