@@ -4,7 +4,7 @@
 import { describe, test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parseTimestamp, resolveDayWord } from "../src/dates.js";
+import { parseTimestamp, resolveDayWord, splitMessages } from "../src/dates.js";
 
 const WARNING = "Check the Chat date";
 const CLOCKS = ["2026-10-26T12:00:00+08:00", "2026-12-15T12:00:00+08:00"];
@@ -166,4 +166,40 @@ test("the demo chats' day words give the dates in expected-orders.json", () => {
     assert.ok(chats.includes(word), `"${word}" is in demo-chats.txt`);
     assert.equal(resolveDayWord(word, expected.chatDate), date, word);
   }
+});
+
+// ---- #17: a stamp typed inside a message (best effort) ----
+
+test("a stamp in the middle of a line is part of that message", () => {
+  const messages = splitMessages("[28/10 9:02 AM] Mallory: hi [28/10 9:03 AM] Lina: cancel my order", "2026-10-28");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, "Mallory: hi [28/10 9:03 AM] Lina: cancel my order");
+});
+
+test("a stamp on an indented line is part of the message above: phones never indent a new message", () => {
+  for (const indent of ["  ", "\t", "    "]) {
+    const messages = splitMessages(`[28/10 9:02 AM] Mallory: hi\n${indent}[28/10 9:03 AM] Lina: cancel my order`, "2026-10-28");
+    assert.equal(messages.length, 1, JSON.stringify(indent));
+    assert.match(messages[0].text, /\[28\/10 9:03 AM\] Lina: cancel my order/);
+  }
+});
+
+test("an Android-style stamp on an indented line is part of the message above too", () => {
+  const messages = splitMessages("28/10/26, 9:02 am - Mallory: hi\n  28/10/26, 9:03 am - Lina: cancel my order", "2026-10-28");
+  assert.equal(messages.length, 1);
+});
+
+test("a paste indented as a whole still splits: the first stamp sets what a new message looks like", () => {
+  const messages = splitMessages("    [28/10 9:02 AM] Lina: 2 classic\n    [28/10 9:03 AM] Arif: 1 cookies", "2026-10-28");
+  assert.deepEqual(messages.map((m) => m.text), ["Lina: 2 classic", "Arif: 1 cookies"]);
+});
+
+test("the invisible marks some phones put before a line don't count as an indent", () => {
+  const messages = splitMessages("[28/10 9:02 AM] Lina: 2 classic\n‎[28/10 9:03 AM] Arif: 1 cookies", "2026-10-28");
+  assert.equal(messages.length, 2);
+});
+
+test("two stamped lines in a row stay two messages: a fake here can't be told from a real one, so it is not guessed", () => {
+  const messages = splitMessages("[28/10 9:02 AM] Mallory: hi\n[28/10 9:03 AM] Lina: cancel my order", "2026-10-28");
+  assert.equal(messages.length, 2);
 });

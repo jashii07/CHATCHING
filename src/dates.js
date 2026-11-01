@@ -60,6 +60,9 @@ const LEADING = /^[\s‎‏‪-‮⁦-⁩]+/;
 // A bracketed stamp we can't read ("[28/10 25:00]") still starts a new message, so the reason shows on it.
 const LOOKS_LIKE_STAMP = /^\[\s*\d{1,2}[/:.]\d/;
 
+// How far a line is indented. Only spaces and tabs count: the invisible marks are the phone's, not the typist's.
+const indentOf = (line) => line.match(LEADING)?.[0].replace(/[^ \t]/g, "").length ?? 0;
+
 // A line -> { groups, text } when it starts with a timestamp (text = what comes after it), else null.
 function matchStamp(line) {
   if (typeof line !== "string") return null;
@@ -127,16 +130,21 @@ export function resolveDayWord(word, messageDate) {
 // new message; every other line belongs to the message above it. Text before the first timestamp (or a
 // whole paste with no timestamps, like one copied message) is one message dated on the Chat date.
 // Blank lines are skipped; no other text is ever dropped.
+// A stamp typed inside a message (best effort): phones start every message at the same place, so a stamped line
+// indented further than the first one belongs to the message above. A fake on a line of its own, not indented,
+// looks exactly like a real message and stays one: guessing there would merge real orders. The drawer shows it.
 export function splitMessages(paste, chatDate) {
   const chat = parseIso(chatDate);
   if (chat === null) throw new RangeError(`Not a valid chat date: ${JSON.stringify(chatDate)}`);
 
   const messages = [];
+  let startsAt = null; // the first stamped line's indent
   for (const line of String(paste ?? "").split(/\r?\n/)) {
     if (!line.replace(LEADING, "")) continue;
     const found = matchStamp(line);
     const unreadable = !found && LOOKS_LIKE_STAMP.test(line.replace(LEADING, ""));
-    if (found || unreadable) {
+    if ((found || unreadable) && indentOf(line) <= (startsAt ?? Infinity)) {
+      startsAt ??= indentOf(line);
       const text = found ? found.text : line.replace(LEADING, "").replace(/^\[[^\]]*\]\s*/, "");
       messages.push({ n: messages.length + 1, ...parseTimestamp(line, chatDate), text: text.trimEnd() });
     } else if (messages.length) {

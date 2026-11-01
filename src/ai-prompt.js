@@ -67,13 +67,22 @@ const menuLines = (menu) => menu.items.map((item) => `- ${item.id}: ${item.name}
 const ambiguousLines = (menu) => (menu.ambiguous ?? []).map((a) =>
   `- ${a.words.map((w) => `"${w}"`).join(", ")} with no type: do NOT choose an item. Use itemId null, unclear true, reason "${a.reason}"`);
 
+// Chat text as the AI reads it: a buyer can't pose as the prompt's own structure. The messages sit between
+// <<< and >>>, each after a number and a [date] header. So runs of three or more of those signs go (spaced,
+// mixed or look-alike ones too), and a [time] or [date] inside the text loses its brackets. Two signs ("yay >>")
+// and other brackets ("[no nuts]") stay. Only the prompt changes: the seller still sees what was written.
+const SIGN = "[<>＜＞≪≫«»‹›]";
+const FENCE = new RegExp(`${SIGN}(?:\\s*${SIGN}){2,}`, "g");
+const STAMP_LIKE = /\[\s*((?:\d{1,2}[/:.]\d|(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+\d|unknown date)[^\]\n]*?)\s*\]/g;
+const chatText = (text) => text.replace(FENCE, " ").replace(STAMP_LIKE, "$1");
+
 // A pasted chat + its Chat date + the menu -> { prompt, messages }. Each message gets its full date
 // and weekday from src/dates.js before the AI sees it (PLAN.md Section 6).
 export function buildParsePrompt({ paste, chatDate, menu }) {
   const messages = splitMessages(paste, chatDate);
   const messageLines = messages.map((m) => {
     const when = [m.label ?? "unknown date", m.time].filter(Boolean).join(", ");
-    return `${m.n}. [${when}] ${m.text.replace(/\n/g, "\n   ")}`;
+    return `${m.n}. [${when}] ${chatText(m.text).replace(/\n/g, "\n   ")}`;
   });
   const calendar = calendarDays(chatDate, CALENDAR_DAYS).map((d) => `${d.label} = ${d.date}`);
 
