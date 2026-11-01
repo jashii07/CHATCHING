@@ -69,6 +69,7 @@ Only one new package is planned: **express**. (31 Oct: also **qrcode-generator 2
 | `POST /api/parse` | chat text + chat date → order rows (replaces the current rows) | 1 call, or cache/fallback |
 | `PUT /api/orders/:id` | save one edited row | No |
 | `POST /api/invoices` | create + send one invoice per buyer that has no invoice yet (double-invoice guard, #3c) | **Never** |
+| `POST /api/buyers/:id/send-anyway` | (1 Nov) clears "already has an invoice from an earlier batch today": a real second order. Doesn't send anything | **Never** |
 | `POST /api/invoices/refresh` | ask PayPal for the status of every open invoice | No |
 | `POST /api/invoices/:id/payment` | record a cash / bank-transfer payment in PayPal (#3a) | **Never** |
 | `GET /api/invoices/:id/qr` | pickup QR code image from PayPal (#3b), with its file name (`pickup-Lina.png`) for Save QR | **Never** |
@@ -407,6 +408,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
 - **c.** Three layers:
   1. The server skips buyers that already have an invoice.
   2. A per-buyer "in progress" lock, with the button disabled while sending, so a double-click can't create two.
+  0. (1 Nov) Between batches: reading compares buyers with the visitor's saved batches of the same Chat date; a repeat is unclear until Send anyway. Reset demo starts over and raises no check.
   3. Every invoice gets `invoice_number` = `CHATCHING-{batch}-{nn}`, e.g. `CHATCHING-K3F9Q2ZA7L1X-07`. The batch is 12 characters (8 until 31 Oct: numbers must stay unique across all visitors), so the number is exactly PayPal's max of 25. The batch changes on every parse and every Reset demo, so PayPal itself rejects a repeat. On `DUPLICATE_INVOICE_NUMBER`, the server looks that invoice up by its number and uses it (changed 28 Oct, Step 5; verified on the real sandbox).
 
 ### 4. AG Grid extras (both Community, checked in AG Grid's module list)
