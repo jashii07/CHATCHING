@@ -7,7 +7,7 @@ const results = [];
 const record = (ok, name, detail = "") => results.push({ ok, name, detail });
 
 // 1. All tests in test/ (node:test is built into Node, no package needed).
-const tests = spawnSync(process.execPath, ["--test", "--test-reporter=spec"], { encoding: "utf8" });
+const tests = spawnSync(process.execPath, ["--test", "--import=./scripts/test-setup.mjs", "--test-reporter=spec"], { encoding: "utf8" });
 process.stdout.write(tests.stdout ?? "");
 process.stderr.write(tests.stderr ?? "");
 const count = (label) => tests.stdout?.match(new RegExp(`^ℹ ${label} (\\d+)`, "m"))?.[1] ?? "?";
