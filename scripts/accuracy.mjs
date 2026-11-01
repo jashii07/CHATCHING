@@ -11,6 +11,7 @@
 //   ... --menu <file>                                           that seller's menu (default: data/menu.json)
 //   ... --one-call <seconds>                                    (--live) ONE call to the main model with this long to
 //                                                               answer: no retry, no backup, for measuring a long chat
+//   ... --backup                                                (with --one-call) the one call goes to the backup model
 //
 // A live run saves its report to tmp/ (git-ignored), or to --out. docs/accuracy.md is written by hand from
 // these reports. Holdout chats (data/holdout/) never produce a report in the repo by themselves.
@@ -21,6 +22,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { liveParse, reportMarkdown, savedReplyFor, scoreReply } from "../src/accuracy.js";
+import { BACKUP_MODEL, MAIN_MODEL } from "../src/gemini.js";
 import { checkMenu } from "../src/orders.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -52,18 +54,19 @@ function options() {
       options: {
         cached: { type: "boolean" }, live: { type: "boolean" },
         chats: { type: "string" }, expected: { type: "string" }, date: { type: "string" },
-        reply: { type: "string" }, out: { type: "string" }, menu: { type: "string" }, "one-call": { type: "string" },
+        reply: { type: "string" }, out: { type: "string" }, menu: { type: "string" }, "one-call": { type: "string" }, backup: { type: "boolean" },
       },
     }));
   } catch (err) {
-    throw new Stop(`${err.message}\nUse --cached or --live, with optional --chats, --expected, --date, --reply, --out, --menu, --one-call.`);
+    throw new Stop(`${err.message}\nUse --cached or --live, with optional --chats, --expected, --date, --reply, --out, --menu, --one-call, --backup.`);
   }
   if (values.cached && values.live) throw new Stop("Choose one: --cached (no AI call) or --live (one real call).");
   if (values.live && values.reply) throw new Stop("--reply is for --cached only.");
   const oneCall = values["one-call"];
+  if (values.backup && oneCall === undefined) throw new Stop("--backup goes with --one-call.");
   if (oneCall !== undefined && !values.live) throw new Stop("--one-call is for --live only.");
   if (oneCall !== undefined && !(/^\d+$/.test(oneCall) && Number(oneCall) >= 30 && Number(oneCall) <= 300)) throw new Stop("--one-call needs whole seconds from 30 to 300.");
-  return { ...values, live: Boolean(values.live), oneCallSeconds: oneCall ? Number(oneCall) : null };
+  return { ...values, live: Boolean(values.live), oneCallSeconds: oneCall ? Number(oneCall) : null, oneCallModel: values.backup ? BACKUP_MODEL : MAIN_MODEL };
 }
 
 async function main() {
@@ -104,8 +107,8 @@ async function main() {
     if (!apiKey) throw new Stop("GEMINI_API_KEY is missing. Run with: node --env-file-if-exists=.env scripts/accuracy.mjs --live");
     const stamp = Date.now();
     const cacheDir = join(ROOT, `tmp/accuracy-live/${stamp}`); // new and empty: a real call, never a cached answer
-    console.log(`LIVE: one batched parse of ${facts.chats} through the app's AI code (${o.oneCallSeconds ? `one call, ${o.oneCallSeconds} s at most` : "main model, backup if it fails"})...`);
-    const live = await liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCallSeconds: o.oneCallSeconds });
+    console.log(`LIVE: one batched parse of ${facts.chats} through the app's AI code (${o.oneCallSeconds ? `one call to ${o.oneCallModel}, ${o.oneCallSeconds} s at most` : "main model, backup if it fails"})...`);
+    const live = await liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCallSeconds: o.oneCallSeconds, oneCallModel: o.oneCallModel });
     console.log(`real calls used: ${live.calls}; ${live.seconds} s`);
     if (live.notice) throw new Stop(`No reply to score: ${live.notice}`);
     raw = live.raw;

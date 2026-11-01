@@ -1,6 +1,6 @@
 // Tests for the app's REAL AI mode (Steps 7 and 9, src/ai.js + src/gemini.js + src/usage.js). Gemini is a
 // FAKE fetch here, and the clock, the timer and the wait are fake too: npm run check never calls the real
-// AI, never needs a key, and never sleeps (a "35 s timeout" passes in a millisecond).
+// AI, never needs a key, and never sleeps (a "60 s timeout" passes in a millisecond).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
@@ -108,7 +108,7 @@ test("main model OK: one batched call, key in a header (never the URL), reply ca
   assert.ok(gemini.calls[0].body.generationConfig.responseSchema.properties.orders);
   assert.equal(readFileSync(join(cacheDir, `parse-${parseKey(CHATS, CHAT_DATE)}.json`), "utf8"), reply()); // byte for byte
   assert.ok(logs.every((line) => !line.includes("fake-key")));
-  assert.deepEqual(time.timeouts, [35 * S]); // the main model's share of the 60 s
+  assert.deepEqual(time.timeouts, [60 * S]); // the main model's share of the 90 s
   assert.deepEqual(stages, []); // no "trying the backup"
   assert.equal(ai.callsLeft(), 39);
 
@@ -123,7 +123,7 @@ test("main 503 that comes back fast -> wait 2 s, ask the main model again once, 
   assert.equal((await parse()).from, MAIN_MODEL);
   assert.deepEqual(gemini.models(), [MAIN_MODEL, MAIN_MODEL]);
   assert.deepEqual(time.waits, [2 * S]);
-  assert.deepEqual(time.timeouts, [35 * S, 29.2 * S]); // the retry only gets what is left of the 35 s
+  assert.deepEqual(time.timeouts, [60 * S, 54.2 * S]); // the retry only gets what is left of the 60 s
   assert.deepEqual(stages, []);
 });
 
@@ -138,37 +138,37 @@ test("main 503 -> retry 503 -> the backup answers: 3 calls, the page is told abo
   }
 });
 
-test("main 503 after 20 s -> no retry (a real read wouldn't fit), straight to the backup", async () => {
-  const { parse, gemini, time } = make([[503, 20], "ok"]);
+test("main 503 after 45 s -> no retry (a real read wouldn't fit), straight to the backup", async () => {
+  const { parse, gemini, time } = make([[503, 45], "ok"]);
   assert.equal((await parse()).from, BACKUP_MODEL);
   assert.deepEqual(gemini.models(), [MAIN_MODEL, BACKUP_MODEL]);
   assert.deepEqual(time.waits, []);
-  assert.deepEqual(time.timeouts, [35 * S, 40 * S]); // the backup gets everything left of the 60 s
+  assert.deepEqual(time.timeouts, [60 * S, 45 * S]); // the backup gets everything left of the 90 s
 });
 
-test("main model too slow -> it is cut off at 35 s and the backup gets the last 25 s (never the same model again)", async () => {
+test("main model too slow -> it is cut off at 60 s and the backup gets the last 30 s (never the same model again)", async () => {
   const { parse, gemini, logs, time, stages, seconds } = make(["hang", ["ok", 18]]);
   assert.equal((await parse()).from, BACKUP_MODEL);
   assert.deepEqual(gemini.models(), [MAIN_MODEL, BACKUP_MODEL]);
-  assert.deepEqual(time.timeouts, [35 * S, 25 * S]);
+  assert.deepEqual(time.timeouts, [60 * S, 30 * S]);
   assert.deepEqual(stages, ["backup"]);
-  assert.ok(logs.some((line) => /No answer within 35 s/.test(line)));
-  assert.equal(seconds(), 53);
+  assert.ok(logs.some((line) => /No answer within 60 s/.test(line)));
+  assert.equal(seconds(), 78);
 });
 
-test("both models fail -> the friendly \"AI busy\" notice within 60 s, never more than 3 calls, nothing cached", async () => {
+test("both models fail -> the friendly \"AI busy\" notice within 90 s, never more than 3 calls, nothing cached", async () => {
   const cases = [
     { answers: [503, 503, 503], calls: 3 }, // fast 503s: main, main again, backup
-    { answers: ["hang", "hang"], calls: 2 }, // both too slow: 35 s + 25 s
-    { answers: [[503, 43], [503, 4.3]], calls: 2 }, // 29 Oct, now cut off at 35 s
-    { answers: ["hang", 503, 503], calls: 3 }, // backup busy fast: 24 s left, so one retry still fits
-    { answers: ["hang", [503, 5]], calls: 2 }, // backup busy after 5 s: 20 s left, a retry wouldn't fit
+    { answers: ["hang", "hang"], calls: 2 }, // both too slow: 60 s + 30 s
+    { answers: [[503, 43], [503, 4.3], 503], calls: 3 }, // like 29 Oct: no retry of main after 43 s, one of the backup
+    { answers: ["hang", 503, 503], calls: 3 }, // backup busy fast: 29 s left, so one retry still fits
+    { answers: ["hang", [503, 9]], calls: 2 }, // backup busy after 9 s: 21 s left, a retry wouldn't fit
   ];
   for (const { answers, calls } of cases) {
     const { parse, gemini, cacheDir, seconds } = make(answers);
     assert.deepEqual(await parse(), { notice: AI_BUSY }, JSON.stringify(answers));
     assert.equal(gemini.calls.length, calls, JSON.stringify(answers));
-    assert.ok(seconds() <= 60, `${JSON.stringify(answers)}: ${seconds()} s`);
+    assert.ok(seconds() <= 90, `${JSON.stringify(answers)}: ${seconds()} s`);
     assert.ok(!existsSync(cacheDir) || readdirSync(cacheDir).length === 0);
   }
   assert.equal(AI_BUSY, "The AI is busy right now. Please try again in a minute, or click Load demo to see how it works.");
@@ -209,14 +209,14 @@ test("counter at 0: no call, the \"used up\" notice; the demo and cached chats s
   assert.equal((await ai.parse({ text: DEMO, chatDate: "2026-10-28", menu })).from, "saved"); // Load demo
 });
 
-test("one model used up -> the other gets the whole 60 s, and the page is not told \"trying the backup\"", async () => {
+test("one model used up -> the other gets the whole 90 s, and the page is not told \"trying the backup\"", async () => {
   const time = fakeTime();
   const usage = createUsage({ file: join(tempDir(), "ai-usage.json"), models: [MAIN_MODEL, BACKUP_MODEL], now: time.now, limit: 1 });
   usage.take(MAIN_MODEL);
   const { parse, gemini, stages } = make(["ok"], { time, usage });
   assert.equal((await parse()).from, BACKUP_MODEL);
   assert.deepEqual(gemini.models(), [BACKUP_MODEL]);
-  assert.deepEqual(time.timeouts, [60 * S]);
+  assert.deepEqual(time.timeouts, [90 * S]);
   assert.deepEqual(stages, []);
 });
 

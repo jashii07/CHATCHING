@@ -132,7 +132,7 @@ export function createApp(config, {
     next();
   });
 
-  // Reads JSON request bodies (the chat paste later). 100 KB is plenty for ~50 messages.
+  // Reads JSON request bodies (the chat paste). 100 KB is plenty for 15,000 characters.
   app.use(express.json({ limit: "100kb" }));
 
   // For Render's health check and a quick "is it up?": only ok and the app's version, never keys or settings.

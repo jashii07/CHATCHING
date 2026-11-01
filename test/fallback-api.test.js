@@ -70,7 +70,7 @@ test("used up, refused, unreadable, mock mode and AI_MODE=off all offer Read wit
 
 test("notices that are not about the AI do not offer it: an empty or too-long paste, a missing Chat date", async () => {
   const { parse } = await start({ ai: noticeAi(AI_BUSY) });
-  for (const body of [{ text: " ", chatDate: CHAT }, { text: "x".repeat(10_001), chatDate: CHAT }, { text: DEMO, chatDate: "" }]) {
+  for (const body of [{ text: " ", chatDate: CHAT }, { text: "x".repeat(15_001), chatDate: CHAT }, { text: DEMO, chatDate: "" }]) {
     for (const withoutAi of [false, true]) {
       const reply = (await parse({ ...body, withoutAi })).body;
       assert.ok(reply.notice && !reply.readWithoutAi, JSON.stringify(reply));

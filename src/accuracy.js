@@ -50,15 +50,15 @@ export function savedReplyFor({ text, chatDate, reply = null }) {
 // { notice, seconds, calls } when no model answered. seconds = the whole wait, backup included.
 // At most 2 calls (main, then backup; no retry of the same model), each one counted in the app's daily
 // counter (src/usage.js) like any real call. The tests pass their own counter, clock and wait in "ai".
-// oneCallSeconds: ONE call to the main model with this many seconds, for measuring a long chat: no retry, no
-// backup, so a "high demand" answer stops the run at once.
-export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCallSeconds = null, fetch = globalThis.fetch, log = console.log, ai: aiOptions = {} }) {
+// oneCallSeconds: ONE call with this many seconds, for measuring a long chat: no retry, no other model, so a
+// "high demand" answer stops the run at once. oneCallModel picks the model (default: the main one).
+export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCallSeconds = null, oneCallModel = MAIN_MODEL, fetch = globalThis.fetch, log = console.log, ai: aiOptions = {} }) {
   let calls = 0;
   const counted = (...args) => {
     calls += 1;
     return fetch(...args);
   };
-  const limits = oneCallSeconds ? { models: [MAIN_MODEL], maxCalls: 1, budgetMs: oneCallSeconds * 1000 } : { maxCalls: 2 };
+  const limits = oneCallSeconds ? { models: [oneCallModel], maxCalls: 1, budgetMs: oneCallSeconds * 1000 } : { maxCalls: 2 };
   const ai = createAi({ mode: "real", apiKey, replies: new Map(), cacheDir, fetch: counted, log, ...limits, ...aiOptions });
   const start = performance.now();
   const result = await ai.parse({ text, chatDate, menu });

@@ -5,8 +5,8 @@
 //   replies (data/runtime/ai-cache/, git-ignored: real chats are never committed), and only then ONE
 //   batched call: the main model, and the backup model if the main one is overloaded, rate-limited or
 //   too slow. The raw reply is cached byte for byte under the hash of the Chat date + chat text.
-// - Step 9: ONE time budget for the whole parse (60 s; the main model gets up to 35 s, the backup the
-//   rest), one short-wait retry on 503/429 only if a real read still fits, never more than 3 calls, and
+// - Step 9: ONE time budget for the whole parse (90 s since 1 Nov; the main model gets up to 60 s, the
+//   backup the rest), one short-wait retry on 503/429 only if a real read still fits, never more than 3 calls, and
 //   the daily counter (src/usage.js): every call is counted before it starts; at 0 nothing is called.
 //   Step 11: if Google itself answers "daily limit reached" (our count starts again at 0 when Render
 //   restarts), that model is marked used up for the day and the seller gets the friendly "used up" words.
@@ -25,11 +25,12 @@ const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
 const DEMO_ANSWERS = new URL("../data/expected-orders.json", import.meta.url);
 export const RUNTIME_CACHE = fileURLToPath(new URL("../data/runtime/ai-cache/", import.meta.url));
 
-// The time budget (DECISIONS.md, 30 Oct). On 29 Oct both models were busy and it took 47 s to fail.
-export const PARSE_BUDGET_MS = 60_000; // the most a seller waits for one parse, everything included
-export const MAIN_SHARE_MS = 35_000; // the main model's part; the backup always keeps at least 25 s
+// The time budget (DECISIONS.md, 30 Oct; raised 1 Nov for longer pastes). On 29 Oct both models were busy
+// and it took 47 s to fail.
+export const PARSE_BUDGET_MS = 90_000; // the most a seller waits for one parse, everything included
+export const MAIN_SHARE_MS = 60_000; // the main model's part; the backup always keeps at least 30 s
 export const RETRY_WAIT_MS = 2_000; // a 503/429 comes back fast; wait a moment before asking again
-export const MIN_TRY_MS = 20_000; // a retry needs this much left: real reads took 17.6 s and 21 s
+export const MIN_TRY_MS = 20_000; // a retry needs this much left: real reads took 17.6 to 28.2 s
 export const MAX_CALLS = 3; // per parse, retries and backup included
 
 export const MOCK_UNKNOWN = "Mock mode only knows the demo chats. Set AI_MODE=real to read other chats with Gemini.";

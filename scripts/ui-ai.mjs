@@ -1,7 +1,8 @@
 // The browser check for Step 9 (the AI's time budget and daily counter), at laptop and phone widths.
 // The app runs in REAL AI mode, but Gemini is a FAKE fetch that this script answers by hand, so no real
 // AI call is ever made and we decide exactly when each call answers:
-//   Busy: main 503 -> main again 503 -> backup. The words go "Reading the chats..." then "The AI is busy,
+//   Busy: main 503 -> main again 503 -> backup. The words go "Reading the chats... Long chats can take up
+//         to a minute." then "The AI is busy,
 //         trying the backup..."; the button stays disabled the whole time; at the end the friendly notice,
 //         the rows unchanged, the top bar counts the 3 failed calls (40 -> 37).
 //   Used up: the counter at 0 -> no call, "Today's free AI reads are used up..."; Load demo + Read orders
@@ -26,6 +27,9 @@ const WIDTHS = [
 ];
 const ROWS = ".ag-grid-scrolling-container > .ag-row";
 const CHATS = "[30/10 9:00 AM] Zara: 2 jars of cookies for saturday pls";
+const READING = "Reading the chats... Long chats can take up to a minute.";
+// A long paste: n messages, each padded to size characters.
+const longChats = (n, size) => Array.from({ length: n }, (_, i) => `[30/10 9:${String(i % 60).padStart(2, "0")} AM] Buyer ${i}: `.padEnd(size, "x")).join("\n");
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -95,12 +99,12 @@ try {
     await page.fill("#chat-date", "2026-10-30");
     await page.click("#read-orders");
     await gemini.nextCall(1);
-    check((await readMessage(page)) === "Reading the chats..." && (await buttonBusy(page)), `while the main model works: "${await readMessage(page)}", button disabled`);
+    check((await readMessage(page)) === READING && (await buttonBusy(page)), `while the main model works: "${await readMessage(page)}", button disabled`);
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1-reading.png`, fullPage: true });
     gemini.answer(503);
     await gemini.nextCall(2); // the main model once more
     await page.waitForTimeout(1300); // one poll
-    check((await readMessage(page)) === "Reading the chats..." && (await buttonBusy(page)), "the retry of the main model still says \"Reading the chats...\"");
+    check((await readMessage(page)) === READING && (await buttonBusy(page)), "the retry of the main model still says the reading words");
     gemini.answer(503);
     await gemini.nextCall(3); // the backup
     await page.waitForFunction(() => document.getElementById("read-message").textContent === "The AI is busy, trying the backup...", null, { timeout: 5000 }).catch(() => {});
@@ -123,12 +127,29 @@ try {
     await page.click("#read-orders");
     await page.waitForFunction(() => document.getElementById("read-message").textContent.startsWith("Today's free"), null, { timeout: 5000 }).catch(() => {});
     check((await readMessage(page)) === usedUp(Date.now()), `used up: "${await readMessage(page)}"`);
+
     await page.waitForTimeout(300);
     check((await callsText(page)) === "AI calls left today: 0", `the top bar: "${await callsText(page)}"`);
     check(gemini.models.length === 3, "no call at 0");
     check((await rowTexts(page)) === before, "the rows are still unchanged");
     check(await page.isVisible("#read-without-ai"), "used up: Read without AI is offered too");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-4-used-up.png`, fullPage: true });
+
+    // --- The limits in the browser. The counter is at 0, so a paste the limits allow reaches the AI step
+    // and gets the used-up words, with no call. (The page has its own copy of the character limit.)
+    const notice = async (text) => {
+      await page.fill("#chat", text);
+      await page.click("#read-orders");
+      await page.waitForFunction((old) => !document.getElementById("read-orders").disabled && document.getElementById("read-message").textContent !== old, "", { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      return readMessage(page);
+    };
+    const fits = await notice(longChats(120, 120)); // 120 messages, about 14,500 characters
+    check(fits === usedUp(Date.now()), `120 messages over 10,000 characters are accepted: "${fits}"`);
+    const tooMany = await notice(longChats(121, 40));
+    check(tooMany === "That's 121 messages. ChatChing reads up to 120 at a time, so please paste fewer.", `121 messages: "${tooMany}"`);
+    const tooLong = await notice("x".repeat(15_001));
+    check(tooLong === "That paste is 15,001 characters. ChatChing reads up to 15,000 at a time, so please paste fewer messages.", `15,001 characters: "${tooLong}"`);
 
     // --- Step 10: Read without AI. The demo chats on ANOTHER Chat date are not the saved reply, so the AI is
     //     asked (used up: no call); the seller clicks Read without AI: simple rules, careful, never a wrong total.

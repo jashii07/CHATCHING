@@ -89,15 +89,15 @@ test("the demo chats with ANOTHER Chat date are not the demo (the date is part o
   assert.deepEqual((await parse({ text: DEMO, chatDate: "2026-10-29" })).body, { notice: MOCK_UNKNOWN, readWithoutAi: true });
 });
 
-test("the limits: empty, no Chat date, 51 messages, 10,001 characters -> a friendly notice, rows unchanged", async () => {
+test("the limits: empty, no Chat date, 121 messages, 15,001 characters -> a friendly notice, rows unchanged", async () => {
   const { parse, call } = await start();
   const before = (await call("/api/state")).body;
-  const many = Array.from({ length: 51 }, (_, i) => `[28/10 9:${String(i).padStart(2, "0")} AM] B${i}: 1 cookies`).join("\n");
+  const many = Array.from({ length: 121 }, (_, i) => `[28/10 9:${String(i % 60).padStart(2, "0")} AM] B${i}: 1 cookies`).join("\n");
   const cases = [
     [{ text: "  ", chatDate: CHAT }, /Paste some chat messages first/],
     [{ text: DEMO, chatDate: "" }, /Choose the Chat date/],
-    [{ text: many, chatDate: CHAT }, /That's 51 messages\. ChatChing reads up to 50/],
-    [{ text: "x".repeat(10_001), chatDate: CHAT }, /That paste is 10,001 characters/],
+    [{ text: many, chatDate: CHAT }, /That's 121 messages\. ChatChing reads up to 120/],
+    [{ text: "x".repeat(15_001), chatDate: CHAT }, /That paste is 15,001 characters/],
   ];
   for (const [send, notice] of cases) {
     const { status, body } = await parse(send);

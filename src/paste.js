@@ -3,8 +3,9 @@
 // A notice is not a crash and not an error: the seller just pastes again.
 import { splitMessages } from "./dates.js";
 
-export const MAX_MESSAGES = 50;
-export const MAX_CHARS = 10_000;
+// Real chats include the seller's replies: Set B has 93 messages for 10 orders, read in 24.1 s (1 Nov).
+export const MAX_MESSAGES = 120;
+export const MAX_CHARS = 15_000;
 
 const count = (n) => n.toLocaleString("en");
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;

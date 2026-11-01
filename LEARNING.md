@@ -176,3 +176,14 @@
 - **Reading the numbers first saved calls:** Set B has 93 messages, and the app allows 50 and gives the AI 35 s. Running it as it was would have used calls to measure our own timer. A measuring option makes one call and stops straight away on "busy".
 - **Do the tests really test it?** 20 deliberate breaks of the new code were all caught.
 - **What is still open:** there is no score yet. Google answered "high demand" on the first call, so we stopped, and that call counts. Real chats may also need a higher message limit. Both are in DECISIONS.md.
+
+### 2026-11-01, The two test sets scored, and a longer paste limit (summary by Claude)
+
+- **What happened:** the AI read 93 messages of Set B perfectly (74/74) in 24.1 s, and Set A 73/74 in 28.2 s. Both used the main model, one call each, and nobody touched the prompt.
+- **The one miss matters more than the score:** Customer E asked for oat milk, which that menu doesn't have, and the AI quietly put it in the note. The seller gets no amber warning. The right response is to record it, not fix it: changing the prompt after seeing the mistake would turn the test into practice. It's like correcting an exam after reading the marking sheet: the next score would mean nothing.
+- **What was built:** Jasper set the rule before the run: under 40 s, raise the limit. So the app now reads up to 120 messages and 15,000 characters, gives a read up to 90 s, and warns that long chats can take up to a minute.
+- **Why decide before measuring:** with the rule fixed first, a result can't be argued into the answer we hoped for. The number decides.
+- **Limits hide in copies:** the page keeps its own copy of the character limit, so changing only the server would have left long pastes refused in the browser. A test now compares the two, and the browser check pastes a real long chat.
+- **A changed number can change behaviour:** with 60 s for the main model, a slower "busy" answer now leaves time for a retry. Some timing tests needed new cases, not just new figures.
+- **Be careful with one number:** 40 messages took longer than 93, so the length of a chat doesn't predict the wait. The 90 s budget is there for that, and the worst wait is now longer than before.
+- **What is still open:** the oat-milk kind of miss, and 120 messages were never timed. Both are in DECISIONS.md, Known weaknesses.

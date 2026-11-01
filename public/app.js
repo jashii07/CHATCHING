@@ -1627,9 +1627,9 @@ async function undoCollected(button) {
 
 // Same limit and words as src/paste.js. Checked here too, so a huge paste is never sent at all
 // (over 100 KB the server refuses the request, and the browser logs that as a red error).
-const MAX_CHARS = 10_000;
+const MAX_CHARS = 15_000;
 let reading = false; // one parse at a time: the button is disabled while the server reads
-const STAGE_WORDS = { reading: "Reading the chats...", backup: "The AI is busy, trying the backup..." };
+const STAGE_WORDS = { reading: "Reading the chats... Long chats can take up to a minute.", backup: "The AI is busy, trying the backup..." };
 
 // "AI calls left today: 37" in the top bar (the server's daily counter, src/usage.js).
 function showCallsLeft(left) {

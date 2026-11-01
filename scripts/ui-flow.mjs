@@ -135,7 +135,7 @@ try {
     await page.click("#read-orders");
     await page.waitForTimeout(100);
     const loading = await readMessage(page);
-    check(loading === "Reading the chats...", `loading message: "${loading}"`);
+    check(loading === "Reading the chats... Long chats can take up to a minute.", `loading message: "${loading}"`);
     check(await page.$eval("#read-orders", (el) => el.disabled && el.getAttribute("aria-busy") === "true"), "the button is disabled while reading");
     await page.click("#read-orders", { force: true }).catch(() => {}); // a second click must not send a second parse
     await page.evaluate(() => scrollTo(0, 0)); // a full-page shot of a scrolled page draws the sticky bars mid-page

@@ -176,8 +176,8 @@ test("accuracy.mjs --menu: scores with that seller's menu; a missing or bad menu
   assert.match(bad.stdout, /The menu .*bad\.json is not usable: Bad currency "RM"/);
 });
 
-// --one-call (1 Nov): a measuring run on a long chat, where the app's 35 s for the main model would only
-// measure our own time limit, and where a "high demand" answer must stop the run at once.
+// --one-call (1 Nov): a measuring run on a long chat, where the app's own time limit would only be
+// measuring itself, and where a "high demand" answer must stop the run at once.
 const geminiReply = (order) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ orders: [order] }) }] } }] });
 const ONE_ORDER = { buyer: "Lina", status: "active", sourceMsgs: [1], items: [{ itemId: "cookies", qty: 1 }], deliveryDate: null, fulfilment: null, unclear: false, reason: "", note: "" };
 
@@ -220,4 +220,23 @@ test("accuracy.mjs --one-call: only with --live, and only a sensible number of s
   const cached = run("--cached", "--one-call", "120");
   assert.equal(cached.status, 1);
   assert.match(cached.stdout, /--one-call is for --live only/);
+});
+
+test("accuracy --one-call --backup: the one call goes to the backup model, the same way", async () => {
+  const asked = [];
+  const fetch = async (url) => (asked.push(url), new Response(geminiReply(ONE_ORDER)));
+  const live = await liveParse({
+    text: "[1/11 9:00 AM] Lina: 1 jar cookies", chatDate: "2026-11-01", menu: MENU, apiKey: "test-key", fetch, log: () => {},
+    cacheDir: mkdtempSync(join(tmpdir(), "acc-one-")), oneCallSeconds: 180, oneCallModel: BACKUP_MODEL, ai: noCounting(),
+  });
+  assert.equal(live.calls, 1);
+  assert.equal(live.model, BACKUP_MODEL);
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], new RegExp(BACKUP_MODEL));
+});
+
+test("accuracy.mjs --backup: only with --one-call", () => {
+  const result = run("--live", "--backup");
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /--backup goes with --one-call/);
 });

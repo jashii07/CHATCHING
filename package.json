@@ -1,6 +1,6 @@
 {
   "name": "chatching",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Turn messy chat orders into PayPal invoices",
   "main": "server.js",
   "scripts": {

@@ -1,5 +1,5 @@
 // Tests for reading a paste (Step 4, Part 1): phone timestamp formats in a whole paste, lines that
-// continue a message, and the input limits (50 messages / 10,000 characters -> a friendly notice).
+// continue a message, and the input limits (120 messages / 15,000 characters -> a friendly notice).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -90,7 +90,7 @@ test(`readPaste: exactly ${MAX_MESSAGES} messages is fine; ${MAX_MESSAGES + 1} -
   assert.equal(readPaste(lines(MAX_MESSAGES), CHAT).notice, "");
   const { messages, notice } = readPaste(lines(MAX_MESSAGES + 1), CHAT);
   assert.equal(messages, undefined);
-  assert.equal(notice, "That's 51 messages. ChatChing reads up to 50 at a time, so please paste fewer.");
+  assert.equal(notice, "That's 121 messages. ChatChing reads up to 120 at a time, so please paste fewer.");
 });
 
 test(`readPaste: exactly ${MAX_CHARS.toLocaleString("en")} characters is fine; one more -> a friendly notice`, () => {
@@ -98,7 +98,19 @@ test(`readPaste: exactly ${MAX_CHARS.toLocaleString("en")} characters is fine; o
   assert.equal(text(MAX_CHARS).length, MAX_CHARS);
   assert.equal(readPaste(text(MAX_CHARS), CHAT).notice, "");
   assert.equal(readPaste(text(MAX_CHARS + 1), CHAT).notice,
-    "That paste is 10,001 characters. ChatChing reads up to 10,000 at a time, so please paste fewer messages.");
+    "That paste is 15,001 characters. ChatChing reads up to 15,000 at a time, so please paste fewer messages.");
+});
+
+test("the page checks the same character limit as the server, so a long paste is never refused by one and not the other", () => {
+  const page = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(page, new RegExp(`const MAX_CHARS = ${String(MAX_CHARS).replace(/(\d{3})$/, "_$1")};`));
+});
+
+test("a whole day with the seller's replies fits: 93 messages for 10 orders is read", () => {
+  const day = Array.from({ length: 93 }, (_, i) => `[28/10 9:${String(i % 60).padStart(2, "0")} AM] ${i % 2 ? "Seller" : "Lina"}: 1 cookies`).join("\n");
+  const { messages, notice } = readPaste(day, CHAT);
+  assert.equal(notice, "");
+  assert.equal(messages.length, 93);
 });
 
 test("readPaste: a huge paste (1 MB) is refused quickly, without splitting it", () => {
