@@ -30,6 +30,7 @@ const PHONE = { width: 390, height: 844 };
 const ROWS = ".ag-grid-scrolling-container > .ag-row";
 const HELP = "Scan this with your phone to open the same orders. Works once, for 10 minutes.";
 const EXPIRED = "This link has expired. Make a new one on your laptop.";
+const REPLACE = "This phone already has orders. Replace them with the laptop's orders?";
 const TEN_MINUTES = 10 * 60_000;
 
 rmSync(OUT, { recursive: true, force: true });
@@ -316,8 +317,22 @@ try {
   await scanButton(scanning).click();
   await scanning.waitForFunction(() => document.getElementById("scan-hint").textContent === "This isn't a ChatChing invoice QR.", null, { timeout: 15_000 });
   check(scanning.url() === `${base}/`, "a pairing link on another site is refused, and the phone stays here");
+  // This phone has orders, so it is asked first. A stranger's QR at the counter gets a "No" and nothing moves.
   const viaScan = await newLink(seller);
+  const asked = [];
+  scanning.once("dialog", (dialog) => (asked.push(dialog.message()), dialog.dismiss()));
   await scanning.evaluate((text) => { window.jsQR = () => ({ data: text }); }, viaScan);
+  await scanning.waitForRequest((req) => req.url() === `${base}/`, { timeout: 15_000 });
+  await scanning.waitForLoadState("load");
+  await scanning.waitForSelector(ROWS);
+  check(asked[0] === REPLACE, `a phone with orders is asked first: "${asked[0]}"`);
+  check((await cookieOf(scanning)).value === ownId, "No: the phone keeps its own table");
+  check((await stateOf(scanning)).orders.some((row) => row.invoiceId), "No: its own orders and invoice are still there");
+
+  await scanning.addScriptTag({ url: "/vendor/jsQR.js" });
+  await scanning.evaluate((text) => { window.jsQR = () => ({ data: text }); }, viaScan);
+  scanning.once("dialog", (dialog) => dialog.accept());
+  await scanButton(scanning).click();
   await scanning.waitForRequest((req) => req.url() === `${base}/`, { timeout: 15_000 });
   await scanning.waitForLoadState("load");
   await scanning.waitForTimeout(800);
@@ -336,6 +351,7 @@ try {
   await pasting.waitForTimeout(300);
   await scanButton(pasting).click();
   await pasting.fill("#scan-input", await newLink(seller));
+  pasting.once("dialog", (dialog) => dialog.accept()); // "Yes, replace them"
   await pasting.click("#scan-check");
   await pasting.waitForURL(`${base}/`);
   await pasting.waitForTimeout(800);

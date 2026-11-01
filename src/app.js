@@ -15,7 +15,7 @@ import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
 import { createStatusChecker } from "./status.js";
 import { createPickup, qrFileName } from "./pickup.js";
-import { PAIR_EXPIRED, PAIR_TTL_MS, createPairing, pairQr } from "./pairing.js";
+import { PAIR_EXPIRED, PAIR_REPLACE, PAIR_TTL_MS, createPairing, pairQr } from "./pairing.js";
 import { buyerPanel } from "./panel.js";
 import { kitchenList } from "./kitchen.js";
 import { buyerMessages } from "./messages.js";
@@ -148,13 +148,23 @@ export function createApp(config, {
   // "Open on my phone", the phone's side. Above the visitor step on purpose: a phone that isn't paired yet gets
   // no new visitor from this route, and a refused link leaves its cookie alone. Wrong, used and expired all get
   // the same friendly words (200, no red console line). The id goes in the cookie only, never in a body or a URL.
+  // A browser with orders of its own is asked first (a stranger's pairing QR can reach a seller's phone through
+  // Pickup scan): { confirm } changes nothing and keeps the code alive, and { replace: true } is the seller's yes.
   const visitorCookie = (req) => ({ httpOnly: true, sameSite: "lax", secure: req.secure, maxAge: MAX_AGE_MS });
   app.get("/pair", (req, res) => res.sendFile("pair.html", { root: PUBLIC_DIR }));
+  const wouldLoseOrders = (req, target) => {
+    const own = visitorIdFrom(req.headers.cookie);
+    if (!own || own === target) return false;
+    const { store } = visitors.get(own);
+    return store.rows().length > 0 || store.batches().some((saved) => !saved.fromReset);
+  };
   app.post("/api/pair/open", limited("pairOpen"), (req, res) => {
-    const code = req.body?.code;
-    if (typeof code !== "string") return res.status(400).json({ error: 'Send { "code": "..." }.' });
+    const { code, replace = false } = req.body ?? {};
+    if (typeof code !== "string" || typeof replace !== "boolean") return res.status(400).json({ error: 'Send { "code": "..." }.' });
+    const target = pairing.peek(code);
+    if (!target) return res.json({ notice: PAIR_EXPIRED });
+    if (!replace && wouldLoseOrders(req, target)) return res.json({ confirm: PAIR_REPLACE });
     const id = pairing.redeem(code);
-    if (!id) return res.json({ notice: PAIR_EXPIRED });
     res.cookie(VISITOR_COOKIE, id, visitorCookie(req));
     res.json({ paired: true });
   });
