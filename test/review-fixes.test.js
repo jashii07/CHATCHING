@@ -589,3 +589,13 @@ test("#16 a row saving its own item again is not a duplicate, and another buyer'
   assert.equal((await c.put(`/api/orders/${orders[0].id}`, { itemId: "classic_brownies" })).status, 200);
   assert.equal((await c.put(`/api/orders/${orders[1].id}`, { itemId: "classic_brownies" })).status, 200);
 });
+
+test("#1 Reset demo starts everything over: batches saved earlier by New batch raise no check either", async () => {
+  const s = await start();
+  const c = client(s.base);
+  await readPlain(c, ["Lina: 2 classic brownies"]);
+  await c.post("/api/invoices", {});
+  await c.post("/api/new-batch");
+  await c.post("/api/reset");
+  assert.equal((await readPlain(c, ["Lina: 2 classic brownies"])).orders[0].unclear, false);
+});

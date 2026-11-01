@@ -67,9 +67,8 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
   }
 
   // The rows and invoice links stay in this visitor's file; the table starts empty.
-  // fromReset: "start the demo over", so it raises no "already has an invoice" check on the next read.
-  function keepBatch({ fromReset = false } = {}) {
-    if (rows.length) batches = [...batches, { batch, savedAt: new Date().toISOString(), rows, source, ...(fromReset && { fromReset }) }].slice(-MAX_BATCHES);
+  function keepBatch() {
+    if (rows.length) batches = [...batches, { batch, savedAt: new Date().toISOString(), rows, source }].slice(-MAX_BATCHES);
   }
 
   function emptyTable() {
@@ -123,7 +122,9 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
     // Reset demo: an empty table, so the demo can start over. Sent invoices are first kept like a New
     // batch (their links stay); nothing else is kept. PayPal is never touched.
     reset() {
-      if (rows.some((row) => row.invoiceId)) keepBatch({ fromReset: true });
+      if (rows.some((row) => row.invoiceId)) keepBatch();
+      // "Start the demo over": what is saved stays saved, but raises no "already has an invoice" check again.
+      batches = batches.map((saved) => ({ ...saved, fromReset: true }));
       emptyTable();
     },
   };

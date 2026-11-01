@@ -120,7 +120,7 @@ export function toRows(aiOrders, menu) {
 // repeat. A buyer who already has a sent invoice in a saved batch of the same Chat date becomes unclear until
 // the seller says it is a real second order ("Send anyway", keepEarlierInvoice). It sits on all the buyer's
 // active rows, so removing one row can't lose it. An invoice cancelled at PayPal doesn't count, and neither
-// does a batch put away by Reset demo, which means "start over".
+// does anything saved before a Reset demo, which means "start over".
 export function markEarlierInvoices(rows, batches, chatDate, menu) {
   const earlier = new Map(); // buyer -> the sen of their invoice in the latest matching batch
   for (const batch of batches.filter((saved) => saved.source?.chatDate === chatDate && !saved.fromReset)) {
