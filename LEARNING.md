@@ -165,3 +165,14 @@
 - **Do the tests really test it?** 34 safeguards were broken on purpose, one at a time. Two got through at first, and both were weak tests, not weak code. The "login in the link" test used another site, which a different rule already refused. The "phone left open" check changed the batch, so the old code passed it for the wrong reason. Both tests were fixed and then caught their break.
 - **What the live run proved:** on the hosted app, a phone browser opened the https link read off the laptop's screen, got the same cookie, scanned PayPal's real QR against the real sandbox, and Collected appeared on the laptop.
 - **What is still open:** a real phone is Jasper's check. A phone with its own table moves to the laptop's with no warning. Anyone who scans the QR first gets the table, and a paired phone can't be unlinked. All in DECISIONS.md, Known weaknesses.
+
+### 2026-11-01, Add-ons, seller messages and two test sets (summary by Claude)
+
+- **What was built:** a menu item can be a paid add-on, listed as its own item so its price comes from the menu. Free requests stay in the note. Anything the buyer wants that isn't on the menu makes the order amber, in our code's own words. A new `sellerName` means the seller's replies are read as context and can never become a buyer.
+- **Why:** real cafes charge for extras, and real chats have both sides of the conversation. Both had to work without breaking the golden rule: the AI never sets a price.
+- **Report, don't decide, again:** the AI only names what wasn't on the menu, the same way it only reports a price a buyer wrote. Like a waiter writing down what you said while the till works out the bill. So the wording and the amber flag never depend on the AI being careful.
+- **A rule in the prompt isn't a rule yet:** telling the AI to ignore the seller is only a request. The code checks the answer too, so a slip can't reach the table. Read without AI had the same gap, and so did Copy question: a seller's word "cancel" would have counted as the buyer's.
+- **Whose price is it?** The seller's prices sit right beside the buyer's words. Daniel's chat says RM31 and the menu says RM30.00. The app follows the menu, which is why 8 of the friend's 10 answers differ from ours: that key follows what the seller said.
+- **Reading the numbers first saved calls:** Set B has 93 messages, and the app allows 50 and gives the AI 35 s. Running it as it was would have used calls to measure our own timer. A measuring option makes one call and stops straight away on "busy".
+- **Do the tests really test it?** 20 deliberate breaks of the new code were all caught.
+- **What is still open:** there is no score yet. Google answered "high demand" on the first call, so we stopped, and that call counts. Real chats may also need a higher message limit. Both are in DECISIONS.md.

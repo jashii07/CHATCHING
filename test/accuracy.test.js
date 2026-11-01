@@ -175,3 +175,49 @@ test("accuracy.mjs --menu: scores with that seller's menu; a missing or bad menu
   assert.equal(bad.status, 1);
   assert.match(bad.stdout, /The menu .*bad\.json is not usable: Bad currency "RM"/);
 });
+
+// --one-call (1 Nov): a measuring run on a long chat, where the app's 35 s for the main model would only
+// measure our own time limit, and where a "high demand" answer must stop the run at once.
+const geminiReply = (order) => JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ orders: [order] }) }] } }] });
+const ONE_ORDER = { buyer: "Lina", status: "active", sourceMsgs: [1], items: [{ itemId: "cookies", qty: 1 }], deliveryDate: null, fulfilment: null, unclear: false, reason: "", note: "" };
+
+test("accuracy --one-call: one call to the main model, with the seconds it was given", async () => {
+  const asked = [];
+  const timers = [];
+  const fetch = async (url) => (asked.push(url), new Response(geminiReply(ONE_ORDER)));
+  const live = await liveParse({
+    text: "[1/11 9:00 AM] Lina: 1 jar cookies", chatDate: "2026-11-01", menu: MENU, apiKey: "test-key", fetch, log: () => {},
+    cacheDir: mkdtempSync(join(tmpdir(), "acc-one-")), oneCallSeconds: 180,
+    ai: { ...noCounting(), timeoutSignal: (ms) => (timers.push(ms), AbortSignal.timeout(ms)) },
+  });
+  assert.equal(live.calls, 1);
+  assert.equal(live.model, MAIN_MODEL);
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], new RegExp(MAIN_MODEL));
+  assert.equal(timers.length, 1);
+  assert.ok(timers[0] > 179_000 && timers[0] <= 180_000, String(timers[0]));
+});
+
+test("accuracy --one-call: a high-demand answer stops at once: no retry, no backup, no score", async () => {
+  let calls = 0;
+  const fetch = async () => (calls++, new Response(JSON.stringify({ error: { status: "UNAVAILABLE", message: "high demand" } }), { status: 503 }));
+  const live = await liveParse({
+    text: "[1/11 9:00 AM] Lina: 1 jar cookies", chatDate: "2026-11-01", menu: MENU, apiKey: "test-key", fetch, log: () => {},
+    cacheDir: mkdtempSync(join(tmpdir(), "acc-one-")), oneCallSeconds: 180, ai: noCounting(),
+  });
+  assert.equal(calls, 1);
+  assert.equal(live.calls, 1);
+  assert.ok(live.notice);
+  assert.equal(live.raw, undefined);
+});
+
+test("accuracy.mjs --one-call: only with --live, and only a sensible number of seconds", () => {
+  for (const seconds of ["5", "1000", "abc", "60.5"]) {
+    const result = run("--live", "--one-call", seconds);
+    assert.equal(result.status, 1, seconds);
+    assert.match(result.stdout, /--one-call needs whole seconds from 30 to 300/);
+  }
+  const cached = run("--cached", "--one-call", "120");
+  assert.equal(cached.status, 1);
+  assert.match(cached.stdout, /--one-call is for --live only/);
+});

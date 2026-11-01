@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RUNTIME_CACHE, createAi, demoReplies, parseKey } from "./ai.js";
+import { MAIN_MODEL } from "./gemini.js";
 import { buildParsePrompt, replyToOrders } from "./ai-prompt.js";
 import { formatMoney } from "./money.js";
 import { summary, toRows } from "./orders.js";
@@ -49,13 +50,16 @@ export function savedReplyFor({ text, chatDate, reply = null }) {
 // { notice, seconds, calls } when no model answered. seconds = the whole wait, backup included.
 // At most 2 calls (main, then backup; no retry of the same model), each one counted in the app's daily
 // counter (src/usage.js) like any real call. The tests pass their own counter, clock and wait in "ai".
-export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, fetch = globalThis.fetch, log = console.log, ai: aiOptions = {} }) {
+// oneCallSeconds: ONE call to the main model with this many seconds, for measuring a long chat: no retry, no
+// backup, so a "high demand" answer stops the run at once.
+export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCallSeconds = null, fetch = globalThis.fetch, log = console.log, ai: aiOptions = {} }) {
   let calls = 0;
   const counted = (...args) => {
     calls += 1;
     return fetch(...args);
   };
-  const ai = createAi({ mode: "real", apiKey, replies: new Map(), cacheDir, fetch: counted, log, maxCalls: 2, ...aiOptions });
+  const limits = oneCallSeconds ? { models: [MAIN_MODEL], maxCalls: 1, budgetMs: oneCallSeconds * 1000 } : { maxCalls: 2 };
+  const ai = createAi({ mode: "real", apiKey, replies: new Map(), cacheDir, fetch: counted, log, ...limits, ...aiOptions });
   const start = performance.now();
   const result = await ai.parse({ text, chatDate, menu });
   const seconds = Number(((performance.now() - start) / 1000).toFixed(1));
@@ -66,7 +70,7 @@ export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, fetch 
 
 const money = (amount, currency) => (amount == null ? "?" : currency ? formatMoney(amount, currency).replace(/\s/g, " ") : amount);
 
-// The result as Markdown: printed by the script, and saved as docs/accuracy.md after a live demo run.
+// The result as Markdown: printed by the script, and saved to tmp/ after a live run.
 // facts: { date, mode, model, seconds, calls, chats, expected, chatDate, messages, reply, currency }
 export function reportMarkdown(result, facts) {
   const ok = result.scores.reduce((n, s) => n + s.ok, 0);

@@ -9,9 +9,11 @@
 //   ... --reply <file>                                          (--cached) score this saved reply
 //   ... --out <file>                                            (--live) where the report goes
 //   ... --menu <file>                                           that seller's menu (default: data/menu.json)
+//   ... --one-call <seconds>                                    (--live) ONE call to the main model with this long to
+//                                                               answer: no retry, no backup, for measuring a long chat
 //
-// A live run saves its report: the demo's to docs/accuracy.md (committed, quoted on Devpost), any other
-// chats' to tmp/ (git-ignored). Holdout chats (data/holdout/, real chats) never produce a report in the repo.
+// A live run saves its report to tmp/ (git-ignored), or to --out. docs/accuracy.md is written by hand from
+// these reports. Holdout chats (data/holdout/) never produce a report in the repo by themselves.
 // Exit code: 0 a perfect score, 2 differences, 1 could not score. The key is read from the environment,
 // sent in a header (src/gemini.js) and never printed.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -50,22 +52,24 @@ function options() {
       options: {
         cached: { type: "boolean" }, live: { type: "boolean" },
         chats: { type: "string" }, expected: { type: "string" }, date: { type: "string" },
-        reply: { type: "string" }, out: { type: "string" }, menu: { type: "string" },
+        reply: { type: "string" }, out: { type: "string" }, menu: { type: "string" }, "one-call": { type: "string" },
       },
     }));
   } catch (err) {
-    throw new Stop(`${err.message}\nUse --cached or --live, with optional --chats, --expected, --date, --reply, --out, --menu.`);
+    throw new Stop(`${err.message}\nUse --cached or --live, with optional --chats, --expected, --date, --reply, --out, --menu, --one-call.`);
   }
   if (values.cached && values.live) throw new Stop("Choose one: --cached (no AI call) or --live (one real call).");
   if (values.live && values.reply) throw new Stop("--reply is for --cached only.");
-  return { ...values, live: Boolean(values.live) };
+  const oneCall = values["one-call"];
+  if (oneCall !== undefined && !values.live) throw new Stop("--one-call is for --live only.");
+  if (oneCall !== undefined && !(/^\d+$/.test(oneCall) && Number(oneCall) >= 30 && Number(oneCall) <= 300)) throw new Stop("--one-call needs whole seconds from 30 to 300.");
+  return { ...values, live: Boolean(values.live), oneCallSeconds: oneCall ? Number(oneCall) : null };
 }
 
 async function main() {
   const o = options();
   const chats = resolve(o.chats ?? join(ROOT, DEMO_CHATS));
   const expectedPath = resolve(o.expected ?? join(ROOT, DEMO_EXPECTED));
-  const isDemo = chats === resolve(ROOT, DEMO_CHATS) && expectedPath === resolve(ROOT, DEMO_EXPECTED);
   const isHoldout = chats.startsWith(HOLDOUT + sep);
 
   const text = read(chats, "chats");
@@ -100,8 +104,8 @@ async function main() {
     if (!apiKey) throw new Stop("GEMINI_API_KEY is missing. Run with: node --env-file-if-exists=.env scripts/accuracy.mjs --live");
     const stamp = Date.now();
     const cacheDir = join(ROOT, `tmp/accuracy-live/${stamp}`); // new and empty: a real call, never a cached answer
-    console.log(`LIVE: one batched parse of ${facts.chats} through the app's AI code (main model, backup if it fails)...`);
-    const live = await liveParse({ text, chatDate, menu, apiKey, cacheDir });
+    console.log(`LIVE: one batched parse of ${facts.chats} through the app's AI code (${o.oneCallSeconds ? `one call, ${o.oneCallSeconds} s at most` : "main model, backup if it fails"})...`);
+    const live = await liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCallSeconds: o.oneCallSeconds });
     console.log(`real calls used: ${live.calls}; ${live.seconds} s`);
     if (live.notice) throw new Stop(`No reply to score: ${live.notice}`);
     raw = live.raw;
@@ -133,7 +137,7 @@ async function main() {
   console.log(md);
 
   if (o.live) {
-    const out = resolve(o.out ?? (isDemo ? join(ROOT, "docs/accuracy.md") : join(ROOT, `tmp/accuracy-${basename(chats).replace(/\.[^.]*$/, "")}.md`)));
+    const out = resolve(o.out ?? join(ROOT, `tmp/accuracy-${basename(chats).replace(/\.[^.]*$/, "")}.md`));
     const inTmp = out.startsWith(resolve(ROOT, "tmp") + sep) || out.startsWith(HOLDOUT + sep);
     if (isHoldout && !inTmp) throw new Stop(`Not saved: holdout results stay out of git (tmp/ or data/holdout/), not ${show(out)}.`);
     mkdirSync(resolve(out, ".."), { recursive: true });

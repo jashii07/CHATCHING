@@ -153,6 +153,12 @@ Only one new package is planned: **express**. (31 Oct: also **qrcode-generator 2
 - `mentionedPrices` (optional, **added 29 Oct, Step 7**): prices the buyer wrote, e.g. `[{ "text": "RM15", "itemId": "classic_brownies", "msg": 4 }]`. `text` is the price as written, `itemId` the menu id it refers to (or `null`), `msg` the message number. **The AI only reports; it never decides.** Our code reads the number from `text` and compares it with `menu.json`. A mismatch makes the row amber: "Check: buyer mentioned RM 15.00, menu says RM 18.00." **The invoice price always comes from the menu.**
   - Details for Step 7 (Claude's proposal, to confirm in that session): a mention matches if it equals the unit price, the line total ("2 boxes for RM36") or, when `itemId` is null, the buyer's total. The amber row is unclear like the Chat-date warning (check first, charge second), so it blocks invoicing until the seller clears it.
 
+**Add-ons and seller messages (added 1 Nov):**
+- A menu item may have `"addon": true`. The AI lists a paid add-on as its own item with its quantity (iced latte with oat milk = 1 x Iced Latte + 1 x Oat Milk). The price comes from the menu, as always.
+- Free requests (sugar level, less/no ice, remove mayo) go in `note`, never an item.
+- `notOnMenu` (optional, text only): what the buyer asked for that the menu doesn't have. The AI only reports the name; our code writes "buyer asked for <x>, not on the menu." and makes the order unclear. A whole item not on the menu also gets an item with `itemId: null`.
+- `sellerName` in `data/menu.json`: the seller's messages are context only. They never create a buyer or an order, and a price the seller writes is never compared (`src/seller.js`, `checkOrders`).
+
 Our code checks every order:
 - `itemId` must be `null` or exist in the menu.
 - `qty` must be a whole number from 1 to 99.
@@ -262,6 +268,8 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - Any chats: `--chats <file> --expected <file> --date <YYYY-MM-DD>` (default: the demo). This replaces the planned `--real` / `--holdout` flags.
    - **Live demo run on 29 Oct: no score.** Both models answered 503 "high demand" (main after 43 s, backup after 4.3 s); 2 of 2 calls used; not retried. Run `--live` again on another day (2 calls max).
    - No prompt tuning: the saved reply is already perfect on the demo, and tuning on the chats we score only polishes the demo number.
+   - **Added 1 Nov:** `--menu <file>` (a test set's own menu), `--one-call <seconds>` (one call to the main model, no retry, no backup, for measuring long chats). It now scores what the app would show (after `checkOrders`). Every live report goes to `tmp/` or `--out`; `docs/accuracy.md` is written by hand from those reports.
+   - **Two test sets (1 Nov), `data/holdout/`:** Set A "cafe-usd" and Set B "daily-grind", results in `docs/accuracy.md`. Set A's run got a 503 "high demand" after 38.9 s; no scores yet, 1 of 4 calls used. Run at a quiet time when Jasper asks. Set A has 1 call left, Set B 2. Command: `node --env-file-if-exists=.env scripts/accuracy.mjs --live --one-call 180 --chats data/holdout/<set>/chats.txt --expected data/holdout/<set>/expected.json --menu data/holdout/<set>/menu.json --date <2026-10-30 or 2026-10-31> --out tmp/accuracy-<set>.md`.
 9. ✅ (done early, Fri 30 Oct; `src/usage.js`, `GET /api/parse/progress`, `npm run ui-ai`, 323 tests) Timeout, retry, backup model, daily counter, "AI calls left".
    - **One 60 s budget per parse:** the main model gets up to 35 s, the backup the rest (at least 25 s). One retry on 503/429 after ~2 s, only if 20 s (a real read) still fits and a call is left for the backup. Never more than 3 calls. Replaces the old 45 s per-call timeout below.
    - **Loading words from the server's real stage** (the page asks once a second): "Reading the chats...", then "The AI is busy, trying the backup...". Button disabled until the end.
@@ -415,6 +423,7 @@ All three were tested in sandbox on 2026-10-25 with `scripts/smoke-invoice.mjs` 
   - **You save both by Sun 1 Nov**, before prompt tuning (Mon 2 Nov). We don't open them while tuning.
   - `node --env-file-if-exists=.env scripts/accuracy.mjs --live --chats data/holdout/chats.txt --expected data/holdout/expected.json --date <YYYY-MM-DD>` runs **once**, on Sat 7 Nov. The score is recorded as-is, even if it's low.
   - **The result is never used to tune the prompt afterwards.** Once we have seen the holdout mistakes, the set is no longer "unseen", so any later score on it would not be honest. Its report stays out of git (`tmp/`); only the score is quoted.
+  - **Changed 1 Nov (Jasper):** for the two test sets in Step 8, scores and differences ARE committed in `docs/accuracy.md`; their chats, menus and expected answers never are. The 7 Nov run happens only if new real chats arrive.
   - **Privacy:** Google's free-tier terms say "Do not submit sensitive, confidential, or personal information" and that "human reviewers may read" inputs. So also remove addresses, places and anything personal. Your friend's permission must cover a **public GitHub repo** and **Google's free tier**.
   - `data/README.md` gets a line saying the holdout chats are real but anonymised. Everything else stays fictional.
 - **User test:** Fri 6 Nov, 10 minutes, your friend on the hosted app.
