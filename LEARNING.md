@@ -198,3 +198,13 @@
 - **Pushing is deploying:** Render deploys `main` on every push, so "push" and "don't deploy" conflicted. The work is on a branch until session B.
 - **Do the checks catch it?** The page guard for #16 was switched off on purpose and `ui-flow` failed with the exact red console line it prevents.
 - **What is still open:** #3, #13, #14, #17 and #18 (session B). The item comparison in #6 has only met the fake PayPal, so it needs one real sandbox check before deploying.
+
+### 2026-11-02, Fix session B: security and cleanup (summary by Claude)
+
+- **What was built:** every reply now carries security headers, including a Content-Security-Policy: a list the browser enforces of what the page may load and run. Requests from other websites are refused, a laptop's server can't be reached from the same Wi-Fi, CSV cells can't become Excel formulas, a phone with orders is asked before pairing replaces them, and chat text can't pose as the prompt's own markers. The fixture based on a real chat is now fully made up.
+- **Why a real browser matters:** the unit tests passed the first policy, and Chrome then blocked AG Grid's icon fonts with 20 red lines. Only a real browser knows what a page really loads.
+- **A repro can ask the impossible:** PI4 wanted two stamped lines to be one message. Passing it as written would have merged every real chat, so the honest move was to say so and test what can be told apart.
+- **One good number isn't proof:** turning keep-alive off gave 0 crashes in 2,000 runs on one file, and it looked solved. 100 full runs still crashed 3 times, and a trace then showed the crash happens at the first fetch, before keep-alive could matter. The first result was luck, and the note written from it had to be taken back.
+- **Time-box the small stuff:** #18 is a low finding, so Jasper stopped the hunt. A crashed file now reruns once, only for that exact exit code, and says so out loud. Real failures are never rerun, and four planted cases prove it.
+- **Check the check:** a separate look at the live page caught what the deploy check didn't say. Being live once doesn't mean staying live.
+- **What is still open:** the crash's native cause, the old fixture text in git history, and the rest of DECISIONS.md, Known weaknesses.
