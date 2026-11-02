@@ -33,7 +33,8 @@ export function createStatusChecker({ store, paypal, now = Date.now, log = conso
         result.failed.push({ buyer, reason: err instanceof PayPalError ? err.message : "Something went wrong on the server." });
       }
     }
-    lastCheck = now();
+    // A failed check told us nothing, so it starts no cache: Check again must really ask PayPal.
+    if (!result.failed.length) lastCheck = now();
     // New batch or Reset while we waited: these answers belong to rows that are gone.
     if (store.batch() !== batch) return result;
     for (const { id, buyer, status } of answers) {

@@ -7,7 +7,7 @@ import { splitMessages } from "../src/dates.js";
 import { readPaste, MAX_MESSAGES, MAX_CHARS } from "../src/paste.js";
 
 const CHAT = "2026-10-28";
-const FIXTURE = readFileSync(new URL("./fixtures/real-order-no-timestamp.txt", import.meta.url), "utf8");
+const FIXTURE = readFileSync(new URL("./fixtures/made-up-order-no-timestamp.txt", import.meta.url), "utf8");
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
 const pick = (messages) => messages.map((m) => [m.n, m.date, m.time, m.text]);
 
@@ -70,7 +70,7 @@ test("readPaste: the demo chats -> 18 messages, no notice", () => {
   assert.equal(messages.length, 18);
 });
 
-test("readPaste: the real-style order with no timestamp -> one message on the Chat date", () => {
+test("readPaste: the made-up order with no timestamp -> one message on the Chat date", () => {
   const { messages, notice } = readPaste(FIXTURE, CHAT);
   assert.equal(notice, "");
   assert.deepEqual(messages.map((m) => [m.n, m.date]), [[1, CHAT]]);
@@ -113,8 +113,9 @@ test("a whole day with the seller's replies fits: 93 messages for 10 orders is r
   assert.equal(messages.length, 93);
 });
 
-test("readPaste: a huge paste (1 MB) is refused quickly, without splitting it", () => {
-  const start = performance.now();
-  assert.match(readPaste("x".repeat(1_000_000), CHAT).notice, /1,000,000 characters/);
-  assert.ok(performance.now() - start < 50);
+test("readPaste: a huge paste (1 MB) is refused before it is split", () => {
+  // The Chat date is bad on purpose: splitting would ask for the date, so the size words prove it never got that far.
+  const { notice, messages } = readPaste("x".repeat(1_000_000), "not a date");
+  assert.match(notice, /1,000,000 characters/);
+  assert.equal(messages, undefined);
 });

@@ -13,7 +13,7 @@ import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const CHAT = "2026-10-28";
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
-const FIXTURE = readFileSync(new URL("./fixtures/real-order-no-timestamp.txt", import.meta.url), "utf8");
+const FIXTURE = readFileSync(new URL("./fixtures/made-up-order-no-timestamp.txt", import.meta.url), "utf8");
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const tempDir = () => mkdtempSync(join(tmpdir(), "chatching-"));
 

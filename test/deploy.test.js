@@ -18,7 +18,7 @@ test("on Render (RENDER and PORT set by Render): listen on 0.0.0.0 and Render's 
   const config = loadConfig({ RENDER: "true", PORT: "10000" });
   assert.deepEqual([config.onRender, config.host, config.port], [true, "0.0.0.0", 10000]);
   const local = loadConfig({});
-  assert.deepEqual([local.onRender, local.host, local.port], [false, undefined, 3000]);
+  assert.deepEqual([local.onRender, local.host, local.port], [false, "127.0.0.1", 3000]);
 });
 
 test("package.json: Node 24 and only express + the QR maker at runtime (Render installs with npm ci --omit=dev)", () => {

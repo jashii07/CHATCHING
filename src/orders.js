@@ -1,7 +1,7 @@
 // Pure order logic: no files, no network, no clock. The menu is passed in.
 // The AI never sets prices: every price comes from the menu, and money is in sen (money.js).
 // Anything that fails a check becomes an unclear row with a reason. Nothing is dropped silently.
-import { toSen, fromSen } from "./money.js";
+import { toSen, fromSen, formatMoney } from "./money.js";
 import { checkMentionedPrices } from "./prices.js";
 
 // Currency codes the computer knows, and PayPal's currencies that take no decimals (PayPal docs, "Currency codes").
@@ -116,13 +116,45 @@ export function toRows(aiOrders, menu) {
   return rows;
 }
 
+// The double-invoice guard between batches: each batch has its own invoice numbers, so PayPal can't refuse a
+// repeat. A buyer who already has a sent invoice in a saved batch of the same Chat date becomes unclear until
+// the seller says it is a real second order ("Send anyway", keepEarlierInvoice). It sits on all the buyer's
+// active rows, so removing one row can't lose it. An invoice cancelled at PayPal doesn't count, and neither
+// does anything saved before a Reset demo, which means "start over".
+export function markEarlierInvoices(rows, batches, chatDate, menu) {
+  const earlier = new Map(); // buyer -> the sen of their invoice in the latest matching batch
+  for (const batch of batches.filter((saved) => saved.source?.chatDate === chatDate && !saved.fromReset)) {
+    const sen = new Map();
+    for (const row of batch.rows) {
+      if (!row.invoiceId || row.orderStatus !== "active" || row.invoiceStatus === "Draft" || row.invoiceStatus === "Cancelled/Refunded") continue;
+      const key = cleanName(row.buyer).toLowerCase();
+      sen.set(key, (sen.get(key) ?? 0) + toSen(row.lineTotal));
+    }
+    for (const [key, total] of sen) earlier.set(key, total);
+  }
+  return rows.map((row) => {
+    const sen = earlier.get(cleanName(row.buyer).toLowerCase());
+    if (sen === undefined || row.orderStatus !== "active") return row;
+    const reason = `${cleanName(row.buyer)} already has an invoice (${formatMoney(fromSen(sen), menu.currency)}) from an earlier batch today.`;
+    return { ...row, earlierInvoice: { reason, kept: false }, unclear: true, reason: [row.reason, reason].filter(Boolean).join(" ") };
+  });
+}
+
+// "Send anyway": this one check goes; any other problem on the row stays.
+export function keepEarlierInvoice(row) {
+  const reason = row.reason.replace(row.earlierInvoice.reason, "").replace(/\s+/g, " ").trim();
+  return { ...row, earlierInvoice: { ...row.earlierInvoice, kept: true }, unclear: Boolean(reason), reason };
+}
+
 // After the seller edits the item or qty: a new row with the name, price, total and unclear flag updated.
 // The edit counts as the seller's fix, so the AI's own "unclear" flag is dropped; only our checks remain.
 // A price mismatch (Step 7a) is the exception: it stays until the seller clicks "Keep menu price" (kept).
+// So does an earlier invoice: only "Send anyway" clears it.
 export function recalcRow(row, menu) {
   const check = checkItem(row.itemId, row.qty, menu);
   if (!cleanName(row.buyer)) check.reasons.unshift("Buyer name missing.");
   if (row.priceCheck && !row.priceCheck.kept) check.reasons.push(row.priceCheck.reason);
+  if (row.earlierInvoice && !row.earlierInvoice.kept) check.reasons.push(row.earlierInvoice.reason);
   const reasons = row.orderStatus === "active" ? check.reasons : [];
   return {
     ...row,
@@ -182,9 +214,12 @@ export function groupByBuyer(rows) {
   });
 }
 
+// The buyer's invoice was cancelled or refunded at PayPal: no money is coming, and nothing is to be made.
+export const cancelledAtPayPal = (group) => group.rows.some((row) => row.invoiceStatus === "Cancelled/Refunded");
+
 // For the pinned totals row: how many orders can be invoiced, and their total.
 export function totals(rows) {
-  const ready = groupByBuyer(rows).filter((group) => group.invoiceable);
+  const ready = groupByBuyer(rows).filter((group) => group.invoiceable && !cancelledAtPayPal(group));
   return { orders: ready.length, total: fromSen(ready.reduce((sum, group) => sum + toSen(group.total), 0)) };
 }
 

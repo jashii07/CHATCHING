@@ -82,7 +82,8 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
     rows: () => rows,
     source: () => source,
     batch: () => batch,
-    hasInvoices: () => rows.some((row) => row.invoiceId),
+    batches: () => batches,
+    hasInvoices: () => rows.some((row) => row.invoiceId || row.sendUnknown), // a send with no answer may have made one
     find: (id) => rows.find((row) => row.id === id) ?? null,
     // A page load: the visitor is still here, so the cleanup must not count their table as old.
     touch() {
@@ -122,6 +123,8 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
     // batch (their links stay); nothing else is kept. PayPal is never touched.
     reset() {
       if (rows.some((row) => row.invoiceId)) keepBatch();
+      // "Start the demo over": what is saved stays saved, but raises no "already has an invoice" check again.
+      batches = batches.map((saved) => ({ ...saved, fromReset: true }));
       emptyTable();
     },
   };

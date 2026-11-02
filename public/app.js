@@ -16,6 +16,7 @@ const BUYERS_PER_PAGE = 6;
 
 const phone = window.matchMedia("(max-width: 640px)");
 const LOCKED_WORDS = "Invoice sent: items are locked so the invoice and the table always match.";
+const NO_ANSWER_WORDS = "PayPal didn't answer, so this buyer's invoice may already exist. Click Send invoices to check, or start a New batch.";
 const laptop = window.matchMedia("(min-width: 1024px)");
 
 const $ = (id) => document.getElementById(id);
@@ -391,7 +392,8 @@ function showSendButtons() {
   $("send-warning").hidden = paypalReady || count === 0;
   // Once invoices exist, reading again is refused: New batch is the way on.
   const invoiced = [...rowsById.values()].some((row) => row.invoiceId);
-  for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !invoiced;
+  const newBatchNeeded = invoiced || [...rowsById.values()].some((row) => row.sendUnknown); // reading is refused then too
+  for (const button of document.querySelectorAll("[data-new-batch]")) button.hidden = !newBatchNeeded;
   $("refresh-status").hidden = !paypalReady || !invoiced;
   // A sent invoice is what a pickup scan looks for. On phones the sticky bar makes room for the button.
   for (const button of document.querySelectorAll("[data-pickup-scan]")) button.hidden = !invoiced;
@@ -449,8 +451,11 @@ function setNeedsCheckFilter(on) {
 // Export CSV: every buyer (whatever the search or filter shows), one row each, opens in Excel.
 // The total is a plain number ("70.00") so Excel can add it up. AG Grid builds the CSV text; we add a
 // byte-order mark so Excel reads it as UTF-8 (otherwise "×" and accented names come out garbled).
-function exportCsv() {
+// Every cell goes through safeCell: a buyer's chat name must never reach Excel as a live formula.
+const csvSafe = import("./csv-safe.js"); // loaded with the page, so the click only waits a moment
+async function exportCsv() {
   if (!grid) return;
+  const { safeCell } = await csvSafe;
   const csv = grid.getDataAsCsv({
     columnKeys: ["buyer", "items", "date", "total", "status"],
     exportedRows: "all",
@@ -458,9 +463,9 @@ function exportCsv() {
     processHeaderCallback: (p) => (p.column.getColId() === "total" ? `Total (${currency})` : p.column.getColDef().headerName),
     processCellCallback: (p) => {
       const id = p.column.getColId();
-      if (id === "total") return p.node.data.total ?? "";
-      if (id === "date") return p.node.data.dates.join(", ");
-      return p.value ?? "";
+      if (id === "total") return safeCell(p.node.data.total ?? "");
+      if (id === "date") return safeCell(p.node.data.dates.join(", "));
+      return safeCell(p.value ?? "");
     },
   });
   const link = Object.assign(document.createElement("a"), {
@@ -544,9 +549,9 @@ function field(label, control) {
   return wrap;
 }
 
-function editCard(row) {
+function editCard(row, askSendAnyway = false) {
   const cancelled = row.orderStatus === "cancelled";
-  const invoiced = Boolean(row.invoiceId); // the invoice must keep matching what PayPal has
+  const invoiced = Boolean(row.invoiceId || row.sendUnknown); // the invoice must keep matching what PayPal has
   const card = el("section", `edit-card${row.unclear && !cancelled ? " is-unclear" : ""}${cancelled ? " is-cancelled" : ""}`);
   const item = menuItem(row.itemId);
   const title = el("div", "edit-title");
@@ -581,6 +586,8 @@ function editCard(row) {
     keep.dataset.row = row.id;
     card.append(keep);
   }
+  // The buyer already has an invoice from an earlier batch today. Send anyway says this is a real second order.
+  if (askSendAnyway) card.append(Object.assign(el("button", "ghost small send-anyway", "Send anyway"), { type: "button", id: "send-anyway" }));
   // Remove this line: the buyer's last item asks "Cancel this buyer's order?" first (removeItem).
   if (!cancelled && !invoiced) {
     const remove = Object.assign(el("button", "ghost small remove-item", ""), { type: "button", id: `remove-${row.id}` });
@@ -596,7 +603,7 @@ function editCard(row) {
 function addCard(data) {
   const active = data.rows.filter((row) => row.orderStatus === "active");
   const choices = menuItems.filter((option) => !active.some((row) => row.itemId === option.id));
-  if (data.cancelled || data.payerLink || active.some((row) => row.invoiceId) || !choices.length) return null;
+  if (data.cancelled || data.payerLink || active.some((row) => row.invoiceId || row.sendUnknown) || !choices.length) return null;
   const card = el("section", "edit-card add-card");
   const title = el("div", "edit-title");
   const name = el("span", "edit-name");
@@ -688,7 +695,9 @@ function renderDrawer() {
   if (data.collected) $("drawer-sub").append(" ", statusTag("Collected"));
   // Once the invoice is sent, the items are locked: said once, above them (the server refuses changes too).
   const locked = data.rows.some((row) => row.orderStatus === "active" && row.invoiceId);
-  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : []), ...data.rows.map(editCard));
+  const noAnswer = data.rows.some((row) => row.sendUnknown);
+  const askOn = data.rows.find((row) => row.orderStatus === "active" && !row.invoiceId && row.earlierInvoice && !row.earlierInvoice.kept)?.id;
+  drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : noAnswer ? [el("p", "hint locked-note", NO_ANSWER_WORDS)] : []), ...data.rows.map((row) => editCard(row, row.id === askOn)));
   const adding = addCard(data);
   if (adding) drawerItems.append(adding);
   const picked = collectedCard(data);
@@ -993,6 +1002,15 @@ async function saveField(control) {
   // log every refused request as a red console error). The server still checks everything.
   if (name === "qty" && !(Number.isInteger(value) && value >= 1 && value <= 99)) {
     showError(`That change was not saved (Quantity must be a whole number from 1 to 99, got ${raw === "" ? "nothing" : raw}).`, "drawer-error");
+    renderDrawer();
+    $(`edit-${id}-${name}`)?.focus();
+    return;
+  }
+  // The same goes for a second row of one item: the server refuses it too, with these words.
+  const twin = name === "itemId" && [...rowsById.values()].find((row) => row.id !== id && row.orderStatus === "active" && row.itemId === value
+    && String(row.buyer).trim().toLowerCase() === String(rowsById.get(id)?.buyer).trim().toLowerCase());
+  if (twin) {
+    showError(`That change was not saved (${twin.buyer} already has ${twin.itemName}: change its quantity instead.).`, "drawer-error");
     renderDrawer();
     $(`edit-${id}-${name}`)?.focus();
     return;
@@ -1938,6 +1956,7 @@ $("drawer").addEventListener("keydown", drawerKeys);
 $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest("#record-payment")) recordPayment(event.target.closest("#record-payment"));
   if (event.target.closest(".keep-price")) keepMenuPrice(event.target.closest(".keep-price"));
+  if (event.target.closest("#send-anyway")) changeItems("POST", `/api/buyers/${encodeURIComponent(openGroupId)}/send-anyway`);
   if (event.target.closest("#copy-kitchen")) copyKitchen(event.target.closest("#copy-kitchen"));
   if (event.target.closest(".copy-text")) copyBuyerText(event.target.closest(".copy-text"));
   if (event.target.closest(".remove-item")) removeItem(event.target.closest(".remove-item"));

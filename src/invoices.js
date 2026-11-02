@@ -7,33 +7,48 @@
 //      finds that invoice instead of making a new one.
 // A send that fails after the draft was made keeps the draft's id, so the next click carries on with it.
 import { buyerGroups, groupByBuyer, mapPayPalStatus } from "./orders.js";
-import { invoiceNumber, PayPalError } from "./paypal.js";
+import { INVOICE_DIFFERS, invoiceNumber, PayPalError } from "./paypal.js";
 
 const key = (buyer) => String(buyer ?? "").trim().toLowerCase();
 const refuse = (status, message) => Object.assign(new Error(message), { status });
+// Invoice numbers use PayPal's full 25 characters, so a batch has room for buyer 01 to 99.
+const MAX_BUYERS = 99;
+const BATCH_FULL = "A batch holds up to 99 buyers. Send these, then start a New batch.";
 
+// spend(): asked just before each buyer goes to PayPal, so the rate limit counts buyers sent, not requests.
+// -> null to go ahead, or how many ms until the next one is allowed.
 export function createInvoicer({ store, paypal, menu, log = console.log }) {
   const busy = new Set(); // buyers whose invoice is being made right now
 
   // One buyer: -> { sent } or { skipped } or { failed }. Never throws for PayPal problems.
-  async function invoiceOne(buyer, nn) {
+  async function invoiceOne(buyer, nn, spend) {
     const k = key(buyer);
     if (busy.has(k)) return { skipped: "Being invoiced right now." };
+    if (store.rows().some((row) => row.orderStatus === "active" && key(row.buyer) === k && row.invoiceId && row.invoiceStatus !== "Draft")) return { skipped: "Already invoiced." };
+    const waitMs = spend();
+    if (waitMs !== null) return { limited: waitMs };
     busy.add(k);
     const batch = store.batch();
     const rows = store.rows().filter((row) => row.orderStatus === "active" && key(row.buyer) === k);
     const saved = rows.find((row) => row.invoiceId);
     try {
-      if (saved && saved.invoiceStatus !== "Draft") return { skipped: "Already invoiced." };
       const number = saved?.invoiceNumber ?? invoiceNumber(batch, nn);
       const result = await paypal.invoiceBuyer({ buyer, rows, menu, number, invoiceId: saved?.invoiceId ?? null });
       if (store.batch() !== batch) throw new Error("the batch changed while invoicing"); // can't happen: routes wait
-      store.replaceMany(rows.map((row) => ({
+      store.replaceMany(rows.map(({ sendUnknown, ...row }) => ({
         ...row, invoiceId: result.invoiceId, invoiceNumber: result.invoiceNumber,
         payerLink: result.payerLink, invoiceStatus: mapPayPalStatus(result.status),
       })));
       return { sent: { buyer, invoiceNumber: result.invoiceNumber, reused: result.reused } };
     } catch (err) {
+      // PayPal holds this number for other items: never link it. The row says why, and the seller can act on it.
+      if (err.issue === INVOICE_DIFFERS) {
+        store.replaceMany(rows.map(({ sendUnknown, ...row }) => ({ ...row, unclear: true, reason: [row.reason, err.message].filter(Boolean).join(" ") })));
+        return { failed: err.message };
+      }
+      // No answer: the invoice may exist, under the number these rows would get. Their items stay as they are until
+      // the next send finds out, or the seller starts a New batch.
+      if (err.unknown && !err.invoiceId && !saved && store.batch() === batch) store.replaceMany(rows.map((row) => ({ ...row, sendUnknown: true })));
       // A draft exists at PayPal: remember it, so the next click sends it instead of making another.
       if (err.invoiceId && store.batch() === batch) {
         store.replaceMany(rows.map((row) => ({
@@ -51,7 +66,7 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
 
   // All clear buyers (or just `buyer`) -> { sent: [...], skipped: [...], failed: [...] }, in table order.
   // A single buyer that can't be invoiced is refused with a 400/404 error instead.
-  async function sendInvoices({ buyer } = {}) {
+  async function sendInvoices({ buyer, spend = () => null } = {}) {
     const rows = store.rows();
     const order = buyerGroups(rows).map((group) => key(group.buyer)); // nn = the buyer's place in the table
     let groups = groupByBuyer(rows);
@@ -69,7 +84,16 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
         result.skipped.push({ buyer: group.buyer, reason: "Needs a check first." });
         continue;
       }
-      const one = await invoiceOne(group.buyer, order.indexOf(key(group.buyer)) + 1);
+      const nn = order.indexOf(key(group.buyer)) + 1;
+      if (nn > MAX_BUYERS) {
+        result.failed.push({ buyer: group.buyer, reason: BATCH_FULL });
+        continue;
+      }
+      const one = await invoiceOne(group.buyer, nn, spend);
+      if (one.limited !== undefined) {
+        result.limitedMs = one.limited;
+        break;
+      }
       if (one.sent) result.sent.push(one.sent);
       else if (one.skipped) result.skipped.push({ buyer: group.buyer, reason: one.skipped });
       else result.failed.push({ buyer: group.buyer, reason: one.failed });

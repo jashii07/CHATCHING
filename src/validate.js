@@ -11,6 +11,8 @@ const MAX_DAYS_AHEAD = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STATUSES = ["active", "cancelled"];
 const FULFILMENTS = ["delivery", "pickup", null, undefined]; // missing = the buyer didn't say
+const NOT_THEIR_MESSAGES = "this order doesn't match who wrote the messages.";
+const NOT_THEIR_CANCEL = "only the buyer or the seller can cancel this order, and another buyer's message was used.";
 
 // "2026-10-28" -> day number, or null if it isn't a real date.
 function dayOf(iso) {
@@ -37,9 +39,21 @@ export function sellerOrders(aiOrders, messages, menu) {
     || (onlyFromSeller(order, messages, menu) && !messages.some((msg) => sameName(senderOf(msg.text), order.buyer)))));
 }
 
+// A chat message must never create or cancel someone else's order. Only messages with a readable sender can be
+// judged: a pasted message with no "Name:" could be anyone's. -> a problem (plain words), or "".
+function wrongAuthor(order, own, menu) {
+  if (typeof order.buyer !== "string" || !order.buyer.trim() || !own.length) return "";
+  if (own.every((msg) => isSellerMessage(msg, menu))) return ""; // problemsOf already says it came from the seller
+  const senders = own.map((msg) => senderOf(msg.text));
+  if (senders.every(Boolean) && !senders.some((sender) => sameName(sender, order.buyer))) return NOT_THEIR_MESSAGES;
+  const someoneElse = (sender) => sender && !sameName(sender, order.buyer) && !isSeller(sender, menu);
+  return order.status === "cancelled" && senders.some(someoneElse) ? NOT_THEIR_CANCEL : "";
+}
+
 // One order -> the list of problems (plain sentences) + its message numbers that really exist.
 function problemsOf(order, messages, menu) {
   const problems = [];
+  let badDate = false;
   const asked = Array.isArray(order.sourceMsgs) ? order.sourceMsgs : [];
   const real = [...new Set(asked.filter((n) => Number.isInteger(n) && n >= 1 && n <= messages.length))];
   const missing = asked.filter((n) => !real.includes(n));
@@ -60,7 +74,10 @@ function problemsOf(order, messages, menu) {
   if (order.deliveryDate != null) {
     const day = dayOf(order.deliveryDate);
     const dated = own.filter((msg) => msg.date).map((msg) => ({ n: msg.n, day: dayOf(msg.date) }));
-    if (day === null) problems.push(`The delivery date ${JSON.stringify(order.deliveryDate)} is not a real date.`);
+    if (day === null) {
+      problems.push(`The delivery date ${JSON.stringify(order.deliveryDate)} is not a real date.`);
+      badDate = true;
+    }
     else if (dated.length) {
       const first = dated.reduce((a, b) => (b.day < a.day ? b : a));
       const last = dated.reduce((a, b) => (b.day > a.day ? b : a));
@@ -73,7 +90,9 @@ function problemsOf(order, messages, menu) {
 
   if (!FULFILMENTS.includes(order.fulfilment)) problems.push(`Unknown pickup or delivery ${JSON.stringify(order.fulfilment)}.`);
   if (onlyFromSeller(order, messages, menu)) problems.push("This order came only from the seller's messages.");
-  return { problems, real };
+  const author = wrongAuthor(order, own, menu);
+  if (author) problems.push(author);
+  return { problems, real, reopen: Boolean(author), badDate };
 }
 
 // The AI's orders + the pasted messages -> the same orders, checked. A clear order comes back unchanged
@@ -85,8 +104,9 @@ export function checkOrders(aiOrders, messages, menu = null) {
   const removed = new Set(sellerOrders(aiOrders, messages, menu));
   return aiOrders.filter((order) => !removed.has(order)).map((order) => {
     if (!order || typeof order !== "object" || Array.isArray(order)) return order;
-    const { problems, real } = problemsOf(order, messages, menu);
-    const checked = { ...order };
+    const { problems, real, reopen, badDate } = problemsOf(order, messages, menu);
+    // A date that isn't one never reaches a screen or a message: it is "No date yet", and the reason says why.
+    const checked = { ...order, ...(badDate && { deliveryDate: null }) };
     if (Array.isArray(order.mentionedPrices)) {
       checked.mentionedPrices = order.mentionedPrices.filter((p) => !isSellerMessage(messages[p?.msg - 1], menu));
     }
@@ -97,6 +117,7 @@ export function checkOrders(aiOrders, messages, menu = null) {
     const aiReason = order.unclear
       ? (typeof order.reason === "string" && order.reason.trim()) || "The AI marked this order unclear."
       : "";
-    return { ...checked, sourceMsgs: real, unclear: true, reason: [aiReason, ...problems].filter(Boolean).join(" ") };
+    // A cancelled row is never unclear, so a cancel we can't trust comes back active for the seller to decide.
+    return { ...checked, ...(reopen && { status: "active" }), sourceMsgs: real, unclear: true, reason: [aiReason, ...problems].filter(Boolean).join(" ") };
   });
 }

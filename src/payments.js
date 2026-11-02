@@ -14,7 +14,7 @@ export function createPaymentRecorder({ store, paypal, menu, now = Date.now }) {
 
   // -> { buyer, method, amount } once PayPal says MARKED_AS_PAID; refusals throw with a 4xx status.
   async function record(invoiceId, method) {
-    if (!Object.hasOwn(METHODS, method)) throw refuse(400, 'Send { "method": "CASH" } or { "method": "BANK_TRANSFER" }.');
+    if (typeof method !== "string" || !Object.hasOwn(METHODS, method)) throw refuse(400, 'Send { "method": "CASH" } or { "method": "BANK_TRANSFER" }.');
     const rows = store.rows().filter((row) => row.invoiceId === invoiceId && row.orderStatus === "active");
     if (!rows.length) throw refuse(404, `No invoice ${JSON.stringify(invoiceId)} in these orders.`);
     const { buyer } = rows[0];

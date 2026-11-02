@@ -10,7 +10,8 @@ const WINDOW_MS = 10 * MINUTE;
 // Per visitor, per route, in any 10 minutes. Chosen from how the page really uses each route:
 // - parse: a person reads chats a few times (each real read can be up to 3 AI calls). Read without AI is
 //   not limited (no AI call).
-// - invoices: the page sends ONE request per buyer, so 50 buyers = 50 requests in a minute.
+// - invoices: counted per buyer actually sent, not per request (one request can send a whole batch). 100 lets
+//   one full batch (99 buyers) and a retry through.
 // - payment: recording cash / bank transfer, one click per buyer.
 // - refresh: the page asks every 20 s (30 times in 10 minutes per open tab), so 2 tabs fit.
 // - pickup: one scan per buyer, plus the odd "Check again": a busy pickup is well under 60 in 10 minutes.
@@ -19,7 +20,7 @@ const WINDOW_MS = 10 * MINUTE;
 export const RATE_LIMITS = Object.freeze({
   pickup: { limit: 60, windowMs: WINDOW_MS },
   parse: { limit: 6, windowMs: WINDOW_MS },
-  invoices: { limit: 60, windowMs: WINDOW_MS },
+  invoices: { limit: 100, windowMs: WINDOW_MS },
   payment: { limit: 20, windowMs: WINDOW_MS },
   refresh: { limit: 60, windowMs: WINDOW_MS },
   pairNew: { limit: 20, windowMs: WINDOW_MS },

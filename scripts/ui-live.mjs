@@ -78,6 +78,21 @@ try {
   check(health.ok === true && health.version === version, `the live server runs version ${health.version} (package.json: ${version})`);
   if (health.version !== version) throw new Error("The new version is not live yet. Wait for Render to finish deploying, then run this again.");
 
+  // The security headers really arrive through Render's proxy, and another site's request is refused.
+  console.log("\nSecurity headers");
+  for (const path of ["/", "/pair", "/app.js", "/api/health"]) {
+    const { headers } = await fetch(`${BASE}${path}`);
+    const policy = headers.get("content-security-policy") ?? "";
+    check(policy.includes("frame-ancestors 'none'") && policy.includes("script-src 'self' https://cdn.jsdelivr.net/") && !policy.includes("unsafe-eval"), `${path}: Content-Security-Policy`);
+    check(headers.get("x-content-type-options") === "nosniff", `${path}: X-Content-Type-Options`);
+    check(headers.get("referrer-policy") === "same-origin", `${path}: Referrer-Policy`);
+    check(headers.get("permissions-policy")?.includes("camera=(self)"), `${path}: Permissions-Policy`);
+  }
+  const page0 = await fetch(BASE);
+  console.log(`      Render adds HSTS: ${page0.headers.get("strict-transport-security") ?? "no"}`);
+  const forged = await fetch(`${BASE}/api/reset`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://evil.example" }, body: "{}" });
+  check(forged.status === 403, `a POST from another website is refused (${forged.status})`);
+
   for (const viewport of WIDTHS) {
     console.log(`\n${viewport.width} px (${viewport.name}), ${BASE}`);
     const shot = (step, opts = {}) => page.screenshot({ path: `${OUT}${viewport.width}-${step}.png`, ...opts });

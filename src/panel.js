@@ -17,7 +17,7 @@ function rules(menu) {
   const money = currencyWords(menu.currency).join("|");
   return [
     ["price", money ? new RegExp(`(?:${money})\\s*\\d+(?:[.,]\\d+)*|\\d+(?:\\.\\d{1,2})?\\s*(?:${money})\\b`, "gi") : null],
-    ["change", /\bsame as \p{L}+|\b(?:cancel(?:led)?|skip|make it|change(?:d)? to|instead|remove|add)\b/giu],
+    ["change", /\bsame as \p{L}+|\b(?:cancel(?:l?ed|l?ing)?|skip|make it|change(?:d)? to|instead|remove|add)\b/giu],
     ["item", new RegExp(`\\b(?:${words(menuWords)})\\b`, "gi")],
     ["qty", /\b\d+\s*x\b|\b\d+x\b|\b\d+(?:\s+(?:boxes|box|jars|jar|packs|pack|pcs|pieces))?\b(?!\s*(?:inch|in\b|am\b|pm\b|[:.]\d))/gi],
     ["day", /\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi],

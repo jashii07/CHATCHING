@@ -11,6 +11,7 @@ import { MAX_VISITORS } from "./visitors.js";
 
 export const PAIR_TTL_MS = 10 * 60_000;
 export const PAIR_EXPIRED = "This link has expired. Make a new one on your laptop.";
+export const PAIR_REPLACE = "This phone already has orders. Replace them with the laptop's orders?";
 
 const hash = (code) => createHash("sha256").update(code).digest("hex");
 
@@ -32,6 +33,13 @@ export function createPairing({ now = Date.now, ttlMs = PAIR_TTL_MS, maxCodes = 
       codes.set(hash(code), { visitorId, expires: now() + ttlMs });
       tidy();
       return code;
+    },
+
+    // -> whose table this code opens, or null. It leaves the code alone: the phone may still have a question to ask.
+    peek(code) {
+      if (!isPairCode(code)) return null;
+      const entry = codes.get(hash(code));
+      return entry && now() < entry.expires ? entry.visitorId : null;
     },
 
     // -> the visitor id, or null. Deleted before anything else, so a code can never work twice.

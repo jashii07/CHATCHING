@@ -360,3 +360,113 @@ test("a laptop with an empty table can pair too; what it reads later shows on th
   await laptop.call("/api/parse", "POST", READ);
   assert.equal((await phone.state()).orders.length, 12);
 });
+
+// ---- #14: a browser that already has orders is asked first ----
+
+// A device with orders of its own (the seller's phone at the pickup counter).
+const withOwnOrders = async (app) => {
+  const phone = device(app);
+  await phone.call("/api/parse", "POST", { text: "[28/10 9:00 AM] Mei: 2 classic brownies", chatDate: "2026-10-28", withoutAi: true });
+  assert.equal((await phone.state()).orders.length, 1);
+  return phone;
+};
+
+test("a browser with orders is asked first: nothing moves, and the code still works", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const code = codeIn((await laptop.newLink()).link);
+  const phone = await withOwnOrders(app);
+  const own = phone.id();
+
+  const asked = await phone.open(code);
+  assert.deepEqual(asked.body, { confirm: "This phone already has orders. Replace them with the laptop's orders?" });
+  assert.deepEqual(asked.setCookies, [], "the cookie stays until the seller says yes");
+  assert.equal(phone.id(), own);
+  assert.equal((await phone.state()).orders[0].buyer, "Mei");
+
+  const replaced = await phone.call("/api/pair/open", "POST", { code, replace: true });
+  assert.deepEqual(replaced.body, { paired: true });
+  assert.equal(phone.id(), laptop.id());
+  assert.equal((await phone.state()).orders.length, 12);
+});
+
+test("saying no leaves the phone's table alone, and the code still works only once", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const code = codeIn((await laptop.newLink()).link);
+  const phone = await withOwnOrders(app);
+  await phone.open(code); // asked, and the seller says no: pair.js then sends nothing more
+  assert.equal((await phone.state()).orders[0].buyer, "Mei");
+
+  await phone.call("/api/pair/open", "POST", { code, replace: true }); // changed their mind within the 10 minutes
+  assert.deepEqual((await phone.open(code)).body, { notice: PAIR_EXPIRED }, "used once, as always");
+});
+
+test("a browser with nothing to lose is not asked", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const fresh = device(app);
+  await fresh.state(); // its own empty table
+  assert.deepEqual((await fresh.open(codeIn((await laptop.newLink()).link))).body, { paired: true }, "an empty table");
+
+  const stranger = device(app);
+  assert.deepEqual((await stranger.open(codeIn((await laptop.newLink()).link))).body, { paired: true }, "no cookie at all");
+});
+
+test("a browser already on this table is not asked", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  assert.deepEqual((await laptop.open(codeIn((await laptop.newLink()).link))).body, { paired: true });
+});
+
+test("an empty table with a saved batch still counts: its invoice links would be out of reach", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const phone = await withOwnOrders(app);
+  await phone.call("/api/new-batch", "POST", {});
+  assert.equal((await phone.state()).orders.length, 0);
+  assert.ok((await phone.open(codeIn((await laptop.newLink()).link))).body.confirm);
+});
+
+test("after Reset demo there is nothing to protect, so the browser is not asked", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const phone = await withOwnOrders(app);
+  await phone.call("/api/reset", "POST", {});
+  assert.deepEqual((await phone.open(codeIn((await laptop.newLink()).link))).body, { paired: true });
+});
+
+test("a dead code is never a question: wrong, used and expired get the same words, even with orders here", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const phone = await withOwnOrders(app);
+  const old = codeIn((await laptop.newLink()).link);
+  app.tick(PAIR_TTL_MS);
+  for (const code of ["A".repeat(22), old]) {
+    assert.deepEqual((await phone.open(code)).body, { notice: PAIR_EXPIRED });
+    assert.deepEqual((await phone.call("/api/pair/open", "POST", { code, replace: true })).body, { notice: PAIR_EXPIRED });
+  }
+});
+
+test("replace must be true or false", async () => {
+  const app = await start();
+  const laptop = await laptopWithOrders(app);
+  const code = codeIn((await laptop.newLink()).link);
+  const phone = device(app);
+  for (const replace of ["yes", 1, null]) assert.equal((await phone.call("/api/pair/open", "POST", { code, replace })).status, 400);
+  assert.deepEqual((await phone.open(code)).body, { paired: true }, "and the code was not used up");
+});
+
+test("peek looks without using the code up", () => {
+  let clock = 1000;
+  const pairing = createPairing({ now: () => clock });
+  const code = pairing.create("a".repeat(32));
+  assert.equal(pairing.peek(code), "a".repeat(32));
+  assert.equal(pairing.peek(code), "a".repeat(32));
+  assert.equal(pairing.peek("nope"), null);
+  assert.equal(pairing.redeem(code), "a".repeat(32));
+  assert.equal(pairing.peek(code), null, "used");
+  const next = pairing.create("b".repeat(32));
+  clock += PAIR_TTL_MS;
+  assert.equal(pairing.peek(next), null, "expired");
+});

@@ -1,15 +1,15 @@
 // A paste with no timestamps (one copied message) must never crash: every message gets the
-// Chat date, and no line of the paste is dropped. Fixture: test/fixtures/real-order-no-timestamp.txt.
+// Chat date, and no line of the paste is dropped. Fixture: test/fixtures/made-up-order-no-timestamp.txt.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { splitMessages } from "../src/dates.js";
 
-const PASTE = readFileSync(new URL("./fixtures/real-order-no-timestamp.txt", import.meta.url), "utf8");
+const PASTE = readFileSync(new URL("./fixtures/made-up-order-no-timestamp.txt", import.meta.url), "utf8");
 const CHAT_DATE = "2026-10-28";
 const lines = (text) => text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 
-test("the real-style order with no timestamp -> one message on the Chat date, every line kept", () => {
+test("the made-up order with no timestamp -> one message on the Chat date, every line kept", () => {
   const messages = splitMessages(PASTE, CHAT_DATE);
   assert.equal(messages.length, 1);
   for (const message of messages) {
@@ -28,9 +28,9 @@ test("Windows line endings and blank lines give the same result", () => {
 });
 
 test("untimed lines before the first timestamp stay as message 1 on the Chat date", () => {
-  const messages = splitMessages(`${PASTE}[28/10 9:02 AM] Lina: make it 2 fried pls`, CHAT_DATE);
+  const messages = splitMessages(`${PASTE}[28/10 9:02 AM] Aina: make it 3 chicken rice pls`, CHAT_DATE);
   assert.deepEqual(messages.map((m) => [m.n, m.date]), [[1, CHAT_DATE], [2, CHAT_DATE]]);
-  assert.equal(messages[1].text, "Lina: make it 2 fried pls");
+  assert.equal(messages[1].text, "Aina: make it 3 chicken rice pls");
   assert.equal(messages[1].time, "09:02");
 });
 

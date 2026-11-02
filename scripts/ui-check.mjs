@@ -183,6 +183,7 @@ try {
       check(lines[0] === '"Buyer","Items","Date","Total (MYR)","Status"', `CSV header: ${lines[0]}`);
       check(lines.length === 11, `CSV has all 10 buyers, not just one page (${lines.length - 1} rows)`);
       check(meiLine.includes("1 × Cheese brownies (box of 6); 2 × Choc chip cookies (jar)") && meiLine.includes('"72.00"'), `CSV Mei Ling row: ${meiLine}`);
+      check(lines.slice(1).every((line) => !/^"?[=+\-@\t\r]/.test(line)), "no CSV row starts with a formula character");
     }
 
     if (viewport.name === "phone") {

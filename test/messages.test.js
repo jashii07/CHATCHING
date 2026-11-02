@@ -59,8 +59,9 @@ test("payment message and reminder only for sent invoices; the reminder only whi
   assert.equal(reminderMessage(sent(demo("Lina"), "Part paid"), menu),
     `Hi Lina! A gentle reminder that your order is not fully paid yet. Pay here: ${LINK}. Thank you!`);
   for (const status of ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]) assert.equal(reminderMessage(sent(demo("Lina"), status), menu), null, status);
-  assert.ok(paymentMessage(sent(demo("Lina"), "Paid"), menu)); // still there to copy again
-  assert.equal(paymentMessage(sent(demo("Lina"), "Cancelled/Refunded"), menu), null);
+  // Nobody who has paid is asked to pay again (the 1 Nov review, #15).
+  for (const status of ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]) assert.equal(paymentMessage(sent(demo("Lina"), status), menu), null, status);
+  assert.ok(paymentMessage(sent(demo("Lina"), "Part paid"), menu));
 });
 
 test("question: an ambiguous item lists the menu's choices with their prices", () => {

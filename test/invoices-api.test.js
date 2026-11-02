@@ -123,7 +123,7 @@ test("the server refuses one buyer that is unclear, cancelled or unknown (not on
 test("PayPal already has this invoice number (an earlier click that timed out) -> that invoice is reused, not doubled", async () => {
   const app = await start();
   const { batch } = await app.state();
-  const id = app.fake.add({ status: "UNPAID", detail: { invoice_number: `CHATCHING-${batch}-01`, currency_code: "MYR" }, amount: { currency_code: "MYR", value: "54.00" } });
+  const id = app.fake.add({ status: "UNPAID", detail: { invoice_number: `CHATCHING-${batch}-01`, currency_code: "MYR" }, items: [{ name: "Classic brownies (box of 6)", quantity: "3", unit_amount: { currency_code: "MYR", value: "18.00" } }], amount: { currency_code: "MYR", value: "54.00" } });
   const { body } = await app.send();
   assert.equal(rowsOf(body, "Lina")[0].invoiceId, id);
   assert.equal(app.fake.invoices.size, 7); // Lina's old one + 6 new
@@ -221,6 +221,9 @@ test("New batch saves the old batch (rows + invoice links) and starts an empty o
   const read = (await app.parse()).body;
   assert.equal(read.groups.length, 10);
   assert.notEqual(read.batch, oldBatch);
+  // Arif already has an invoice from the old batch today, so he needs "Send anyway" first (the 1 Nov review, #1).
+  assert.equal((await app.send({ buyer: "Arif" })).status, 400);
+  await app.call(`/api/buyers/${rowsOf(read, "Arif")[0].id}/send-anyway`, "POST", {});
   const fresh = (await app.send({ buyer: "Arif" })).body;
   assert.equal(rowsOf(fresh, "Arif")[0].invoiceNumber, `CHATCHING-${read.batch}-05`); // Arif is the 5th buyer
 });

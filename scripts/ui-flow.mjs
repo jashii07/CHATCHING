@@ -441,13 +441,51 @@ try {
     await page.click("#read-orders");
     await page.waitForSelector(ROWS);
     await page.waitForTimeout(500);
-    check((await allBuyers(page)).length === 10 && plain(await sendButton.innerText()) === "Send 7 invoices", "the new batch reads the chats again: 10 buyers, 7 to send");
+    check((await allBuyers(page)).length === 10 && await sendButton.isDisabled(), "the same chats in a new batch: 10 buyers, and nobody is ready to be billed again");
+    check((await cards(page)).includes("Expected RM 0.00") && (await cards(page)).includes("Needs check 9"), `every buyer already invoiced today needs a check: ${await cards(page)}`);
     check(fake.invoices.size === 7, "and no invoice was made by reading");
 
-    // ---- Reset demo (with sent invoices in the table) ----
+    // ---- The same buyer again: amber words, and Send anyway for a real second order ----
+    await goToBuyerPage(page, "Lina");
+    const linaAgain = page.locator(ROWS, { hasText: "Lina" }).first();
+    check(plain(await linaAgain.innerText()).includes("Check: Lina already has an invoice (RM 54.00) from an earlier batch today."), "Lina's row says she already has an invoice, and how much");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-8b-already-invoiced.png`, fullPage: true });
+    await linaAgain.locator(".buyer-name").click();
+    await page.waitForSelector("#send-anyway");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-8c-send-anyway.png`, fullPage: true });
+    await page.click("#send-anyway");
+    await page.waitForSelector("#send-anyway", { state: "detached" });
+    check(plain(await sendButton.innerText()) === "Send 1 invoice", "Send anyway clears it: one invoice to send");
+    await page.click("#drawer-close");
+
+    // ---- The drawer stops a second row of one item (no request, so no red console line) ----
+    await goToBuyerPage(page, "Mei Ling");
+    await page.locator(ROWS, { hasText: "Mei Ling" }).locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open");
+    await page.locator('#drawer select[data-field="itemId"]').first().selectOption("cookies");
+    await page.waitForSelector("#drawer-error:not([hidden])");
+    check(plain(await page.$eval("#drawer-error", (el) => el.textContent)).includes("change its quantity instead"), "Mei Ling can't have two rows of one item: the drawer says why");
+    await page.click("#drawer-close");
+
+    // ---- PayPal gives no answer: Lina's items lock until the retry finds out ----
+    fake.throwNext("create", Object.assign(new Error("timed out"), { name: "TimeoutError" }));
     await sendButton.click();
-    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("7 of 7 sent"), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("0 of 1 sent"), null, { timeout: 15000 });
+    await goToBuyerPage(page, "Lina");
+    await page.locator(ROWS, { hasText: "Lina" }).locator(".chips").click();
+    await page.waitForSelector("#drawer.is-open");
+    await page.waitForTimeout(300);
+    check(plain(await page.$eval(".locked-note", (el) => el.textContent)).includes("PayPal didn't answer") && await page.locator('#drawer select[data-field="itemId"]').first().isDisabled(),
+      "no answer from PayPal: the drawer says so and Lina's items are locked");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-8d-no-answer.png`, fullPage: true });
+    await page.click("#drawer-close");
+    check(await page.locator(viewport.width > 640 ? "#chat-bar [data-new-batch]" : "[data-new-batch]").first().isVisible(), "and New batch is offered as the way out");
+
+    // ---- Reset demo (with a sent invoice in the table) ----
+    await sendButton.click();
+    await page.waitForFunction(() => document.getElementById("send-message").textContent.includes("1 of 1 sent"), null, { timeout: 15000 });
     await page.waitForTimeout(400);
+    check(fake.invoices.size === 8, "only Lina's second invoice went out");
     const invoicesBefore = fake.invoices.size;
     const callsBefore = fake.calls.length;
     page.once("dialog", (dialog) => {

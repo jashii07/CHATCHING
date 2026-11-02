@@ -187,3 +187,14 @@
 - **A changed number can change behaviour:** with 60 s for the main model, a slower "busy" answer now leaves time for a retry. Some timing tests needed new cases, not just new figures.
 - **Be careful with one number:** 40 messages took longer than 93, so the length of a chat doesn't predict the wait. The 90 s budget is there for that, and the worst wait is now longer than before.
 - **What is still open:** the oat-milk kind of miss, and 120 messages were never timed. Both are in DECISIONS.md, Known weaknesses.
+
+### 2026-11-01, Fix session A: the money and correctness findings (summary by Claude)
+
+- **What was built:** 13 findings from the 1 Nov review fixed, each with a test that failed first. The big two: a buyer can no longer be billed twice by accident through New batch (amber row, Send anyway for a real second order), and Read without AI no longer takes a date, a head count or an address for a quantity.
+- **Why the guard moved:** the double-invoice guard worked inside one batch, and PayPal's refusal only helps when the number repeats. A new batch means a new number, so the real protection had to be a memory of what was already billed.
+- **Careful beats clever:** "a number counts only next to an item, a unit or x" is a small rule that removes a whole family of wrong orders. The fuzz test puts random numbers in those spots 2,000 times, and "a real quantity still reads" tests guard the opposite mistake.
+- **Same total isn't same invoice:** 2 x Classic and 3 x Bahulu are both RM 36.00. A check on the total alone passed while billing the wrong items, so a found invoice must now match line by line.
+- **A test can pin a bug:** several older tests asserted the old behaviour ("still there to copy again"). Each was read before changing it, to be sure it wasn't guarding something real. One of them, the Reset test, changed the design instead: Reset stays a true start-over.
+- **Pushing is deploying:** Render deploys `main` on every push, so "push" and "don't deploy" conflicted. The work is on a branch until session B.
+- **Do the checks catch it?** The page guard for #16 was switched off on purpose and `ui-flow` failed with the exact red console line it prevents.
+- **What is still open:** #3, #13, #14, #17 and #18 (session B). The item comparison in #6 has only met the fake PayPal, so it needs one real sandbox check before deploying.
