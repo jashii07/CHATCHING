@@ -1,14 +1,84 @@
 # Devpost draft — ChatChing
 
+Rule for this page: only claims we can prove. No invented statistics. Every number comes from our own tests (see `docs/accuracy.md`, `npm run check`) or from a source with a link.
+
 ## Elevator pitch (on Devpost, max 200 chars)
 
 Business happens in the chat. ChatChing's AI turns a day of messy chats into a clean order list; one click sends every buyer a PayPal pay link. Just chat, confirm, and get paid.
 
 (177 characters)
 
-## What it does (my first draft, my own words - keep my voice)
+## Inspiration
 
-For thousands of online sellers, business happens in the chat — but managing orders and collecting payments is still a headache. ChatChing turns a full day of messy conversations into a clean, reviewable order list using AI. With one click, sellers can generate PayPal payment links for every buyer. No more digging through endless chats, manually tracking orders, or chasing payments one by one. Just chat, confirm, and get paid.
+A friend of mine sells through chat. Every order arrives as a message, and my friend copies each one into Excel by hand, works out the totals, and then chases each buyer for payment one by one. It is slow, and things get missed.
+
+I saw the same thing with the student sellers in the UTP dorms: their orders come in through chats and Google Forms.
+
+The orders are already written down in the chat. The hard part is turning them into a list and getting paid. That is the part ChatChing does.
+
+## What it does
+
+For many online sellers, business happens in the chat — but managing orders and collecting payments is still a headache. ChatChing turns a full day of messy conversations into a clean, reviewable order list using AI. With one click, sellers can generate PayPal payment links for every buyer. No more digging through endless chats, manually tracking orders, or chasing payments one by one. Just chat, confirm, and get paid.
+
+In more detail:
+
+- **Read orders:** the seller pastes a day of chats. Gemini returns the final order per buyer, with later changes and cancellations applied, and a one-line note on what it did.
+- **Review:** the orders appear in a table. Prices come from the seller's menu, never from the AI. Anything unclear is amber with its reason, and clicking a buyer shows their own messages highlighted.
+- **Send invoices:** one click creates and sends a PayPal invoice for each buyer, with a payer link and a ready-to-send message to paste into the chat.
+- **Get paid:** the status updates from PayPal (Sent, Paid). The seller can record cash or bank payments in PayPal, so PayPal holds the full record.
+- **Make and hand over:** a Kitchen list shows how many of each item to make per day. At pickup, the seller scans the buyer's PayPal QR on their phone and sees green (paid) or amber (not paid yet).
+
+## How we built it
+
+- **One small Node.js server** (Express) with plain HTML and JavaScript. No database and no build step, so it is simple to run and to host.
+- **PayPal Invoicing API v2, sandbox:** create, send (without emailing anyone), get status, record payment, generate the QR, and search by invoice number.
+- **Google Gemini** (`gemini-3.6-flash`, with `gemini-3.8-flash` as a backup): one call reads all the chats and returns JSON in a fixed shape. Our code checks every reply before it is used.
+- **AG Grid Community** for the order table: pagination, custom cells, highlighted rows, a totals row, search, CSV export and a green flash when an invoice turns Paid.
+- **Hosted on Render's free plan.** Each visitor gets their own table through a cookie, with no login.
+- **Tested as we went:** 654 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
+
+I am a first-year student. I directed the project and made the decisions; the code was written with Claude Code. Every decision and prompt is logged in the repo (`DECISIONS.md`, `PROMPT_LOG.md`).
+
+## Challenges we ran into
+
+- **The free AI tier is busy.** Gemini answered "high demand" at least once in every real session we ran, from 25 Oct to 1 Nov. So the app has a time budget (90 seconds per read), a backup model, a daily counter, a careful "Read without AI" mode, and a saved demo reply that always works.
+- **Never bill a buyer twice.** PayPal's `PayPal-Request-Id` header didn't stop a repeat for invoices in our sandbox test. So every invoice gets its own number, which PayPal refuses to repeat, plus guards in our own code. A review later found a second way to bill twice (reading the same chats again in a new batch), and we closed that too.
+- **The AI must never set a price.** The AI only picks items and quantities from the menu. Prices come from the menu, and money is counted in whole cents so totals are exact.
+- **The free server forgets.** Render's free plan clears its disk on every sleep or restart. Invoices are safe because they live in PayPal, and the page explains what happened when a table is cleared.
+- **Real browsers find what tests miss.** Our first security policy passed every unit test, then blocked the table's icons in Chrome. Only a real browser showed it.
+
+## Accomplishments that we're proud of
+
+- **The AI never touches money.** Prices come from the menu, every AI reply is checked, and unclear orders are never invoiced until the seller fixes them.
+- **Honest accuracy results**, each run once, with no prompt tuning on the test sets:
+  - Demo chats (written by us): 74/74.
+  - Real cafe orders, reformatted by AI, names added by us: 73/74. The one miss: oat milk, which is not on the menu, went into the note instead of being flagged.
+  - An AI-written third-party test set: 74/74.
+- **PayPal is central:** invoices, payments, status and the pickup QR all go through the PayPal Invoicing API.
+- **A full review before submitting:** a bug hunt and security audit found 18 issues (none critical). Each was fixed with a test written first; one rare Windows test-runner crash is worked around, not fixed.
+- **It works end to end on the live site,** with real sandbox invoices.
+
+## What we learned
+
+- **Directing AI means deciding the limits up front.** Twice I wished I had: which branch to push when "push" and "don't deploy yet" were both in one request, and a time limit on a low-priority bug before the hunt for its cause began, not half-way through. Both are in my prompt log.
+- **One good number isn't proof.** A fix that looked perfect in 2,000 runs still failed 3 times in 100 full runs. We learned to test the whole thing, more than once.
+- **Label results honestly.** A perfect score on chats we wrote ourselves says the pipeline works, not that the AI reads every seller well. Saying which is which makes the results more believable.
+- **Check the docs against reality.** PayPal's docs say a cash payment makes an invoice `PAID`; the sandbox really says `MARKED_AS_PAID`. Testing on the real sandbox early saved us from building on the wrong word.
+
+## What's next for ChatChing
+
+- A menu editor in the app
+- Voice notes as input
+- Chat screenshots as input
+- Daily stock limits ("only 10 boxes on Saturday")
+- More payment methods
+- Order history across days
+- Analytics (best sellers, busiest days)
+- More languages
+
+## Built with
+
+Node.js, Express, JavaScript, HTML, CSS, PayPal Invoicing API (sandbox), Google Gemini, AG Grid Community, Lucide icons, jsQR, qrcode-generator, Render, Playwright (browser tests), Claude Code
 
 ## Testing instructions
 
@@ -20,25 +90,19 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 
 1. Your table starts empty. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice (no emails are sent).
-3. Click a buyer, then **Record payment** to record cash. Click **Refresh status**: the row shows Paid (cash/bank).
-4. Click **Kitchen list** to see what to make per day.
-5. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
-6. Click **Reset demo** at the bottom to start again. It only clears your own table.
+3. Click **Payer link** on a sent row to open PayPal's payment page for that invoice.
+4. Click a buyer, then **Record payment** to record cash. The row shows Paid (cash/bank).
+5. Click **Kitchen list** to see what to make per day.
+6. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
+7. Click **Reset demo** at the bottom to start again. It only clears your own table.
 
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 
 Sandbox buyer logins for paying an invoice: to add on Sat 7 Nov.
 
-## What's next
-
-- Voice notes as input
-- Chat screenshots as input
-- Daily stock limits ("only 10 boxes on Saturday")
-- More payment methods
-- Order history across days
-- Analytics (best sellers, busiest days)
-- More languages
-
 ## TODO
 
-- [ ] "thousands" needs a real source, or change it to "many".
+- [ ] Video link (YouTube, public, under 3 minutes): to add after recording.
+- [ ] Sandbox buyer logins (Sat 7 Nov).
+- [x] "thousands" needed a real source: changed to "many" (2 Nov).
+- [ ] Jasper: check the Inspiration section is in your own words and true as written (your friend, the UTP dorm sellers).

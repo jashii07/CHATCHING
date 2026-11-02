@@ -208,3 +208,12 @@
 - **Time-box the small stuff:** #18 is a low finding, so Jasper stopped the hunt. A crashed file now reruns once, only for that exact exit code, and says so out loud. Real failures are never rerun, and four planted cases prove it.
 - **Check the check:** `ui-live` passed on 1.6.0, then a separate look at the live page found no security headers: the site had gone back to 1.5.0 by itself. A push brought 1.6.0 back and it stayed. Being live once doesn't mean staying live, and the cause of that flip is still unknown.
 - **What is still open:** the crash's native cause, the old fixture text in git history, and the rest of DECISIONS.md, Known weaknesses.
+
+### 2026-11-02, README, Devpost text and the health check's cache (summary by Claude)
+
+- **What was built:** a README for judges (what it is, a 1-minute tour, how PayPal and the AI are used, accuracy, safety, setup, limits), the Devpost sections in `docs/devpost-draft.md`, and one small app fix: `/api/health` now says `Cache-Control: no-store`, with a test that failed first. Version 1.6.1.
+- **Why the fix:** Render's Events showed the "went back to 1.5.0" deploy never rolled back. The old answers most likely came from the old instance during the switch, or a cache. no-store removes the cache, and checking the version twice, a few minutes apart, catches the old instance. That rule is now in CLAUDE.md, Deploy steps.
+- **Only claims we can prove:** every number in the README and the Devpost text comes from our own tests (74/74, 73/74, 74/74, 654 tests, 18 review findings). "Thousands of sellers" had no source, so it became "many". Each accuracy result keeps its label, so a perfect score on our own chats isn't read as proof about real sellers.
+- **Don't fill gaps with guesses:** the first Inspiration draft added details nobody had given (what the friend sells, buyers forgetting to pay) and a pronoun for the friend. They were taken out. Inspiration stays a TODO for Jasper to check, in Jasper's own words.
+- **Check the README like a judge:** a fresh clone with no `.env` ran `npm ci`, `npm start` and `npm run check` exactly as written. The demo read 7 orders worth RM 366.00, and Send invoices gave the friendly "PayPal is not configured". The GitHub link answers 404 to a visitor who isn't logged in, because the repo is private until 10 Nov.
+- **What is still open:** the judge logins (Sat 7 Nov), the video link, making the repo public, and the Windows test crash: both runs today needed their one rerun, more than the 1 in 30 seen before.

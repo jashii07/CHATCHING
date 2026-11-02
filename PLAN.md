@@ -301,7 +301,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - **Part 3 ✅ (done Sat 31 Oct; 420 tests): per-visitor tables.** Every browser gets its own table (a cookie, no login): `src/visitors.js`, `data/runtime/visitors/<id>.json`, batch ids of 12 characters, cleanup at 14 days / 500 files. The AI counter and rate limits stay global. A tab left open through a server wipe recovers with plain words. `npm run ui-visitors` drives two browsers at once locally; `npm run ui-live` passed on the hosted app (version 1.1.0): 43 checks, 14 real sandbox invoices with 25-character numbers, 0 Gemini calls.
    - **Part 4 ✅ (done 2 Nov): review fix sessions A and B merged, version 1.6.0.** Security headers, refusing other sites' requests, local listening, pairing asks first; 653 tests. `npm run ui-live` passed on the hosted app, 94 checks, including the headers.
 12. **User test with a real seller (#5)**; ~~non-AI fallback parser~~ (built early in Step 10, 30 Oct).
-13. Edge-case tests, **holdout accuracy run (#5)**, README, video script, Devpost draft.
+13. Edge-case tests, **holdout accuracy run (#5)**, README, video script, Devpost draft. **Progress 2 Nov:** README.md written for judges and the Devpost sections filled in `docs/devpost-draft.md`, checked in a clean clone; still to add: the judge logins (Sat 7 Nov) and the video link. `/api/health` no-store, version 1.6.1.
 14. Feature freeze: fixes from the user test, design polish, stretch only if all green; video; submit.
 
 ## 8. Cut list (we will NOT build)
