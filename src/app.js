@@ -141,7 +141,9 @@ export function createApp(config, {
   app.use(express.json({ limit: "100kb" }));
 
   // For Render's health check and a quick "is it up?": only ok and the app's version, never keys or settings.
+  // no-store: a version check after a deploy must come from the server, never from a cached reply (2 Nov).
   app.get("/api/health", (req, res) => {
+    res.set("Cache-Control", "no-store");
     res.json({ ok: true, version: VERSION });
   });
 

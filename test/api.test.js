@@ -46,6 +46,12 @@ test("GET /api/health -> { ok: true, version } and nothing else (no keys, no set
   assert.deepEqual(JSON.parse(res.text), { ok: true, version });
 });
 
+test("GET /api/health says Cache-Control: no-store, so a version check after a deploy is never an old cached reply", async () => {
+  const res = await fetch(base + "/api/health");
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("cache-control"), "no-store");
+});
+
 test("GET /api/state -> menu, demo orders + totals, AI mode, placeholder counter, true/false key flags", async () => {
   const res = await call("/api/state");
   assert.equal(res.status, 200);
