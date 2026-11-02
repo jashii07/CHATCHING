@@ -42,12 +42,14 @@ src/store.js              one visitor's orders + old batches, saved to data/runt
 src/visitors.js           (31 Oct) the visitor id and cookie, the file path, cleanup (14 days, 500 files)
 src/pickup.js             (31 Oct) pickup check + Collected: this visitor's table, live status through src/status.js
 src/pairing.js            (31 Oct) Open on my phone: one-time codes (hashes only, in memory) and the pairing QR
+src/security.js           (2 Nov) security headers on every reply; refuses changes from other websites
 public/index.html         the page
 public/app.js             AG Grid table, buyer panel, buttons, polling
 public/styles.css
 public/invoice-qr.js      (31 Oct) reads an invoice or a pairing link from a QR or the typing box; used by the page AND the server
 public/pair.html, pair.js (31 Oct) the small page a phone lands on; it POSTs the code from the address and goes to /
 public/vendor/            (31 Oct) jsQR 1.4.0, self-hosted, with its Apache-2.0 licence
+public/csv-safe.js        (2 Nov) keeps a buyer's name from reaching Excel as a formula; used by the page AND the tests
 data/menu.json            fixed menu (item -> price, aliases)
 data/demo-chats.txt       fictional English chats
 data/expected-orders.json correct answers for demo-chats.txt
@@ -81,7 +83,7 @@ Only one new package is planned: **express**. (31 Oct: also **qrcode-generator 2
 | `POST /api/pickup/collected` | (Step 10c, done 31 Oct) `{ invoiceId, undo? }`: mark Collected, our own status, never sent to PayPal, only when paid; Undo allowed | **Never** |
 | `POST /api/pair/new` | (31 Oct) a new one-time pairing link for this visitor, and its QR; rate limited | **Never** |
 | `GET /pair` | (31 Oct) the phone's page; the code stays after the `#`, so it never reaches the server here | No |
-| `POST /api/pair/open` | (31 Oct) `{ code }`: works once, for 10 minutes; gives the phone the laptop's visitor cookie; anything else gets the same friendly words; rate limited | **Never** |
+| `POST /api/pair/open` | (31 Oct) `{ code }`: works once, for 10 minutes; gives the phone the laptop's visitor cookie; anything else gets the same friendly words; rate limited. (2 Nov) A browser with orders of its own gets `{ confirm }` and nothing changes until `{ code, replace: true }` | **Never** |
 
 ### AG Grid showcase (Community features only, no Enterprise)
 
@@ -280,7 +282,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 10. ✅ (done early, Fri 30 Oct; `src/fallback-parse.js`, `src/messages.js`; 345 tests; `ui-ai`, `ui-flow`, `ui-check` extended) **Ready-to-send messages + reminders (#2)**: ~~one batched call each, placeholders, checks,~~ code templates only (decided 30 Oct: AI calls are scarce), Copy. Plus the **non-AI fallback "Read without AI"** (moved up from Step 12: Gemini was busy on 29 and 30 Oct) and the chip fix (chips wrap inside their column). **Follow-up the same day:** Add / Remove item in the drawer (locked once the invoice is sent, server-checked) and the table always fits its panel (columns chosen by the table's own width); 352 tests.
    - **Ask the buyer (added 29 Oct):** every unclear row gets a **"Copy question"** button. The code builds the question from the menu and the reason it is unclear, e.g. "Hi Priya! Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" The AI may only write wording with placeholders (same design and checks as #2: no money, no links); **the code fills in names, items and prices**. Template when there is no AI. ~~Open for Step 10: whether the AI wording rides in one batched call for all unclear rows or the template is enough.~~ Decided 30 Oct: the template is enough (code only, no AI).
 10b. ✅ (done early, Thu 29 Oct; `src/kitchen.js`, the list rides along in `/api/state` and every edit reply as `kitchen`, no separate route; 297 tests) **Kitchen list (new, 29 Oct; pure code, no AI):** per date, how many of each item to make, from **active clear orders only**. Cancelled orders are left out; unclear orders are not counted but shown separately as "+1 order still to check". A **Copy** button copies the list as plain text. Tests: cancelled excluded, unclear shown apart, several dates, an empty day.
-10c. ✅ (done Sat 31 Oct; `src/pickup.js`, `public/invoice-qr.js`, `public/vendor/`, `npm run ui-pickup`, 459 tests, version 1.2.0) **Pickup scan (new, 29 Oct; the feature we drop first if time is tight):** on a phone, the seller scans the buyer's PayPal invoice QR with the camera. Built as below except: jsQR is self-hosted (no CDN, so no integrity hash), and no Content-Security-Policy was added (decided 31 Oct, see DECISIONS.md).
+10c. ✅ (done Sat 31 Oct; `src/pickup.js`, `public/invoice-qr.js`, `public/vendor/`, `npm run ui-pickup`, 459 tests, version 1.2.0) **Pickup scan (new, 29 Oct; the feature we drop first if time is tight):** on a phone, the seller scans the buyer's PayPal invoice QR with the camera. Built as below except: jsQR is self-hosted (no CDN, so no integrity hash), and no Content-Security-Policy was added (decided 31 Oct, see DECISIONS.md; added 2 Nov in `src/security.js`).
    - The app finds the invoice id in the QR, checks it is in our store, and asks PayPal for the **live** status.
    - Paid: a big green "Paid: Lina, 3 x Classic brownies". Not paid: an amber "Not paid yet: RM 54.00".
    - Then a **"Collected"** button: our own status, **never sent to PayPal**.

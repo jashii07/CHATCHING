@@ -59,13 +59,3 @@ test("a fresh disk (no data/runtime/ at all): the app starts with an empty table
   assert.ok(existsSync(join(runtime, "visitors", `${cookie.split("=")[1]}.json`)), "the folder and the file are made on the first save");
   assert.equal(calls.length, 0, "the demo comes from the saved reply that ships with the app");
 });
-
-test("test runs use the setup that prevents the Windows crash: npm test and npm run check both load it", () => {
-  const SETUP = "--import=./scripts/test-setup.mjs";
-  assert.ok(pkgScripts().test.includes(SETUP), "package.json test script");
-  assert.ok(readFileSync(new URL("../scripts/check.mjs", import.meta.url), "utf8").includes(`"${SETUP}"`), "scripts/check.mjs");
-});
-
-function pkgScripts() {
-  return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts;
-}

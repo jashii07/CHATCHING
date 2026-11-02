@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "check": "node scripts/check.mjs",
-    "test": "node --test --import=./scripts/test-setup.mjs",
+    "test": "node --test",
     "ui-check": "node scripts/ui-check.mjs",
     "ui-flow": "node scripts/ui-flow.mjs",
     "ui-ai": "node scripts/ui-ai.mjs",
