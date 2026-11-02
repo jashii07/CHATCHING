@@ -206,5 +206,5 @@
 - **A repro can ask the impossible:** PI4 wanted two stamped lines to be one message. Passing it as written would have merged every real chat, so the honest move was to say so and test what can be told apart.
 - **One good number isn't proof:** turning keep-alive off gave 0 crashes in 2,000 runs on one file, and it looked solved. 100 full runs still crashed 3 times, and a trace then showed the crash happens at the first fetch, before keep-alive could matter. The first result was luck, and the note written from it had to be taken back.
 - **Time-box the small stuff:** #18 is a low finding, so Jasper stopped the hunt. A crashed file now reruns once, only for that exact exit code, and says so out loud. Real failures are never rerun, and four planted cases prove it.
-- **Check the check:** a separate look at the live page caught what the deploy check didn't say. Being live once doesn't mean staying live.
+- **Check the check:** `ui-live` passed on 1.6.0, then a separate look at the live page found no security headers: the site had gone back to 1.5.0 by itself. A push brought 1.6.0 back and it stayed. Being live once doesn't mean staying live, and the cause of that flip is still unknown.
 - **What is still open:** the crash's native cause, the old fixture text in git history, and the rest of DECISIONS.md, Known weaknesses.
