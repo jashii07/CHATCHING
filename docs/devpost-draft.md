@@ -74,7 +74,30 @@ I am a first-year student. I directed the project and made the decisions; the co
 
 ## Built with
 
-Node.js, Express, JavaScript, HTML, CSS, PayPal Invoicing API (sandbox), Google Gemini, AG Grid Community, Lucide icons, jsQR, qrcode-generator, Render, Playwright (browser tests), Claude Code
+Devpost tags (15 of the 25 allowed), each checked against package.json and the code on 3 Nov:
+
+javascript, node.js, express, html5, css3, paypal, paypal-invoicing-api, google-gemini, ag-grid, render, playwright, jsqr, qrcode-generator, lucide, claude-code
+
+- express 5.3.0 and qrcode-generator 2.0.4 are in `dependencies`; jsqr 1.4.0 and playwright-core 1.64.0 (the browser checks) in `devDependencies`.
+- AG Grid Community 36.2.0 and Lucide 1.55.0 load from jsDelivr, pinned in `public/index.html`.
+- Gemini (`src/gemini.js`) and PayPal Invoicing v2 are called over their REST APIs, with no SDK.
+- Hosted on Render (free plan). Built with Claude Code.
+
+## Try it out (links)
+
+- https://chatching.onrender.com/
+- https://github.com/jashii07/CHATCHING (works once the repo is public, Tue 10 Nov)
+
+## Gallery shot list
+
+6 images, 1500 x 1000 px (3:2), PNG, each well under Devpost's 5 MB limit. Made by `npm run gallery` (Playwright, a LOCAL server and the FAKE PayPal: no real calls, no AI calls) into `tmp/gallery/` (git-ignored). Run it on Mon 9 Nov, after the design polish, and look at every image before uploading.
+
+1. **The table after Read orders**: the demo chats read into one order per buyer, with the summary cards.
+2. **An amber Check row with Copy question**: the table filtered to the rows to check, Priya's "which brownies?" question copied.
+3. **Send invoices with the progress bar**: caught at "Sending invoice 3 of 7...".
+4. **A Paid row in green**: Hafiz has paid, and the Paid card is green.
+5. **The Kitchen list**: how many of each item to make, per day.
+6. **Pickup scan on a phone**: the green "paid" result for Hafiz's invoice, in a phone frame.
 
 ## Testing instructions
 
@@ -100,5 +123,8 @@ Sandbox buyer logins for paying an invoice (practice accounts with fake money): 
 
 - [ ] Video link (YouTube, public, under 3 minutes): to add after recording.
 - [ ] Sandbox buyer logins (Sat 7 Nov).
+- [ ] Devpost text and Built with tags pasted into Devpost (Sat 7 Nov).
+- [ ] Gallery: `npm run gallery`, check the 6 images, upload them (Mon 9 Nov).
+- [ ] GitHub link in Try it out, once the repo is public (Tue 10 Nov).
 - [x] "thousands" needed a real source: changed to "many" (2 Nov).
 - [x] Inspiration replaced with Jasper’s own words (3 Nov).

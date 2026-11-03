@@ -13,7 +13,8 @@
     "ui-visitors": "node scripts/ui-visitors.mjs",
     "ui-pickup": "node scripts/ui-pickup.mjs",
     "ui-pair": "node scripts/ui-pair.mjs",
-    "ui-live": "node scripts/ui-live.mjs"
+    "ui-live": "node scripts/ui-live.mjs",
+    "gallery": "node scripts/gallery.mjs"
   },
   "repository": {
     "type": "git",
