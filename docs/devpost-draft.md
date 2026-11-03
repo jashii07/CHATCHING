@@ -10,11 +10,7 @@ Business happens in the chat. ChatChing's AI turns a day of messy chats into a c
 
 ## Inspiration
 
-A friend of mine sells through chat. Every order arrives as a message, and my friend copies each one into Excel by hand, works out the totals, and then chases each buyer for payment one by one. It is slow, and things get missed.
-
-I saw the same thing with the student sellers in the UTP dorms: their orders come in through chats and Google Forms.
-
-The orders are already written down in the chat. The hard part is turning them into a list and getting paid. That is the part ChatChing does.
+I'm a first-year student at UTP in Malaysia. A friend of mine takes orders by chat and copies every order into Excel by hand: who ordered what, who changed their mind, who has paid. In my dorm, sellers of bubur ayam, shawarma and matcha take orders through group chats and Google Forms. At the end of the day someone scrolls back through dozens of messages to work out the final orders and chase payments. I wanted to turn a messy chat into clean PayPal invoices in one click, without ever letting an AI decide what someone pays.
 
 ## What it does
 
@@ -98,11 +94,11 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 
-Sandbox buyer logins for paying an invoice: to add on Sat 7 Nov.
+Sandbox buyer logins for paying an invoice (practice accounts with fake money): see the README’s "Judge test accounts" section, filled in on Sat 7 Nov.
 
 ## TODO
 
 - [ ] Video link (YouTube, public, under 3 minutes): to add after recording.
 - [ ] Sandbox buyer logins (Sat 7 Nov).
 - [x] "thousands" needed a real source: changed to "many" (2 Nov).
-- [ ] Jasper: check the Inspiration section is in your own words and true as written (your friend, the UTP dorm sellers).
+- [x] Inspiration replaced with Jasper’s own words (3 Nov).

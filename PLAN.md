@@ -366,7 +366,7 @@ Judging runs until 16 Dec, and judges need free access the whole time.
 
 **Every 2–3 days:**
 - [ ] The hosted URL loads (a slow first load can be Render waking the free service up).
-- [ ] Both judge logins work at https://www.sandbox.paypal.com.
+- [ ] Both judge sandbox logins (README "Judge test accounts") still work: log in to each at https://www.sandbox.paypal.com. Keep checking every 2-3 days until judging ends (16 Dec). If one fails, set its password back to the one in the README in the PayPal developer dashboard (fixing judge logins is allowed maintenance; the README itself stays frozen).
 - [ ] The PayPal sandbox app still works: `node --env-file=.env scripts/smoke-paypal.mjs` → "token OK: yes" (same keys as on Render).
 - [ ] The Gemini key still works and the model still exists (models get retired): `node --env-file=.env scripts/smoke-gemini.mjs` (1 call).
 - [ ] Render hasn't paused or suspended the service (the dashboard shows it live).

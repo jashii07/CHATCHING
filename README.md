@@ -21,11 +21,16 @@ No login is needed. Each judge gets their own table, so nobody else can see or c
 
 ## Judge test accounts
 
-**TODO (Sat 7 Nov):** two sandbox buyer accounts, made only for judges, for paying an invoice with PayPal.
+**TODO (Sat 7 Nov): fill in the two logins below.**
 
-- Real passwords are never written in this repo.
-- The logins are given to judges in the Devpost submission's testing instructions.
-- There are two accounts, so if one is locked or its password is changed, the other still works.
+Two PayPal **sandbox** buyer accounts, made only for judges, for paying an invoice with PayPal. Sandbox accounts are practice accounts that hold only fake money, so these logins are not secrets like API keys. The official rules ask for test-account logins in the README; the same two logins are also in the Devpost submission's testing instructions.
+
+| Account | Email | Password |
+|---|---|---|
+| Judge buyer 1 | `TODO-judge1@example.com` | `TODO` |
+| Judge buyer 2 | `TODO-judge2@example.com` | `TODO` |
+
+To pay: open a row's **Payer link**, choose to log in to PayPal, and use either login above. There are two accounts so that if one is locked or its password is changed, the other still works.
 
 ## What it does
 

@@ -217,3 +217,11 @@
 - **Don't fill gaps with guesses:** the first Inspiration draft added details nobody had given (what the friend sells, buyers forgetting to pay) and a pronoun for the friend. They were taken out. Inspiration stays a TODO for Jasper to check, in Jasper's own words.
 - **Check the README like a judge:** a fresh clone with no `.env` ran `npm ci`, `npm start` and `npm run check` exactly as written. The demo read 7 orders worth RM 366.00, and Send invoices gave the friendly "PayPal is not configured". The GitHub link answers 404 to a visitor who isn't logged in, because the repo is private until 10 Nov.
 - **What is still open:** the judge logins (Sat 7 Nov), the video link, making the repo public, and the Windows test crash: both runs today needed their one rerun, more than the 1 in 30 seen before.
+
+### 2026-11-03, Inspiration, judge logins and the crash count (summary by Claude)
+
+- **What was built:** the Devpost Inspiration section is now Jasper's own words, exactly as given. The README's "Judge test accounts" section has a table with placeholders for two PayPal sandbox buyer logins (filled in Sat 7 Nov). PLAN.md's after-submission checklist checks both logins every 2-3 days until 16 Dec.
+- **Why logins in the README:** the rules ask for test-account logins there. A sandbox account is a practice account with fake money, so its password is not a secret like an API key, which still never goes in the repo. Two accounts mean one still works if a judge changes a password.
+- **Frozen means frozen:** after the deadline the README can't change, so the checklist says to set a broken login's password *back* to the one in the README, not to write a new one.
+- **The crash count:** 2 of 3 runs needed the rerun earlier on 3 Nov, then 0 in 21 runs on the same Node with nothing changed. One small sample can look like a trend. The rerun stays, and updating Node (v24.15.0 to v24.22.2) is optional, not a proven fix.
+- **What is still open:** the two logins themselves (Sat 7 Nov), the video link, making the repo public.
