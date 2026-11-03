@@ -90,12 +90,12 @@ javascript, node.js, express, html5, css3, paypal, paypal-invoicing-api, google-
 
 ## Gallery shot list
 
-6 images, 1500 x 1000 px (3:2), PNG, each well under Devpost's 5 MB limit. Made by `npm run gallery` (Playwright, a LOCAL server and the FAKE PayPal: no real calls, no AI calls) into `tmp/gallery/` (git-ignored). Run it on Mon 9 Nov, after the design polish, and look at every image before uploading.
+6 images, 1500 x 1000 px (3:2), PNG, each well under Devpost's 5 MB limit. Made by `npm run gallery` (Playwright, a LOCAL server and the FAKE PayPal: no real calls, no AI calls) into `tmp/gallery/` (git-ignored). Run it on Mon 9 Nov, after the design polish, and look at every image before uploading. (Test run 3 Nov: all 6 made at 1500 x 1000; 4 shots re-framed so each subject is whole.)
 
 1. **The table after Read orders**: the demo chats read into one order per buyer, with the summary cards.
 2. **An amber Check row with Copy question**: the table filtered to the rows to check, Priya's "which brownies?" question copied.
 3. **Send invoices with the progress bar**: caught at "Sending invoice 3 of 7...".
-4. **A Paid row in green**: Hafiz has paid, and the Paid card is green.
+4. **A Paid row in green**: Hafiz has paid, and the Paid card is green (the search box shows only Hafiz, so his row fits under the cards).
 5. **The Kitchen list**: how many of each item to make, per day.
 6. **Pickup scan on a phone**: the green "paid" result for Hafiz's invoice, in a phone frame.
 

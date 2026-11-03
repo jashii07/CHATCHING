@@ -32,6 +32,11 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 1, permissions: ["clipboard-read", "clipboard-write"] });
 const page = await context.newPage();
 const shot = async (name) => { await page.waitForTimeout(400); await page.screenshot({ path: `${OUT}${name}.png` }); console.log(`saved tmp/gallery/${name}.png`); };
+// Puts an element just under the sticky top bar (64 px + a 16 px gap), so each shot frames its subject whole.
+const frameAt = (selector) => page.evaluate((sel) => {
+  const top = document.querySelector(sel).getBoundingClientRect().top + window.scrollY;
+  window.scrollTo(0, Math.max(0, top - 80));
+}, selector);
 const stateNow = async () => (await page.request.get(`${base}/api/state`)).json();
 const order = async (buyer) => (await stateNow()).orders.find((row) => row.buyer === buyer);
 
@@ -42,12 +47,15 @@ try {
   await page.waitForFunction(() => document.getElementById("read-message").textContent.includes("Demo chats loaded"));
   await page.click("#read-orders");
   await page.waitForSelector(ROWS);
+  await frameAt(".summary"); // Read orders scrolls the table into view, which cut the hero card in half
   await shot("1-table-after-read");
 
-  // 2. An amber Check row with Copy question (filtered to the rows to check).
+  // 2. An amber Check row with Copy question (filtered to the rows to check), both check rows in full.
   await page.click("#stat-check");
   await page.waitForTimeout(300);
   await page.locator(ROWS, { hasText: "Priya" }).locator('.copy-text[data-kind="question"]').click();
+  await page.click(".panel.orders .panel-head h2"); // moves focus out of the table: no focus box on Priya's cell
+  await frameAt("#chat-bar"); // both check rows whole, and the developer footer ("AI mode: mock") stays out of view
   await shot("2-check-row-copy-question");
   await page.click("#stat-check");
 
@@ -55,6 +63,7 @@ try {
   fake.slow("send", 800);
   await page.locator("[data-send-invoices]:visible").first().click();
   await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("Sending invoice 3 of"), null, { timeout: 20000 });
+  await frameAt(".summary"); // the cards, the bar and the first Sent rows (each send is held 800 ms, so the bar stays at 3)
   await shot("3-send-invoices-progress");
   fake.slow("send", 0);
   await page.waitForFunction(() => /\d+ of \d+ sent/.test(document.getElementById("send-message").textContent), null, { timeout: 30000 });
@@ -64,7 +73,12 @@ try {
   skew += 11_000;
   await page.click("#refresh-status");
   await page.waitForFunction(() => document.getElementById("stat-paid").classList.contains("is-paid"), null, { timeout: 10000 });
+  // The search box (AG Grid's quick filter) shows only Hafiz, so his green row fits under the green Paid card.
+  await page.fill("#search", "Hafiz");
+  await page.waitForFunction((sel) => document.querySelectorAll(sel).length === 1, ROWS);
+  await frameAt(".summary");
   await shot("4-paid-row");
+  await page.fill("#search", "");
 
   // 5. The Kitchen list.
   await page.click("#kitchen-list");

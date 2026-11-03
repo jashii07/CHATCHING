@@ -225,3 +225,24 @@
 - **Frozen means frozen:** after the deadline the README can't change, so the checklist says to set a broken login's password *back* to the one in the README, not to write a new one.
 - **The crash count:** 2 of 3 runs needed the rerun earlier on 3 Nov, then 0 in 21 runs on the same Node with nothing changed. One small sample can look like a trend. The rerun stays, and updating Node (v24.15.0 to v24.22.2) is optional, not a proven fix.
 - **What is still open:** the two logins themselves (Sat 7 Nov), the video link, making the repo public.
+
+### 2026-11-03, full check before the user test, and the gallery test run (summary by Claude)
+
+- **What was checked:** `npm run check`, the 6 local browser checks, and `ui-live` on the hosted app (version 1.6.1, 95 checks, real sandbox invoices, no console errors). All passed, except one `ui-flow` failure while `ui-live` ran on the same laptop. Alone it passed 3 times. Known weaknesses has the details.
+- **What was built:** only framing fixes in `scripts/gallery.mjs`. The first gallery run made all 6 images at the right size, but a machine can't tell a good picture from a bad one. Looking at each image found 4 problems: the RM 366.00 card cut in half, the green Paid row off the bottom edge, a second check row cut, and the footer saying "AI mode: mock". Each shot now scrolls its subject into place, and shot 4 uses the search box so Hafiz's row fits under the Paid card.
+- **Why look, not just run:** "exit 0" proved the script ran. It didn't prove the pictures showed what the shot list promised. This is the same lesson as Chrome's console on 2 Nov: only looking at the real output catches it.
+- **Why the phone screenshots look odd:** on phones the total bar is fixed to the bottom of the screen, and a full-page screenshot draws it where the first screen ended, over the Needs check card. A real phone doesn't do that.
+- **First-minute confusions to watch in the user test (design frozen until 8 Nov, nothing changed):**
+  1. Empty page: the big blue button is Read orders, but with nothing to paste the first step is the pale Load demo, and Load demo doesn't read by itself.
+  2. Numbers that don't match at a glance: Orders 9, "From 7 orders ready", Total "7 orders ready", and 10 buyers in the demo (one is cancelled).
+  3. Page 2 is easy to miss: Needs check says 2, but page 1 shows only Priya. Jun Wei is on page 2.
+  4. "Draft" on every row before sending: a draft of what? (It means "no invoice yet".)
+  5. Three buttons on a sent row (Payer link, Copy link, Copy message): which one goes to the buyer?
+  6. "Edit" in the chats bar edits the chats, not the orders. Orders are edited by tapping a buyer, and the only sign is the small arrow at the end of the row.
+  7. New batch and Reset demo both empty the table, and the page doesn't say how they differ. Reset demo sits low in the footer.
+  8. Recording a cash payment is only inside the buyer's drawer. Nothing on the row hints at it.
+  9. After sending, Pickup scan becomes the bold blue button on a laptop, but it is a phone-camera feature. On a phone, "Open on my phone" still shows.
+  10. The Step 1 / 2 / 3 guide looks like tabs, but it can't be clicked.
+  11. "AI calls left today: 40" is shared by every visitor. A tester may think it is theirs, or that it costs money.
+  12. The footer's "AI mode: real, PayPal keys: set, Gemini key: set" is developer talk.
+  13. The Chat date field: what is it for? After Load demo it says 28/10/2026, not today.
