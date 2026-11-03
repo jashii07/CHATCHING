@@ -95,11 +95,11 @@ How well the AI reads chats, scored item by item: buyers, cancellations, items, 
 
 | Test set | What it is | Score |
 |---|---|---|
-| Demo chats | Written by us. The saved reply is checked on every `npm run check`. | 74/74 |
-| Set A "cafe-usd" | Real cafe orders, reformatted by AI; names added by us | 73/74 |
+| Demo chats | Written by me. The saved reply is checked on every `npm run check`. | 74/74 |
+| Set A "cafe-usd" | Real cafe orders, reformatted by AI; names added by me | 73/74 |
 | Set B "daily-grind" | An AI-written third-party test set | 74/74 |
 
-- **Read honestly:** the demo score shows the pipeline works, not how well the AI reads other sellers, because we wrote those chats. Sets A and B are one live run each (1 Nov 2026, `gemini-3.6-flash`). The prompt was not tuned on them, and it won't be.
+- **Read honestly:** the demo score shows the pipeline works, not how well the AI reads other sellers, because I wrote those chats. Sets A and B are one live run each (1 Nov 2026, `gemini-3.6-flash`). The prompt was not tuned on them, and it won't be.
 - **The one miss (Set A):** a buyer asked for oat milk, which is not on that menu. The AI put it in the note instead of flagging it, so the order would show as ready to invoice. The menu price would still be charged, but the seller would not be warned.
 - Neither set had delivery dates or "pickup" in the chats, so those two scores were easy.
 
@@ -107,7 +107,7 @@ How well the AI reads chats, scored item by item: buyers, cancellations, items, 
 
 - **Per-visitor tables:** each browser gets its own table through a cookie, with no login. One visitor can't see or reset another's orders. A phone joins a table only through a one-time QR (10 minutes, works once).
 - **Rate limits** on reading chats, sending invoices, recording payments, status checks, pickup checks and phone pairing, plus the daily AI counter. Over a limit, the page shows friendly words instead of an error.
-- **Security headers** on every reply, including a Content-Security-Policy that only allows our own scripts and the two pinned CDN files.
+- **Security headers** on every reply, including a Content-Security-Policy that only allows the app's own scripts and the two pinned CDN files.
 - **CSRF check:** a change sent from another website is refused (403).
 - **No keys in the repo:** keys live in `.env` (git-ignored) or Render's settings. `npm run check` fails if `.env` was ever committed.
 - **The 1 Nov review:** a full bug hunt and security audit (QA Bug Hunter + finecomb) found 18 issues: 0 critical, 2 high, 7 medium, 9 low. Each fix was written test-first, in two fix sessions on 1 and 2 Nov. One low item, a rare crash of Node's test runner on Windows, is worked around (the file reruns once), not fixed.

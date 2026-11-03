@@ -1,6 +1,6 @@
 # Devpost draft — ChatChing
 
-Rule for this page: only claims we can prove. No invented statistics. Every number comes from our own tests (see `docs/accuracy.md`, `npm run check`) or from a source with a link.
+Rule for this page: only claims I can prove. No invented statistics. Every number comes from my own tests (see `docs/accuracy.md`, `npm run check`) or from a source with a link.
 
 ## Elevator pitch (on Devpost, max 200 chars)
 
@@ -28,27 +28,27 @@ In more detail:
 
 - **One small Node.js server** (Express) with plain HTML and JavaScript. No database and no build step, so it is simple to run and to host.
 - **PayPal Invoicing API v2, sandbox:** create, send (without emailing anyone), get status, record payment, generate the QR, and search by invoice number.
-- **Google Gemini** (`gemini-3.6-flash`, with `gemini-3.8-flash` as a backup): one call reads all the chats and returns JSON in a fixed shape. Our code checks every reply before it is used.
+- **Google Gemini** (`gemini-3.6-flash`, with `gemini-3.8-flash` as a backup): one call reads all the chats and returns JSON in a fixed shape. The app's code checks every reply before it is used.
 - **AG Grid Community** for the order table: pagination, custom cells, highlighted rows, a totals row, search, CSV export and a green flash when an invoice turns Paid.
 - **Hosted on Render's free plan.** Each visitor gets their own table through a cookie, with no login.
-- **Tested as we went:** 654 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
+- **Tested as I went:** 654 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
 
 I am a first-year student. I directed the project and made the decisions; the code was written with Claude Code. Every decision and prompt is logged in the repo (`DECISIONS.md`, `PROMPT_LOG.md`).
 
 ## Challenges we ran into
 
-- **The free AI tier is busy.** Gemini answered "high demand" at least once in every real session we ran, from 25 Oct to 1 Nov. So the app has a time budget (90 seconds per read), a backup model, a daily counter, a careful "Read without AI" mode, and a saved demo reply that always works.
-- **Never bill a buyer twice.** PayPal's `PayPal-Request-Id` header didn't stop a repeat for invoices in our sandbox test. So every invoice gets its own number, which PayPal refuses to repeat, plus guards in our own code. A review later found a second way to bill twice (reading the same chats again in a new batch), and we closed that too.
+- **The free AI tier is busy.** Gemini answered "high demand" at least once in every real session I ran, from 25 Oct to 1 Nov. So the app has a time budget (90 seconds per read), a backup model, a daily counter, a careful "Read without AI" mode, and a saved demo reply that always works.
+- **Never bill a buyer twice.** PayPal's `PayPal-Request-Id` header didn't stop a repeat for invoices in my sandbox test. So every invoice gets its own number, which PayPal refuses to repeat, plus guards in the app's own code. A review later found a second way to bill twice (reading the same chats again in a new batch), and I closed that too.
 - **The AI must never set a price.** The AI only picks items and quantities from the menu. Prices come from the menu, and money is counted in whole cents so totals are exact.
 - **The free server forgets.** Render's free plan clears its disk on every sleep or restart. Invoices are safe because they live in PayPal, and the page explains what happened when a table is cleared.
-- **Real browsers find what tests miss.** Our first security policy passed every unit test, then blocked the table's icons in Chrome. Only a real browser showed it.
+- **Real browsers find what tests miss.** My first security policy passed every unit test, then blocked the table's icons in Chrome. Only a real browser showed it.
 
 ## Accomplishments that we're proud of
 
 - **The AI never touches money.** Prices come from the menu, every AI reply is checked, and unclear orders are never invoiced until the seller fixes them.
 - **Honest accuracy results**, each run once, with no prompt tuning on the test sets:
-  - Demo chats (written by us): 74/74.
-  - Real cafe orders, reformatted by AI, names added by us: 73/74. The one miss: oat milk, which is not on the menu, went into the note instead of being flagged.
+  - Demo chats (written by me): 74/74.
+  - Real cafe orders, reformatted by AI, names added by me: 73/74. The one miss: oat milk, which is not on the menu, went into the note instead of being flagged.
   - An AI-written third-party test set: 74/74.
 - **PayPal is central:** invoices, payments, status and the pickup QR all go through the PayPal Invoicing API.
 - **A full review before submitting:** a bug hunt and security audit found 18 issues (none critical). Each was fixed with a test written first; one rare Windows test-runner crash is worked around, not fixed.
@@ -57,9 +57,9 @@ I am a first-year student. I directed the project and made the decisions; the co
 ## What we learned
 
 - **Directing AI means deciding the limits up front.** Twice I wished I had: which branch to push when "push" and "don't deploy yet" were both in one request, and a time limit on a low-priority bug before the hunt for its cause began, not half-way through. Both are in my prompt log.
-- **One good number isn't proof.** A fix that looked perfect in 2,000 runs still failed 3 times in 100 full runs. We learned to test the whole thing, more than once.
-- **Label results honestly.** A perfect score on chats we wrote ourselves says the pipeline works, not that the AI reads every seller well. Saying which is which makes the results more believable.
-- **Check the docs against reality.** PayPal's docs say a cash payment makes an invoice `PAID`; the sandbox really says `MARKED_AS_PAID`. Testing on the real sandbox early saved us from building on the wrong word.
+- **One good number isn't proof.** A fix that looked perfect in 2,000 runs still failed 3 times in 100 full runs. I learned to test the whole thing, more than once.
+- **Label results honestly.** A perfect score on chats I wrote myself says the pipeline works, not that the AI reads every seller well. Saying which is which makes the results more believable.
+- **Check the docs against reality.** PayPal's docs say a cash payment makes an invoice `PAID`; the sandbox really says `MARKED_AS_PAID`. Testing on the real sandbox early saved me from building on the wrong word.
 
 ## What's next for ChatChing
 
@@ -118,6 +118,18 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 
 Sandbox buyer logins for paying an invoice (practice accounts with fake money): see the README’s "Judge test accounts" section, filled in on Sat 7 Nov.
+
+## Devpost Additional info answers
+
+### If you used AG Grid, what was your experience building with AG Grid/AG Charts/AG Studio?
+
+AG Grid Community (v36, loaded from jsDelivr with a pinned version and integrity hash) is the heart of ChatChing's screen: one row per buyer, showing their items, date, total and live PayPal status.
+
+What I used: custom cell renderers (buyer avatars, item chips, status badges, the PayPal payer link with a Copy button), rowClassRules to turn unclear orders amber, a pinned totals row, quick-filter search, an external filter behind the "Check" card that shows only the orders to check, pagination driven by my own page arrows (AG Grid's own panel is hidden), CSV export built with AG Grid's getDataAsCsv (the app adds a UTF-8 mark for Excel and blocks spreadsheet formulas in every cell), and flashCells to flash a row green when a buyer pays. While invoices are being sent, the app redraws only the finished buyer's row (redrawRows with rowNodes), so the table updates live without flickering.
+
+What was hard: making the table fit its panel at every width. On laptops and tablets the app chooses which columns to show from the table's own width, not the screen's, and on phones it switches to one card per buyer, so it works on laptops, tablets and phones. AG Grid's theme also needed inline styles and data: fonts, which I allowed in the Content-Security-Policy while keeping scripts strictly locked to the app's own files and the two pinned CDN files.
+
+I stayed on the free Community edition. Features like row grouping are Enterprise-only, so the Kitchen list (what to make per day) is built in the app's own code instead. As a first-year student, AG Grid let me ship a professional, responsive table in days instead of weeks.
 
 ## TODO
 
