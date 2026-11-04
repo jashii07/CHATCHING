@@ -21,14 +21,14 @@ No login is needed. Each judge gets their own table, so nobody else can see or c
 
 ## Judge test accounts
 
-**TODO (Sat 7 Nov): fill in the two logins below.**
-
 Two PayPal **sandbox** buyer accounts, made only for judges, for paying an invoice with PayPal. Sandbox accounts are practice accounts that hold only fake money, so these logins are not secrets like API keys. The official rules ask for test-account logins in the README; the same two logins are also in the Devpost submission's testing instructions.
 
 | Account | Email | Password |
 |---|---|---|
-| Judge buyer 1 | `TODO-judge1@example.com` | `TODO` |
-| Judge buyer 2 | `TODO-judge2@example.com` | `TODO` |
+| Judge buyer 1 | `chatching.judge1@example.com` | `judge1@EXAMPLE` |
+| Judge buyer 2 | `chatching.judge2@example.com` | `judge2@EXAMPLE` |
+
+Pay any invoice's payer link with one of these logins, then click Refresh status in ChatChing.
 
 To pay: open a row's **Payer link**, choose to log in to PayPal, and use either login above. There are two accounts so that if one is locked or its password is changed, the other still works.
 

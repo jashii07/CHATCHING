@@ -246,3 +246,9 @@
   11. "AI calls left today: 40" is shared by every visitor. A tester may think it is theirs, or that it costs money.
   12. The footer's "AI mode: real, PayPal keys: set, Gemini key: set" is developer talk.
   13. The Chat date field: what is it for? After Load demo it says 28/10/2026, not today.
+
+### 2026-11-04, judge logins and the video script (summary by Claude)
+
+- **What was done:** the two PayPal sandbox buyer logins went into the README's "Judge test accounts" table and the Devpost testing instructions, with one line on how to use them (pay a payer link, then Refresh status). PLAN.md records Jasper's live test with judge1 and marks the Sat 7 Nov login task done early. The video script is PLAN.md Section 14, under the storyboard it speaks for.
+- **Why the logins are public:** sandbox accounts hold only fake money, and the rules ask for test logins in the README (decision of 3 Nov). The risk is that anyone can change a password, so there are two accounts and a check every 2-3 days after submitting.
+- **Why check a script against the app:** a video is the claim judges remember. Every name, number and feature in it was matched to the demo data, the accuracy report and the code. Most was right. Three phrases say a little more than the app does (the 73/74 unit, the green row, "today's chats"), so they are flagged for Jasper rather than changed, because the words are his.

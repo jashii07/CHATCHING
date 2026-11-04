@@ -117,7 +117,12 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 
-Sandbox buyer logins for paying an invoice (practice accounts with fake money): see the README’s "Judge test accounts" section, filled in on Sat 7 Nov.
+Sandbox buyer logins for paying an invoice (PayPal sandbox practice accounts with fake money; the same two are in the README’s "Judge test accounts" section):
+
+- Judge buyer 1: `chatching.judge1@example.com`, password `judge1@EXAMPLE`
+- Judge buyer 2: `chatching.judge2@example.com`, password `judge2@EXAMPLE`
+
+Pay any invoice's payer link with one of these logins, then click **Refresh status** in ChatChing. If one login is locked or its password was changed, use the other.
 
 ## Devpost Additional info answers
 
@@ -134,7 +139,7 @@ I stayed on the free Community edition. Features like row grouping are Enterpris
 ## TODO
 
 - [ ] Video link (YouTube, public, under 3 minutes): to add after recording.
-- [ ] Sandbox buyer logins (Sat 7 Nov).
+- [x] Sandbox buyer logins in the testing instructions and the README (4 Nov, done early).
 - [ ] Devpost text and Built with tags pasted into Devpost (Sat 7 Nov).
 - [ ] Gallery: `npm run gallery`, check the 6 images, upload them (Mon 9 Nov).
 - [ ] GitHub link in Try it out, once the repo is public (Tue 10 Nov).
