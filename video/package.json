@@ -1,0 +1,25 @@
+{
+  "name": "chatching-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The 3-minute demo video for ChatChing: a Playwright recorder for the live site + a Remotion edit. Separate from the app, so Render never installs it.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "record": "node scripts/record.mjs",
+    "clips": "node scripts/clips.mjs",
+    "studio": "node scripts/timeline.mjs && remotion studio src/index.jsx",
+    "draft": "node scripts/render.mjs --draft",
+    "final": "node scripts/render.mjs",
+    "frames": "node scripts/frames.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.537",
+    "@remotion/media-utils": "4.0.537",
+    "@remotion/renderer": "4.0.537",
+    "playwright-core": "1.64.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.537"
+  }
+}

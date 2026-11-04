@@ -1,0 +1,14 @@
+# Everything made by the pipeline, and Jasper's own recordings: only the source is committed.
+node_modules/
+out/
+public/clips/
+public/generated/
+public/voice/*
+!public/voice/.gitkeep
+public/phone/*
+!public/phone/.gitkeep
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.webm

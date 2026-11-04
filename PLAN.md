@@ -345,7 +345,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Fri 6 Nov (2 h) | 7 PM: **user test with your friend (10 min)** → LEARNING.md; then Step 12: ~~non-AI fallback parser~~ (done early in Step 10, 30 Oct) | Test notes saved; app works with `AI_MODE=off` (Read without AI) |
 | Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins = the 2 judge accounts); **video script draft** (from the Section 13 storyboard); **save a Devpost draft**: fill in the Devpost text and Built with tags from `docs/devpost-draft.md`. ~~**You: create 2 sandbox buyer accounts just for judges**~~ ✅ **done early (4 Nov)**: judge1 + judge2 in the README and the Devpost testing instructions; judge1 paid an invoice on the live site and the row turned green (if one gets locked or its password changed, judges use the other) | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved; both judge logins work |
 | Sun 8 Nov (5 h) | **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green. **Polish (added 29 Oct): a soft "cha-ching" when a payment arrives**, made in code with the Web Audio API (no sound file, no copyright), **plus the Paid total counting up**. Only after the seller has clicked something on the page (browsers block sound before that), with a mute toggle; with reduced motion, no count-up animation (the number just changes) | All RULES.md build items ticked; a sandbox payment plays the sound once; mute silences it; reduced motion shows no animation |
-| Mon 9 Nov (2 h) | **First: test paying with an English-language sandbox buyer account** (one of the judge accounts), then record the video; run `npm run gallery` (after the design polish), check the 6 images and upload them to the Devpost gallery | Payment page in English; video under 3 min, no copyrighted music/logos |
+| Mon 9 Nov (2 h) | **First: test paying with an English-language sandbox buyer account** (one of the judge accounts), then record the video (voice lines + phone clip first, then `cd video` and `npm run final`; steps in `video/README.md`); run `npm run gallery` (after the design polish), check the 6 images and upload them to the Devpost gallery | Payment page in English; video under 3 min, no copyrighted music/logos |
 | Tue 10 Nov (2 h) | Video upload, GitHub public + MIT in About, Devpost details; add the GitHub link to Devpost's Try it out once the repo is public | All links work in a private window |
 | Wed 11 Nov (2 h) | "final check", then **submit (evening)** | Devpost shows Submitted |
 
@@ -571,21 +571,17 @@ Notes (Claude): the scenes add up to 2:50, leaving 10 s of margin under 3:00. Sc
 
 ## 14. Video script (Jasper, 4 Nov)
 
-The words for the Section 13 storyboard (which stays as the scene plan). Times match the storyboard's scenes 1-10, ending at 2:50. Facts checked against the app on 4 Nov (notes below the table).
+The words for the Section 13 storyboard (which stays as the scene plan). Times match the storyboard's scenes 1-10, ending at 2:50. Facts checked against the app on 4 Nov; the three flagged lines (scenes 2, 6 and 9) use the safer wording Jasper chose the same day.
 
 | # | Time | Words |
 |---|---|---|
 | 1 | 0:00-0:12 | "Small sellers like my friend take orders by chat. Every evening they scroll back through the messages and copy each order into Excel by hand." |
-| 2 | 0:12-0:25 | "ChatChing turns that chat into PayPal invoices. I paste today's chats and click Read orders." |
+| 2 | 0:12-0:25 | "ChatChing turns that chat into PayPal invoices. I paste a day of chats." |
 | 3 | 0:25-0:55 | "Gemini reads the whole conversation and finds each buyer's final order: changed quantities, 'same as Lina', even a cancellation. But the AI never sets a price. Prices come from the menu. When Jun Wei mentions a wrong price, ChatChing doesn't guess. It marks the order to check." |
 | 4 | 0:55-1:10 | "Priya didn't say which brownies. One tap copies a question to send her." |
 | 5 | 1:10-1:35 | "Seven orders are ready: RM 366. One click sends one PayPal invoice per buyer. Click again, and nobody is billed twice." |
-| 6 | 1:35-1:55 | "Lina pays with PayPal, and her row turns green. Cash payments can be recorded too." |
+| 6 | 1:35-1:55 | "Lina pays with PayPal, and she shows as Paid. Cash payments can be recorded too." |
 | 7 | 1:55-2:10 | "The kitchen list shows what to bake each day, counted by code." |
 | 8 | 2:10-2:30 | "At pickup, I scan the buyer's invoice QR with my phone. Paid? Then it's collected." |
-| 9 | 2:30-2:45 | "Built with the PayPal Invoicing API, Google Gemini and AG Grid. Over 650 automated tests, and 73 out of 74 correct on a real cafe's orders." |
+| 9 | 2:30-2:45 | "Built with the PayPal Invoicing API, Google Gemini and AG Grid. Over 650 automated tests, and 73 of 74 checks right on real cafe orders it was never tuned on." |
 | 10 | 2:45-2:50 | "ChatChing. From chat to cha-ching." |
-
-Fact check (Claude, 4 Nov, against `data/demo-chats.txt`, `data/expected-orders.json`, `docs/accuracy.md`, `public/app.js` and `npm run check`):
-- Right: Lina changes 2 → 3 boxes; Aisyah says "same as Lina"; Danish cancels; Jun Wei says "Classic is RM15" (menu RM 18.00) and his order is marked to check; Priya's "2 boxes of brownies" is the unclear one; 7 orders ready, RM 366.00 (54 + 45 + 72 + 54 + 24 + 45 + 72); 654 tests ("over 650"); Copy question, double-invoice guard, Record payment, Kitchen list (code only), Pickup scan → Collected all exist.
-- For Jasper to decide (words kept as written): scene 9's "73 out of 74 correct" is 73 of 74 **checks** on 10 orders, and the README labels that set "real cafe orders, reformatted by AI"; scene 6's row doesn't stay green on a laptop (the Status cell flashes green once and the tag says Paid; a phone card flashes whole); scene 2's demo chats are dated 28 Oct, not today.

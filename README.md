@@ -28,9 +28,7 @@ Two PayPal **sandbox** buyer accounts, made only for judges, for paying an invoi
 | Judge buyer 1 | `chatching.judge1@example.com` | `judge1@EXAMPLE` |
 | Judge buyer 2 | `chatching.judge2@example.com` | `judge2@EXAMPLE` |
 
-Pay any invoice's payer link with one of these logins, then click Refresh status in ChatChing.
-
-To pay: open a row's **Payer link**, choose to log in to PayPal, and use either login above. There are two accounts so that if one is locked or its password is changed, the other still works.
+To pay: open a row's **Payer link**, choose to log in to PayPal, use either login above, then click **Refresh status** in ChatChing. There are two accounts so that if one is locked or its password is changed, the other still works.
 
 ## What it does
 
