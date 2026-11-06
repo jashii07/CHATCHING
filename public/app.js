@@ -1705,8 +1705,72 @@ async function checkReading(say) {
     if (!res.ok) return;
     const progress = await res.json();
     showCallsLeft(progress.aiCallsLeft);
-    if (reading && progress.reading && STAGE_WORDS[progress.stage]) say(STAGE_WORDS[progress.stage]);
+    if (!reading || !progress.reading) return;
+    if (STAGE_WORDS[progress.stage]) say(STAGE_WORDS[progress.stage]);
+    if (readingCard) {
+      readingCard.messages = progress.messages ?? readingCard.messages;
+      readingCard.stage = progress.stage ?? readingCard.stage;
+      if (readingCard.shownAt) drawReadingCard();
+    }
   } catch {}
+}
+
+// The loading card over the orders area (6 Nov, user test: a slow read looked like a crash). It says how many
+// messages are being read, the server's real stage, and counts the seconds. It appears only after 400 ms, so a
+// quick read (the demo's saved reply) never flashes it, and once shown it stays at least 700 ms. The seconds
+// are real time since the click; with reduced motion the dots stand still but the seconds still count.
+const CARD_DELAY_MS = 400;
+const CARD_MIN_MS = 700;
+const CARD_STAGES = { reading: "The AI is reading them now. Long chats can take up to a minute.", backup: "The AI is busy, trying the backup..." };
+let readingCard = null; // while reading: { started, shownAt, withoutAi, messages, stage, delay, tick }
+
+function startReadingCard(withoutAi, say) {
+  readingCard = { started: Date.now(), shownAt: 0, withoutAi, messages: null, stage: "reading" };
+  $("read-message").classList.add("is-quiet"); // the card shows these words; screen readers still hear them here
+  readingCard.delay = setTimeout(() => {
+    if (!readingCard) return;
+    readingCard.shownAt = Date.now();
+    drawReadingCard();
+    $("reading-card").hidden = false;
+    document.querySelector(".panel.orders").classList.add("is-reading");
+    $("grid").setAttribute("aria-busy", "true");
+    readingCard.tick = setInterval(drawReadingCard, 250); // the seconds change on time, not up to a second late
+    // On a phone (and a laptop scrolled down to the button) the orders area can be out of view, or under the
+    // sticky bars: bring the card to the middle of the screen.
+    if (!clearOfBars($("reading-card"))) $("reading-card").scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
+    if (!withoutAi) checkReading(say); // the message count, without waiting for the next once-a-second check
+  }, CARD_DELAY_MS);
+}
+
+// True when the whole element is on screen and not under the sticky top bar or the phone's sticky total bar.
+function clearOfBars(node) {
+  const box = node.getBoundingClientRect();
+  const bar = $("phone-total");
+  const bottom = getComputedStyle(bar).position === "fixed" ? bar.getBoundingClientRect().top : innerHeight;
+  return box.top >= document.querySelector(".topbar").getBoundingClientRect().bottom && box.bottom <= bottom;
+}
+
+function drawReadingCard() {
+  const card = readingCard;
+  if (!card) return;
+  const what = card.messages ? plural(card.messages, "message") : "your messages";
+  $("reading-title").textContent = `Reading ${what}${card.withoutAi ? " without AI" : ""}...`;
+  $("reading-stage").textContent = card.withoutAi ? "Simple rules, no AI call." : CARD_STAGES[card.stage] ?? CARD_STAGES.reading;
+  const seconds = Math.floor((Date.now() - card.started) / 1000);
+  $("reading-time").textContent = `${seconds} s, usually ${card.withoutAi ? "a second or two" : "20-40 s"}`;
+}
+
+async function stopReadingCard() {
+  const card = readingCard;
+  if (!card) return;
+  clearTimeout(card.delay);
+  if (card.shownAt) await new Promise((resolve) => setTimeout(resolve, Math.max(0, CARD_MIN_MS - (Date.now() - card.shownAt))));
+  clearInterval(card.tick);
+  readingCard = null;
+  $("reading-card").hidden = true;
+  document.querySelector(".panel.orders").classList.remove("is-reading");
+  $("grid").removeAttribute("aria-busy");
+  $("read-message").classList.remove("is-quiet");
 }
 
 // "Read orders": the chats + Chat date go to the server, which replies with the new rows, or with a
@@ -1731,6 +1795,7 @@ async function readOrders({ withoutAi = false } = {}) {
   without.hidden = true;
   hideError();
   say(withoutAi ? "Reading without AI..." : STAGE_WORDS.reading);
+  startReadingCard(withoutAi, say);
   const poll = withoutAi ? null : setInterval(() => checkReading(say), 1000);
   try {
     const res = await fetch("/api/parse", {
@@ -1753,6 +1818,7 @@ async function readOrders({ withoutAi = false } = {}) {
     showError(`The orders could not be read (${err.message}).`);
   } finally {
     clearInterval(poll);
+    await stopReadingCard(); // the new rows are already in the table under it
     reading = false;
     button.disabled = false;
     button.removeAttribute("aria-busy");

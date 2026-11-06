@@ -97,6 +97,7 @@ export function createApp(config, {
         qrCodes: new Map(), // invoice id -> Base64 PNG (a QR code never changes)
         reading: false, // one parse at a time per visitor (it can cost real AI calls)
         readingStage: null, // "reading" or "backup" while a parse runs: the page's loading words (Step 9)
+        readingMessages: null, // how many messages that parse reads: "Reading 18 messages..." on the page (6 Nov)
         isBusy: () => visitor.reading || invoicer.isBusy() || payments.isBusy() || status.isBusy(),
       };
       return visitor;
@@ -441,6 +442,7 @@ export function createApp(config, {
 
     visitor.reading = true;
     visitor.readingStage = "reading";
+    visitor.readingMessages = messages.length;
     let rows;
     try {
       const validate = (orders) => readRows(store, orders, messages, chatDate);
@@ -453,15 +455,18 @@ export function createApp(config, {
     } finally {
       visitor.reading = false;
       visitor.readingStage = null;
+      visitor.readingMessages = null;
     }
     store.setAll(rows, { text, chatDate, messages: messages.length });
     res.json(table(req));
   });
 
   // While Read orders waits, the page asks this about once a second: which words to show ("Reading the
-  // chats..." or "The AI is busy, trying the backup...") and how many AI calls are left. Never calls the AI.
+  // chats..." or "The AI is busy, trying the backup..."), how many messages are being read (the loading card,
+  // 6 Nov) and how many AI calls are left. Never calls the AI.
   app.get("/api/parse/progress", (req, res) => {
-    res.json({ reading: req.visitor.reading, stage: req.visitor.readingStage, aiCallsLeft: callsLeft() });
+    const { reading, readingStage, readingMessages } = req.visitor;
+    res.json({ reading, stage: readingStage, messages: readingMessages, aiCallsLeft: callsLeft() });
   });
 
   // Send invoices: one PayPal sandbox invoice per clear buyer that has none yet (src/invoices.js has the

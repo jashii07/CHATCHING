@@ -75,6 +75,31 @@ const readMessage = async (page) => plain(await page.$eval("#read-message", (el)
 const callsText = async (page) => plain(await page.$eval("#ai-calls-text", (el) => el.textContent));
 const buttonBusy = (page) => page.$eval("#read-orders", (el) => el.disabled && el.getAttribute("aria-busy") === "true");
 const rowTexts = (page) => page.$$eval(ROWS, (els) => els.map((el) => el.innerText.replace(/\s+/g, " ").trim()).sort().join("|"));
+// The loading card (6 Nov): what it says, where it is, and whether it moves.
+const readingCard = (page) => page.evaluate(() => {
+  const card = document.getElementById("reading-card");
+  const text = (id) => document.getElementById(id)?.textContent.replace(/\s+/g, " ").trim() ?? "";
+  const box = card?.getBoundingClientRect();
+  const orders = document.querySelector(".panel.orders").getBoundingClientRect();
+  const grid = document.getElementById("grid");
+  const hint = document.getElementById("read-message");
+  // On phones the sticky total bar covers the bottom of the screen, and the top bar the top.
+  const bar = document.getElementById("phone-total");
+  const bottom = getComputedStyle(bar).position === "fixed" ? bar.getBoundingClientRect().top : innerHeight;
+  const top = document.querySelector(".topbar").getBoundingClientRect().bottom;
+  return {
+    shown: Boolean(card && !card.hidden),
+    title: text("reading-title"),
+    stage: text("reading-stage"),
+    time: text("reading-time"),
+    inView: Boolean(box && box.height > 0 && box.top >= top && box.bottom <= bottom),
+    overOrders: Boolean(box && box.top >= orders.top && box.bottom <= orders.bottom && box.top < grid.getBoundingClientRect().top + 1),
+    dimmed: Number(getComputedStyle(grid).opacity) < 0.5,
+    dots: getComputedStyle(card?.querySelector(".typing span") ?? document.body).animationName,
+    cardAnimation: card ? getComputedStyle(card).animationName : "",
+    quietHint: hint.classList.contains("is-quiet") && hint.getBoundingClientRect().height <= 1,
+  };
+});
 
 try {
   for (const viewport of WIDTHS) {
@@ -97,10 +122,34 @@ try {
     const before = await rowTexts(page);
     await page.fill("#chat", CHATS);
     await page.fill("#chat-date", "2026-10-30");
+    const clickedAt = Date.now();
     await page.click("#read-orders");
     await gemini.nextCall(1);
     check((await readMessage(page)) === READING && (await buttonBusy(page)), `while the main model works: "${await readMessage(page)}", button disabled`);
-    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1-reading.png`, fullPage: true });
+    // The loading card (6 Nov, user test: a slow read looked like a crash): over the orders area, the number of
+    // messages, the server's real stage and a seconds counter; the table under it dimmed; scrolled into view.
+    await page.waitForSelector("#reading-card:not([hidden])", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(1300); // the count arrives with the next progress check; the dots and the clock move
+    const card = await readingCard(page);
+    check(card.shown && card.title === "Reading 1 message..." && card.stage === "The AI is reading them now. Long chats can take up to a minute."
+      && /^\d+ s, usually 20-40 s$/.test(card.time), `the loading card: ${JSON.stringify(card)}`);
+    check(card.inView && card.overOrders && card.dimmed && card.dots === "typing", `in view, over the orders area, the table dimmed, the dots move (${JSON.stringify(card)})`);
+    check((await readMessage(page)) === READING && card.quietHint, "the words under the button move into the card (still read out to screen readers)");
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1-reading.png` }); // what the seller sees mid-loading
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1-reading-full.png`, fullPage: true });
+    const firstSecond = Number(card.time.split(" ")[0]);
+    await page.waitForTimeout(2100);
+    const later = await readingCard(page);
+    const elapsed = Math.floor((Date.now() - clickedAt) / 1000);
+    check(Number(later.time.split(" ")[0]) >= firstSecond + 2 && Number(later.time.split(" ")[0]) <= elapsed, `the seconds count up: "${card.time}" -> "${later.time}" (${elapsed} s since the click)`);
+    // With reduced motion: no moving dots, no fade; the seconds still count.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const calm = await readingCard(page);
+    await page.waitForTimeout(1100);
+    const calmLater = await readingCard(page);
+    check(calm.dots === "none" && calm.cardAnimation === "none" && calmLater.time !== calm.time, `reduced motion: still dots, the counter still counts ("${calm.time}" -> "${calmLater.time}")`);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1b-reading-reduced-motion.png` });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     gemini.answer(503);
     await gemini.nextCall(2); // the main model once more
     await page.waitForTimeout(1300); // one poll
@@ -109,12 +158,17 @@ try {
     await gemini.nextCall(3); // the backup
     await page.waitForFunction(() => document.getElementById("read-message").textContent === "The AI is busy, trying the backup...", null, { timeout: 5000 }).catch(() => {});
     check((await readMessage(page)) === "The AI is busy, trying the backup..." && (await buttonBusy(page)), `then: "${await readMessage(page)}", button still disabled`);
+    const backupCard = await readingCard(page);
+    check(backupCard.shown && backupCard.stage === "The AI is busy, trying the backup..." && backupCard.title === "Reading 1 message...", `the card shows the server's new stage: "${backupCard.stage}"`);
     check((await callsText(page)) === "AI calls left today: 37", `the top bar counts the calls as they start: "${await callsText(page)}"`);
-    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-2-backup.png`, fullPage: true });
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-2-backup.png` });
     gemini.answer(503);
     await page.waitForFunction((busy) => document.getElementById("read-message").textContent === busy, AI_BUSY, { timeout: 5000 }).catch(() => {});
     check((await readMessage(page)) === AI_BUSY, `both busy: "${await readMessage(page)}"`);
     check(!(await page.$eval("#read-orders", (el) => el.disabled)), "the button works again");
+    await page.waitForTimeout(300); // the table fades back in (200 ms)
+    const after = await readingCard(page);
+    check(!after.shown && !after.dimmed && !after.quietHint, `the card is gone, the table is no longer dimmed, the notice shows under the button (${JSON.stringify(after)})`);
     check(gemini.models.join(",") === [MAIN_MODEL, MAIN_MODEL, BACKUP_MODEL].join(","), `3 calls: ${gemini.models.join(", ")}`);
     check((await rowTexts(page)) === before, "the rows are unchanged");
     check(await page.isVisible("#read-without-ai"), "the notice offers Read without AI (the seller chooses; nothing happens by itself)");
@@ -160,7 +214,19 @@ try {
     await page.waitForFunction(() => document.getElementById("read-message").textContent.startsWith("Today's free"), null, { timeout: 5000 }).catch(() => {});
     check(await page.isVisible("#read-without-ai"), "the demo chats on 29 Oct: used up, Read without AI offered");
     check(await page.$eval("#fallback-note", (el) => el.hidden), "no banner before the seller chooses");
+    // Held for 1.5 s here (it is normally quick), so the card's own words for it can be seen.
+    await page.route("**/api/parse", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
     await page.click("#read-without-ai");
+    await page.waitForSelector("#reading-card:not([hidden])", { timeout: 5000 }).catch(() => {});
+    const plainCard = await readingCard(page);
+    check(plainCard.shown && plainCard.title === "Reading your messages without AI..." && plainCard.stage === "Simple rules, no AI call."
+      && /^\d+ s, usually a second or two$/.test(plainCard.time), `Read without AI has the card too: ${JSON.stringify(plainCard)}`);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-4b-reading-without-ai.png` });
+    await page.waitForSelector("#reading-card[hidden]", { state: "attached", timeout: 5000 }).catch(() => {});
+    await page.unroute("**/api/parse");
     await page.waitForSelector("#fallback-note:not([hidden])", { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(400);
     const banner = plain(await page.$eval("#fallback-note", (el) => (el.hidden ? "" : el.innerText)));
@@ -192,10 +258,17 @@ try {
     await page.click("#load-demo");
     // The chat box already holds the demo text, so wait for Load demo's own Chat date.
     await page.waitForFunction(() => document.getElementById("chat-date").value === "2026-10-28", null, { timeout: 5000 });
+    // A quick read (the saved demo reply) must not flash the loading card: it only appears after 400 ms.
+    await page.evaluate(() => {
+      window.cardSeen = false;
+      new MutationObserver(() => (window.cardSeen ||= !document.getElementById("reading-card").hidden))
+        .observe(document.getElementById("reading-card"), { attributes: true });
+    });
     await page.click("#read-orders");
     await page.waitForSelector("#chats[hidden]", { state: "attached", timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(400);
     check((await readMessage(page)) === "" && (await page.$$(ROWS)).length > 0, "at 0, Load demo + Read orders still fills the table (saved reply)");
+    check(!(await page.evaluate(() => window.cardSeen)), "a quick read never flashes the loading card");
     check(gemini.models.length === 3, "still no new call");
     check(await page.$eval("#fallback-note", (el) => el.hidden) && plain(await page.$eval("#setup", (el) => el.innerText)).includes("AI mode: real"),
       "an AI read again: no banner, the footer says AI mode: real");

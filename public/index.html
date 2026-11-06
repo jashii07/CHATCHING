@@ -169,6 +169,17 @@
           <span id="filter-note-text"></span>
           <button type="button" class="ghost small" id="filter-clear">Show all</button>
         </p>
+        <!-- While Read orders waits (6 Nov, user test: a slow read looked like a crash): how many messages, the
+             server's real stage and the seconds, over the dimmed table. Seen only; the words under the button
+             (#read-message) still tell screen readers. -->
+        <div class="reading-card" id="reading-card" aria-hidden="true" hidden>
+          <span class="icon-circle typing"><span></span><span></span><span></span></span>
+          <div class="reading-words">
+            <p class="reading-title" id="reading-title"></p>
+            <p class="hint" id="reading-stage"></p>
+          </div>
+          <p class="reading-time" id="reading-time"></p>
+        </div>
         <div id="grid"></div>
         <!-- Our own page arrows; they drive AG Grid's pagination (6 buyers per page). -->
         <nav class="pager" id="pager" aria-label="Pages" hidden>

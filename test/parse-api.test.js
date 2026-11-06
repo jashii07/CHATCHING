@@ -192,7 +192,7 @@ test("AI_MODE=off -> a friendly notice offering Read without AI, not a crash; re
   assert.deepEqual((await real.parse({ text: DEMO, chatDate: CHAT })).body.totals, { orders: 7, total: "366.00" });
 });
 
-test("Step 9: /api/parse/progress tells the page the stage (reading, then backup) and the calls left; a busy AI is a 200 notice", async () => {
+test("Step 9: /api/parse/progress tells the page the stage (reading, then backup), how many messages (6 Nov) and the calls left; a busy AI is a 200 notice", async () => {
   let release;
   let stage;
   let started;
@@ -208,18 +208,18 @@ test("Step 9: /api/parse/progress tells the page the stage (reading, then backup
     callsLeft: () => left,
   };
   const { parse, call } = await start({ ai: slowAi });
-  assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, aiCallsLeft: 40 });
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, messages: null, aiCallsLeft: 40 });
   assert.equal((await call("/api/state")).body.aiCallsLeft, 40);
 
   const reading = parse({ text: DEMO, chatDate: CHAT });
   await isReading;
   left = 39;
-  assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "reading", aiCallsLeft: 39 });
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "reading", messages: 18, aiCallsLeft: 39 });
   stage("backup");
   left = 37;
-  assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "backup", aiCallsLeft: 37 });
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: true, stage: "backup", messages: 18, aiCallsLeft: 37 });
   release();
   assert.deepEqual(await reading, { status: 200, body: { notice: AI_BUSY, readWithoutAi: true } });
-  assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, aiCallsLeft: 37 });
+  assert.deepEqual((await call("/api/parse/progress")).body, { reading: false, stage: null, messages: null, aiCallsLeft: 37 });
   assert.equal((await call("/api/state")).body.orders.length, 12); // rows unchanged (the demo)
 });
