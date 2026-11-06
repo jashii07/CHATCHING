@@ -125,7 +125,7 @@ try {
 
     // A new visitor: their own empty table, with the chat box open and Load demo in view; a safe cookie.
     check((await cards(page)).includes("Orders 0") && (await page.locator("#chat").isVisible()) && (await page.locator("#load-demo").isVisible()), "a new visitor: an empty table, the chat box open, Load demo visible");
-    const starter = await page.$eval("#starter", (el) => ({ shown: !el.hidden, inFirstScreen: el.getBoundingClientRect().bottom <= innerHeight, words: el.innerText.replace(/s+/g, " ").trim() })).catch(() => ({}));
+    const starter = await page.$eval("#starter", (el) => ({ shown: !el.hidden, inFirstScreen: el.getBoundingClientRect().bottom <= innerHeight, words: el.innerText.replace(/\s+/g, " ").trim() })).catch(() => ({}));
     check(starter.shown && starter.inFirstScreen && starter.words === "New here? Try the demo, or paste your chats below. Try the demo", `the starter card is on the first screen: ${JSON.stringify(starter)}`);
     await shot("0-first-screen");
     const cookie = (await page.context().cookies()).find((c) => c.name === VISITOR_COOKIE);
@@ -142,7 +142,7 @@ try {
     const summary = await cards(page);
     check(buyers.length === 10 && summary.includes("Expected RM 366.00") && summary.includes("Needs check 2"), `Read orders: ${buyers.length} buyers; "${summary}"`);
     check(parses === 1 && stopped === 0 && (await liveState(page)).aiCallsLeft === aiBefore, `no Gemini call: ${parses} demo read, AI calls left still ${aiBefore}`);
-    check(await page.$eval("#starter", (el) => el.hidden) && buyers.filter((text) => text.includes("Not sent")).length === 9 && !buyers.some((text) => /Draft/.test(text)),
+    check(await page.$eval("#starter", (el) => el.hidden) && buyers.filter((text) => text.includes("Not sent")).length === 9 && !buyers.some((text) => /\bDraft\b/.test(text)),
       "the starter card is gone; 9 buyers say Not sent, none say Draft");
     await page.evaluate(() => scrollTo(0, 0));
     await shot("1-read", { fullPage: true });
