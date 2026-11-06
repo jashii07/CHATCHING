@@ -65,7 +65,7 @@ test("the page's scripts: its own, or the exact pinned CDN files, each with an i
 });
 
 test("no page holds an inline script or an inline event handler (the policy would block them)", () => {
-  for (const name of ["index.html", "pair.html"]) {
+  for (const name of ["index.html", "pair.html", "order.html"]) {
     const html = readFileSync(new URL(`../public/${name}`, import.meta.url), "utf8");
     for (const tag of scriptsIn(html)) assert.match(tag, /\bsrc="/, name);
     assert.doesNotMatch(html, /\son[a-z]+\s*=/i, name);

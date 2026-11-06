@@ -43,6 +43,8 @@ src/visitors.js           (31 Oct) the visitor id and cookie, the file path, cle
 src/pickup.js             (31 Oct) pickup check + Collected: this visitor's table, live status through src/status.js
 src/pairing.js            (31 Oct) Open on my phone: one-time codes (hashes only, in memory) and the pairing QR
 src/security.js           (2 Nov) security headers on every reply; refuses changes from other websites
+src/order-links.js        (6 Nov) the buyer's private order link: HMAC of table + batch + invoice, stored only as a hash
+src/order-page.js         (6 Nov) what the buyer's page shows, and their answer (Looks right / Something's wrong + note)
 public/index.html         the page
 public/app.js             AG Grid table, buyer panel, buttons, polling
 public/styles.css
@@ -50,6 +52,7 @@ public/invoice-qr.js      (31 Oct) reads an invoice or a pairing link from a QR 
 public/pair.html, pair.js (31 Oct) the small page a phone lands on; it POSTs the code from the address and goes to /
 public/vendor/            (31 Oct) jsQR 1.4.0, self-hosted, with its Apache-2.0 licence
 public/csv-safe.js        (2 Nov) keeps a buyer's name from reaching Excel as a formula; used by the page AND the tests
+public/order.html, order.js (6 Nov) the buyer's "Your order" page; loads nothing from other sites (its address holds a key)
 data/menu.json            fixed menu (item -> price, aliases)
 data/demo-chats.txt       fictional English chats
 data/expected-orders.json correct answers for demo-chats.txt
@@ -83,6 +86,9 @@ Only one new package is planned: **express**. (31 Oct: also **qrcode-generator 2
 | `POST /api/pickup/collected` | (Step 10c, done 31 Oct) `{ invoiceId, undo? }`: mark Collected, our own status, never sent to PayPal, only when paid; Undo allowed | **Never** |
 | `POST /api/pair/new` | (31 Oct) a new one-time pairing link for this visitor, and its QR; rate limited | **Never** |
 | `GET /pair` | (31 Oct) the phone's page; the code stays after the `#`, so it never reaches the server here | No |
+| `GET /order` | (6 Nov) the buyer's "Your order" page; the key stays after the `#` | No |
+| `POST /api/order/view` | (6 Nov) `{ token }`: that ONE buyer's order, own messages, live status (status code + cache), QR once paid. No cookie, no visitor id; a wrong, other or reset link gets the same words; rate limited | **Never** |
+| `POST /api/order/answer` | (6 Nov) `{ token, answer: "ok" | "wrong", note? }` (note max 200, untrusted text): saved on the buyer's rows for the seller; never changes money; rate limited | **Never** |
 | `POST /api/pair/open` | (31 Oct) `{ code }`: works once, for 10 minutes; gives the phone the laptop's visitor cookie; anything else gets the same friendly words; rate limited. (2 Nov) A browser with orders of its own gets `{ confirm }` and nothing changes until `{ code, replace: true }` | **Never** |
 
 ### AG Grid showcase (Community features only, no Enterprise)
@@ -302,6 +308,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
    - **Part 4 ✅ (done 2 Nov): review fix sessions A and B merged, version 1.6.0.** Security headers, refusing other sites' requests, local listening, pairing asks first; 653 tests. `npm run ui-live` passed on the hosted app, 94 checks, including the headers.
 12. **User test with a real seller (#5)**; ~~non-AI fallback parser~~ (built early in Step 10, 30 Oct).
 13. Edge-case tests, **holdout accuracy run (#5)**, README, video script, Devpost draft. **Progress 2 Nov:** README.md written for judges and the Devpost sections filled in `docs/devpost-draft.md`, checked in a clean clone; still to add: ~~the judge logins (Sat 7 Nov)~~ (added 4 Nov) and the video link. `/api/health` no-store, version 1.6.1. **Progress 4 Nov:** both judge logins in the README and the Devpost testing instructions; buyer payment tested on the live site with judge1 (paid, row turned green; Jasper's check); video script saved as Section 14.
+13b. ✅ (done Fri 6 Nov, before the freeze; Jasper with his advisor) **The buyer's "Your order" page.** Copy message and the reminder now send each buyer a private link to their own order page: items, quantities, the total from the menu, the day, pickup or delivery, their own messages marked as in the drawer, **Looks right** / **Something's wrong** (+ a note of up to 200 characters), PayPal's Pay button, live status (Not paid / Paid / Collected) and the pickup QR once paid. The seller's table and drawer show "Confirmed by buyer" or the amber note; a flag never changes money. `src/order-links.js`, `src/order-page.js`, `public/order.html`, `npm run ui-order`; version 1.8.0. Details in DECISIONS.md.
 14. Feature freeze: fixes from the user test, design polish, stretch only if all green; video; submit.
 
 ## 8. Cut list (we will NOT build)
@@ -561,7 +568,7 @@ Drafted by Jasper on Wed 28 Oct; **table replaced on Thu 29 Oct** (signature mom
 | 3 | 0:25-0:55 | Read orders: a change of quantity, "same as Lina", a cancellation, the price mismatch in amber | "AI reads the language. The code supplies the facts." | Real Gemini reply cached; amber "Check: buyer mentioned RM 15.00, menu says RM 18.00." | Step 7 (7a + 7b) |
 | 4 | 0:55-1:10 | Priya amber -> Copy question | "Unclear? Ask the buyer in one tap." | "Copy question" with names, items and prices filled by the code | Step 10 |
 | 5 | 1:10-1:35 | Send invoices with the progress bar, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, progress bar, "All invoices sent", double-invoice guard | ✅ Step 5 |
-| 6 | 1:35-1:55 | Buyer pays in the sandbox -> cha-ching, the row turns green | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | Sun 8 Nov polish |
+| 6 | 1:35-1:55 | Lina opens her order page from the message, taps Looks right, pays in the sandbox, sees Paid; the seller's row turns green (changed 6 Nov) | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | Sun 8 Nov polish |
 | 7 | 1:55-2:10 | Kitchen list | "Know what to bake, per day." | Kitchen list per date + Copy | Step 10b |
 | 8 | 2:10-2:30 | Phone scans the buyer's QR -> Paid -> Collected | "Hand over only when paid." | Pickup scan on the Render URL (HTTPS) | Step 10c |
 | 9 | 2:30-2:45 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |
@@ -580,7 +587,7 @@ The words for the Section 13 storyboard (which stays as the scene plan). Times m
 | 3 | 0:25-0:55 | "Gemini reads the whole conversation and finds each buyer's final order: changed quantities, 'same as Lina', even a cancellation. But the AI never sets a price. Prices come from the menu. When Jun Wei mentions a wrong price, ChatChing doesn't guess. It marks the order to check." |
 | 4 | 0:55-1:10 | "Priya didn't say which brownies. One tap copies a question to send her." |
 | 5 | 1:10-1:35 | "Seven orders are ready: RM 366. One click sends one PayPal invoice per buyer. Click again, and nobody is billed twice." |
-| 6 | 1:35-1:55 | "Lina pays with PayPal, and she shows as Paid. Cash payments can be recorded too." |
+| 6 | 1:35-1:55 | "Lina opens her order page from the chat. She taps Looks right, pays with PayPal, and sees Paid. So does the seller." (changed 6 Nov, the buyer's order page; the recorder in `video/` still records the old Open invoice path, see DECISIONS.md) |
 | 7 | 1:55-2:10 | "The kitchen list shows what to bake each day, counted by code." |
 | 8 | 2:10-2:30 | "At pickup, I scan the buyer's invoice QR with my phone. Paid? Then it's collected." |
 | 9 | 2:30-2:45 | "Built with the PayPal Invoicing API, Google Gemini and AG Grid. Over 650 automated tests, and 73 of 74 checks right on real cafe orders it was never tuned on." |

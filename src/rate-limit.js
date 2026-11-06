@@ -17,7 +17,12 @@ const WINDOW_MS = 10 * MINUTE;
 // - pickup: one scan per buyer, plus the odd "Check again": a busy pickup is well under 60 in 10 minutes.
 // - pairNew, pairOpen: "Open on my phone", a few tries by a seller. The code is unguessable anyway; these keep
 //   a script from filling the server's memory, and a whole office on one address still fits.
+// - order, orderAnswer (6 Nov): the buyer's "Your order" page. It asks every 20 s while open (30 in 10 minutes)
+//   plus on coming back from PayPal's tab, so 90 lets a buyer keep it open on two devices. Answers are a tap or
+//   two. Both also slow a script guessing links (the 256-bit token is the real protection).
 export const RATE_LIMITS = Object.freeze({
+  order: { limit: 90, windowMs: WINDOW_MS },
+  orderAnswer: { limit: 20, windowMs: WINDOW_MS },
   pickup: { limit: 60, windowMs: WINDOW_MS },
   parse: { limit: 6, windowMs: WINDOW_MS },
   invoices: { limit: 100, windowMs: WINDOW_MS },

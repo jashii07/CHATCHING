@@ -19,6 +19,8 @@ test("the limits: per visitor, per route, in any 10 minutes", () => {
     refresh: { limit: 60, windowMs: 10 * MIN },
     pairNew: { limit: 20, windowMs: 10 * MIN },
     pairOpen: { limit: 30, windowMs: 10 * MIN },
+    order: { limit: 90, windowMs: 10 * MIN }, // the buyer's "Your order" page, 6 Nov
+    orderAnswer: { limit: 20, windowMs: 10 * MIN },
   });
 });
 

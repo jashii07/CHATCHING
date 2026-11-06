@@ -15,6 +15,8 @@ const menu = readJson("../data/menu.json");
 const expected = readJson("../data/expected-orders.json");
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
 const LINK = "https://www.sandbox.paypal.com/invoice/p/#INV2-TEST-0001";
+// The buyer's own order page (6 Nov): Copy message and the reminder send it instead of PayPal's bare link.
+const PAGE = `https://chatching.example/order#${"A".repeat(43)}`;
 
 // One buyer's rows from the demo answer key, optionally as if their invoice was sent.
 const rowsOf = (orders, buyer) => toRows(orders, menu).filter((row) => row.buyer === buyer);
@@ -26,42 +28,42 @@ const order = (buyer, items, extra = {}) => ({
 });
 
 test("payment message: one item, with pickup or delivery and the day", () => {
-  assert.equal(paymentMessage(sent(demo("Lina")), menu),
-    `Hi Lina! Your order: 3 x Classic brownies (RM 54.00), delivery Sat 31 Oct. Pay here: ${LINK}. Thank you!`);
-  assert.equal(paymentMessage(sent(demo("Aisyah")), menu),
-    `Hi Aisyah! Your order: 3 x Classic brownies (RM 54.00), pickup Sat 31 Oct. Pay here: ${LINK}. Show this QR when you pick up. Thank you!`);
-  assert.equal(paymentMessage(sent(demo("Hafiz")), menu),
-    `Hi Hafiz! Your order: 1 x Burnt cheesecake 6-inch (RM 45.00), Fri 30 Oct. Pay here: ${LINK}. Thank you!`);
+  assert.equal(paymentMessage(sent(demo("Lina")), menu, PAGE),
+    `Hi Lina! Thank you for your order: 3 x Classic brownies (RM 54.00), delivery Sat 31 Oct. Please check it and pay on this page: ${PAGE}`);
+  assert.equal(paymentMessage(sent(demo("Aisyah")), menu, PAGE),
+    `Hi Aisyah! Thank you for your order: 3 x Classic brownies (RM 54.00), pickup Sat 31 Oct. Please check it and pay on this page, which shows your pickup QR once paid: ${PAGE}`);
+  assert.equal(paymentMessage(sent(demo("Hafiz")), menu, PAGE),
+    `Hi Hafiz! Thank you for your order: 1 x Burnt cheesecake 6-inch (RM 45.00), Fri 30 Oct. Please check it and pay on this page: ${PAGE}`);
 });
 
 test("payment message: several items get a total; no day and no pickup/delivery leave that part out", () => {
-  assert.equal(paymentMessage(sent(demo("Mei Ling")), menu),
-    `Hi Mei Ling! Your order: 1 x Cheese brownies (RM 22.00) and 2 x Choc chip cookies (RM 50.00), total RM 72.00, Sat 31 Oct. Pay here: ${LINK}. Thank you!`);
+  assert.equal(paymentMessage(sent(demo("Mei Ling")), menu, PAGE),
+    `Hi Mei Ling! Thank you for your order: 1 x Cheese brownies (RM 22.00) and 2 x Choc chip cookies (RM 50.00), total RM 72.00, Sat 31 Oct. Please check it and pay on this page: ${PAGE}`);
   const three = rowsOf([order("Zara", [["cookies", 2], ["bahulu", 1], ["classic_brownies", 1]], { fulfilment: "pickup" })], "Zara");
-  assert.equal(paymentMessage(sent(three), menu),
-    `Hi Zara! Your order: 2 x Choc chip cookies (RM 50.00), 1 x Kuih bahulu (RM 12.00) and 1 x Classic brownies (RM 18.00), total RM 80.00, pickup. Pay here: ${LINK}. Show this QR when you pick up. Thank you!`);
-  assert.equal(paymentMessage(sent(rowsOf([order("Zara", [["cookies", 2]])], "Zara")), menu),
-    `Hi Zara! Your order: 2 x Choc chip cookies (RM 50.00). Pay here: ${LINK}. Thank you!`);
+  assert.equal(paymentMessage(sent(three), menu, PAGE),
+    `Hi Zara! Thank you for your order: 2 x Choc chip cookies (RM 50.00), 1 x Kuih bahulu (RM 12.00) and 1 x Classic brownies (RM 18.00), total RM 80.00, pickup. Please check it and pay on this page, which shows your pickup QR once paid: ${PAGE}`);
+  assert.equal(paymentMessage(sent(rowsOf([order("Zara", [["cookies", 2]])], "Zara")), menu, PAGE),
+    `Hi Zara! Thank you for your order: 2 x Choc chip cookies (RM 50.00). Please check it and pay on this page: ${PAGE}`);
 });
 
 test("the QR line is for pickup orders only, and the reminder stays short", () => {
-  assert.doesNotMatch(paymentMessage(sent(demo("Lina")), menu), /QR/, "delivery");
-  assert.doesNotMatch(paymentMessage(sent(rowsOf([order("Zara", [["cookies", 2]])], "Zara")), menu), /QR/, "not said yet");
-  assert.doesNotMatch(reminderMessage(sent(demo("Aisyah")), menu), /QR/);
+  assert.doesNotMatch(paymentMessage(sent(demo("Lina")), menu, PAGE), /QR/, "delivery");
+  assert.doesNotMatch(paymentMessage(sent(rowsOf([order("Zara", [["cookies", 2]])], "Zara")), menu, PAGE), /QR/, "not said yet");
+  assert.doesNotMatch(reminderMessage(sent(demo("Aisyah")), menu, PAGE), /QR/);
 });
 
 test("payment message and reminder only for sent invoices; the reminder only while unpaid", () => {
-  assert.equal(paymentMessage(demo("Lina"), menu), null); // no invoice yet
-  assert.equal(reminderMessage(demo("Lina"), menu), null);
-  assert.equal(reminderMessage(sent(demo("Lina")), menu),
-    `Hi Lina! A gentle reminder that your order (RM 54.00) is still unpaid. Pay here: ${LINK}. Thank you!`);
+  assert.equal(paymentMessage(demo("Lina"), menu, PAGE), null); // no invoice yet
+  assert.equal(reminderMessage(demo("Lina"), menu, PAGE), null);
+  assert.equal(reminderMessage(sent(demo("Lina")), menu, PAGE),
+    `Hi Lina! A gentle reminder that your order (RM 54.00) is still unpaid. You can check it and pay on this page: ${PAGE}`);
   // Part paid: we don't know what is left, so no amount is named.
-  assert.equal(reminderMessage(sent(demo("Lina"), "Part paid"), menu),
-    `Hi Lina! A gentle reminder that your order is not fully paid yet. Pay here: ${LINK}. Thank you!`);
-  for (const status of ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]) assert.equal(reminderMessage(sent(demo("Lina"), status), menu), null, status);
+  assert.equal(reminderMessage(sent(demo("Lina"), "Part paid"), menu, PAGE),
+    `Hi Lina! A gentle reminder that your order is not fully paid yet. You can check it and pay on this page: ${PAGE}`);
+  for (const status of ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]) assert.equal(reminderMessage(sent(demo("Lina"), status), menu, PAGE), null, status);
   // Nobody who has paid is asked to pay again (the 1 Nov review, #15).
-  for (const status of ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]) assert.equal(paymentMessage(sent(demo("Lina"), status), menu), null, status);
-  assert.ok(paymentMessage(sent(demo("Lina"), "Part paid"), menu));
+  for (const status of ["Paid", "Paid (cash/bank)", "Cancelled/Refunded"]) assert.equal(paymentMessage(sent(demo("Lina"), status), menu, PAGE), null, status);
+  assert.ok(paymentMessage(sent(demo("Lina"), "Part paid"), menu, PAGE));
 });
 
 test("question: an ambiguous item lists the menu's choices with their prices", () => {
@@ -92,11 +94,12 @@ test("question: read without AI (demo) -> cancel, how many, confirm what was rea
 
 test("buyerMessages: one entry per buyer in table order; cancelled buyers get nothing", () => {
   const rows = toRows(expected.orders, menu).map((row) => (row.buyer === "Lina" ? { ...row, invoiceId: "INV2-TEST-0001", payerLink: LINK, invoiceStatus: "Sent" } : row));
-  const texts = buyerMessages(rows, null, menu);
+  const texts = buyerMessages(rows, null, menu, new Map([["INV2-TEST-0001", PAGE]]));
   assert.deepEqual(texts.map((t) => t.buyer), expected.orders.map((o) => o.buyer));
   const of = (buyer) => texts.find((t) => t.buyer === buyer);
   assert.deepEqual(Object.keys(of("Lina")), ["buyer", "message", "reminder", "question"]);
-  assert.match(of("Lina").message, /^Hi Lina! Your order: 3 x Classic brownies/);
+  assert.match(of("Lina").message, /^Hi Lina! Thank you for your order: 3 x Classic brownies/);
+  assert.ok(of("Lina").message.endsWith(PAGE), "the page link comes from the map, by invoice id");
   assert.match(of("Lina").reminder, /^Hi Lina! A gentle reminder/);
   assert.equal(of("Lina").question, null);
   assert.deepEqual(of("Danish"), { buyer: "Danish", message: null, reminder: null, question: null });
@@ -106,8 +109,18 @@ test("buyerMessages: one entry per buyer in table order; cancelled buyers get no
 test("money follows the menu's currency setting, and every space is a normal space (pastes cleanly)", () => {
   const usd = { ...menu, currency: "USD" };
   const rows = toRows([order("Ben", [["cookies", 1]], { deliveryDate: "2026-11-01" })], usd);
-  assert.equal(paymentMessage(sent(rows), usd), `Hi Ben! Your order: 1 x Choc chip cookies ($25.00), Sun 1 Nov. Pay here: ${LINK}. Thank you!`);
+  assert.equal(paymentMessage(sent(rows), usd, PAGE), `Hi Ben! Thank you for your order: 1 x Choc chip cookies ($25.00), Sun 1 Nov. Please check it and pay on this page: ${PAGE}`);
   const priya = buyerQuestion(toRows(expected.orders, usd).filter((row) => row.buyer === "Priya"), usd);
   assert.equal(priya, "Hi Priya! Which brownies would you like: Classic ($18.00) or Cheese ($22.00)?");
-  for (const text of [paymentMessage(sent(demo("Lina")), menu), buyerQuestion(demo("Jun Wei"), menu)]) assert.ok(!text.includes(" "));
+  for (const text of [paymentMessage(sent(demo("Lina")), menu, PAGE), buyerQuestion(demo("Jun Wei"), menu)]) assert.ok(!text.includes(" "));
+});
+
+test("no order page link -> no message and no reminder: PayPal's bare link is never sent instead (6 Nov)", () => {
+  assert.equal(paymentMessage(sent(demo("Lina")), menu), null);
+  assert.equal(reminderMessage(sent(demo("Lina")), menu), null);
+  const texts = buyerMessages(sent(demo("Lina")), null, menu);
+  assert.equal(texts[0].message, null);
+  for (const text of [paymentMessage(sent(demo("Lina")), menu, PAGE), reminderMessage(sent(demo("Lina")), menu, PAGE)]) {
+    assert.ok(!text.includes(LINK), "the buyer gets the order page, which holds the Pay button");
+  }
 });

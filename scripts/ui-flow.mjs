@@ -307,7 +307,10 @@ try {
 
     // ---- Step 10: ready-to-send texts, built by code (no AI). Exact text on the clipboard. ----
     const clipboard = async () => (await page.evaluate(() => navigator.clipboard.readText())).replaceAll("\r\n", "\n");
-    const linaMessage = `Hi Lina! Your order: 3 x Classic brownies (RM 54.00), delivery Sat 31 Oct. Pay here: ${href}. Thank you!`;
+    // The message sends Lina's own order page (6 Nov), not PayPal's link: Open invoice keeps that one for the seller.
+    const orderPage = (await page.evaluate(() => fetch("/api/state").then((r) => r.json()))).texts.find((t) => t.buyer === "Lina").message.split(" ").at(-1);
+    check(new RegExp(`^${base}/order#[A-Za-z0-9_-]{43}$`).test(orderPage), `Lina's order page link: ${orderPage}`);
+    const linaMessage = `Hi Lina! Thank you for your order: 3 x Classic brownies (RM 54.00), delivery Sat 31 Oct. Please check it and pay on this page: ${orderPage}`;
     await lina.locator('.copy-text[data-kind="message"]').click();
     await page.waitForTimeout(200);
     const copiedMessage = await clipboard();
@@ -321,7 +324,7 @@ try {
     await page.click("#copy-reminder");
     await page.waitForTimeout(200);
     const copiedReminder = await clipboard();
-    check(copiedReminder === `Hi Lina! A gentle reminder that your order (RM 54.00) is still unpaid. Pay here: ${href}. Thank you!`,
+    check(copiedReminder === `Hi Lina! A gentle reminder that your order (RM 54.00) is still unpaid. You can check it and pay on this page: ${orderPage}`,
       `Copy reminder (in her drawer): ${JSON.stringify(copiedReminder)}`);
     await page.$eval("#drawer .text-card", (el) => el.scrollIntoView({ block: "center" }));
     await page.waitForTimeout(200);

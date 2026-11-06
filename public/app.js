@@ -124,6 +124,8 @@ function buyerRows() {
       texts: texts.get(String(group.buyer).trim().toLowerCase()) ?? {}, // what the Copy buttons copy
       payerLink, // set once the buyer's invoice is sent
       collected: active.length > 0 && active.every((row) => row.collected === true), // our own mark (Step 10c), never PayPal's
+      // What the buyer said on their "Your order" page (6 Nov): { answer: "ok" | "wrong", note }. Never changes money.
+      answer: active.find((row) => row.buyerAnswer)?.buyerAnswer ?? null,
       // Clear, not cancelled, and no sent invoice yet (a draft whose send failed is sent again).
       toSend: !group.cancelled && group.total != null && !active.some((row) => row.invoiceId && row.invoiceStatus !== "Draft"),
       id: group.rowIds[0],
@@ -151,7 +153,7 @@ const itemsText = (data) => data.rows
 
 const buyerSub = (data) => (data.cancelled ? "Cancelled" : data.unclear ? "Needs a check" : data.payerLink ? "Invoice sent" : plural(data.items, "item"));
 
-// After the invoice is sent: "Copy message" is the main action (the message already holds the payer link),
+// After the invoice is sent: "Copy message" is the main action (the message holds the buyer's order page link, 6 Nov),
 // and a small "Open invoice" link opens PayPal's pay page (user test fix, 6 Nov: no separate Copy link).
 // Both are inside the row, so the row-click handler ignores clicks on links and buttons.
 function payLink(data) {
@@ -175,6 +177,17 @@ function copyTextButton(data, kind, id = "", main = false) {
   button.dataset.kind = kind;
   button.setAttribute("aria-label", `${COPY_LABELS[kind]} for ${data.buyer || "this buyer"}`);
   return button;
+}
+
+// The buyer's answer from their order page, under the items: "Confirmed by buyer" (neutral), or the amber
+// "check this" words with their note. The note is the buyer's own text: el() puts it in as text, never HTML.
+const buyerSaysWrong = (answer) => (answer.note ? `Buyer says something's wrong: ${answer.note}` : "Buyer says something's wrong.");
+function answerLine(data) {
+  if (!data.answer || data.cancelled) return null;
+  if (data.answer.answer === "wrong") return el("span", "check-text buyer-says", buyerSaysWrong(data.answer));
+  const line = el("span", "answer-line");
+  line.append(icon("circle-check"), "Confirmed by buyer");
+  return line;
 }
 
 // The question for an unclear buyer, under the "Check:" words.
@@ -247,6 +260,8 @@ function itemsCell(p) {
   const ask = questionLine(p.data);
   if (ask) cell.append(ask);
   if (p.data.sendError) cell.append(el("span", "check-text", `Error: ${p.data.sendError}`));
+  const said = answerLine(p.data);
+  if (said) cell.append(said);
   const link = payLink(p.data);
   if (link) cell.append(link);
   return cell;
@@ -285,6 +300,8 @@ function cardCell(p) {
   const ask = questionLine(data);
   if (ask) card.append(ask);
   if (data.sendError) card.append(el("span", "check-text", `Error: ${data.sendError}`));
+  const said = answerLine(data);
+  if (said) card.append(said);
   const link = payLink(data);
   if (link) card.append(link);
   return card;
@@ -701,6 +718,8 @@ function renderDrawer() {
   const noAnswer = data.rows.some((row) => row.sendUnknown);
   const askOn = data.rows.find((row) => row.orderStatus === "active" && !row.invoiceId && row.earlierInvoice && !row.earlierInvoice.kept)?.id;
   drawerItems.replaceChildren(...(locked ? [el("p", "hint locked-note", LOCKED_WORDS)] : noAnswer ? [el("p", "hint locked-note", NO_ANSWER_WORDS)] : []), ...data.rows.map((row) => editCard(row, row.id === askOn)));
+  const said = answerCard(data);
+  if (said) drawerItems.prepend(said); // first: it is what the buyer just told the seller
   const adding = addCard(data);
   if (adding) drawerItems.append(adding);
   const picked = collectedCard(data);
@@ -709,6 +728,26 @@ function renderDrawer() {
   if (ready) drawerItems.append(ready);
   const pay = payCard(data);
   if (pay) drawerItems.append(pay);
+}
+
+// The buyer's answer from their order page (6 Nov). A flag never changes money: the seller decides what to do.
+function answerCard(data) {
+  if (!data.answer || data.cancelled) return null;
+  const wrong = data.answer.answer === "wrong";
+  const card = el("section", `edit-card answer-card${wrong ? " is-unclear" : ""}`);
+  card.id = "answer-card";
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon(wrong ? "triangle-alert" : "circle-check"));
+  name.append(circle, wrong ? "The buyer flagged this order" : "Confirmed by buyer");
+  title.append(name);
+  card.append(title);
+  if (wrong) card.append(el("p", "check-text", buyerSaysWrong(data.answer)));
+  card.append(el("p", "hint", wrong
+    ? "Nothing changed: the items, the total and the invoice stay as they are. Reply in the chat and decide what to do."
+    : `${data.buyer || "The buyer"} said the order looks right on their order page.`));
+  return card;
 }
 
 // Step 10: the texts for this buyer, shown in full so the seller sees exactly what they copy.
@@ -793,7 +832,7 @@ function qrCard(invoiceId) {
     const save = Object.assign(el("button", "ghost"), { type: "button", id: "save-qr" });
     save.dataset.invoice = invoiceId;
     save.append(icon("download"), "Save QR");
-    card.append(save, el("p", "hint", "Send it with the payment message, so the buyer can show it at pickup. Scanning it also opens this PayPal invoice to pay."));
+    card.append(save, el("p", "hint", "The buyer's order page shows this QR once they've paid, for pickup. Scanning it also opens this PayPal invoice to pay."));
   }
   // The number for Pickup scan's typing box, for when there is no camera.
   const number = [...rowsById.values()].find((row) => row.invoiceId === invoiceId)?.invoiceNumber;
@@ -1099,7 +1138,7 @@ function createOrdersGrid() {
     isExternalFilterPresent: () => onlyNeedsCheck,
     doesExternalFilterPass: (node) => node.data.unclear && !node.data.cancelled,
     rowClassRules: {
-      "row-unclear": (p) => !p.node.rowPinned && (p.data?.unclear || p.data?.sendError) && !p.data.cancelled,
+      "row-unclear": (p) => !p.node.rowPinned && (p.data?.unclear || p.data?.sendError || p.data?.answer?.answer === "wrong") && !p.data.cancelled,
       "row-cancelled": (p) => !p.node.rowPinned && p.data?.cancelled,
     },
     // A click on the payer link or its Copy button does its own job, not open the drawer.

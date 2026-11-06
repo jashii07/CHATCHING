@@ -1845,3 +1845,179 @@ mark.hl-price-check {
     padding: 20px;
   }
 }
+
+/* ---- The buyer's "Your order" page (6 Nov). Same tokens and rules as the seller's page: white cards, blue =
+   clickable (the Pay button and the answer buttons), green = money arrived (the Paid card), amber = check
+   this (the buyer's own "something's wrong"). Phone first: one column, at most 560 px wide. ---- */
+.order-box {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 32px var(--gutter) 48px;
+}
+
+.order-box h1 {
+  margin: 0 0 8px;
+  font-size: 36px;
+  line-height: 1.15;
+}
+
+.order-lead {
+  margin: 0 0 24px;
+  color: var(--ink-2);
+}
+
+.order-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.order-card h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.order-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.order-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-item,
+.order-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.order-item .money,
+.order-total .money {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-total {
+  margin: 0;
+  padding-top: 12px;
+  box-shadow: inset 0 1px 0 var(--rule);
+  font-weight: 700;
+}
+
+.order-card.is-paid {
+  align-items: center;
+  background: var(--green-tint);
+  color: var(--green-ink);
+  text-align: center;
+}
+
+.order-card.is-paid .qr-image {
+  border-radius: 12px;
+  background: var(--white);
+}
+
+/* The Pay link looks like the main pill button: it is the one thing to tap. */
+a.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 12px 28px;
+  border-radius: 9999px;
+  background: var(--blue);
+  color: var(--white);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+a.button-link:hover {
+  background: var(--blue-hover);
+  box-shadow: 0 4px 14px rgba(58, 91, 199, 0.28);
+}
+
+.answer-said {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--neutral-tint);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.answer-said.is-wrong {
+  background: var(--amber-tint);
+  box-shadow: inset 4px 0 0 var(--amber);
+}
+
+.answer-form textarea {
+  margin: 0;
+}
+
+.answer-form .actions {
+  margin-top: 12px;
+}
+
+.order-foot {
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .order-box h1 {
+    font-size: 30px;
+  }
+
+  .order-card .actions button,
+  a.button-link {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a.button-link {
+    transition: none;
+  }
+}
+
+/* ---- The buyer's answer on the seller's side (6 Nov): "Confirmed by buyer" is neutral (no colour: it is
+   not money and not a problem); "Buyer says something's wrong" uses the amber "check this" words. ---- */
+.answer-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.answer-line .lucide {
+  width: 15px;
+  height: 15px;
+}
+
+.answer-card .check-text,
+.check-text.buyer-says {
+  overflow-wrap: anywhere;
+}
+
+#order-qr {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.answer-form .hint {
+  margin-top: 8px;
+}

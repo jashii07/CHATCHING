@@ -80,7 +80,7 @@ try {
 
   // The security headers really arrive through Render's proxy, and another site's request is refused.
   console.log("\nSecurity headers");
-  for (const path of ["/", "/pair", "/app.js", "/api/health"]) {
+  for (const path of ["/", "/pair", "/order", "/app.js", "/api/health"]) {
     const { headers } = await fetch(`${BASE}${path}`);
     const policy = headers.get("content-security-policy") ?? "";
     check(policy.includes("frame-ancestors 'none'") && policy.includes("script-src 'self' https://cdn.jsdelivr.net/") && !policy.includes("unsafe-eval"), `${path}: Content-Security-Policy`);
@@ -175,6 +175,35 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     await shot("2-sent", { fullPage: true });
 
+    // The buyer's "Your order" page (6 Nov): Lina opens the link from her Copy message in a browser of her own
+    // (no cookie, a phone's screen on the phone run), checks it and taps Looks right.
+    const linaRow = sent.find((row) => row.buyer === "Lina");
+    const linaLink = (await liveState(page)).texts.find((t) => t.buyer === "Lina").message.split(" ").at(-1);
+    check(new RegExp(`^${BASE}/order#[A-Za-z0-9_-]{43}$`).test(linaLink), `Lina's Copy message sends her order page: ${linaLink.replace(/#.*/, "#...")}`);
+    const buyerContext = await browser.newContext({ viewport: viewport.name === "phone" ? PHONE : viewport });
+    const buyer = await buyerContext.newPage();
+    buyer.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`buyer: ${msg.type()}: ${msg.text()}`));
+    buyer.on("pageerror", (err) => errors.push(`buyer: ${err.message}`));
+    buyer.on("response", (res) => res.status() >= 400 && errors.push(`buyer: HTTP ${res.status()} ${res.url()}`));
+    buyer.on("request", (req) => !req.url().startsWith(BASE) && !req.url().startsWith("data:") && errors.push(`buyer: other site ${req.url()}`));
+    await buyer.goto(linaLink, { waitUntil: "load" });
+    await buyer.waitForSelector("#order-content:not([hidden])", { timeout: SLOW });
+    const buyerWords = async (selector) => plain(await buyer.$eval(selector, (el) => el.innerText));
+    check((await buyerWords("#order-items")) === "3 × Classic brownies (box of 6) RM 54.00" && (await buyerWords("#order-total")) === "RM 54.00"
+      && (await buyerWords("#order-when")) === "Delivery, Sat 31 Oct" && (await buyerWords("#order-status")) === "Not paid",
+      `her page: "${await buyerWords("#order-items")}", ${await buyerWords("#order-when")}, ${await buyerWords("#order-status")}`);
+    check((await buyer.$eval("#pay-link", (el) => el.href)) === linaRow.payerLink, "its Pay button opens her real sandbox invoice");
+    check((await buyer.$$("#order-messages .chat-msg")).length === 3 && !(await buyerContext.cookies()).some((c) => c.name === VISITOR_COOKIE), "her 3 messages; no visitor cookie for her");
+    check(await buyer.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "her page: no sideways scroll");
+    await buyer.screenshot({ path: `${OUT}${viewport.width}-2-order-page.png`, fullPage: true });
+    await buyer.click("#answer-ok");
+    await buyer.waitForSelector("#answer-said:not([hidden])", { timeout: SLOW });
+    check((await buyerWords("#answer-said")) === "You said this looks right. Thank you!", "Looks right is saved");
+    await page.click("#refresh-status");
+    await page.waitForTimeout(1500);
+    await goToBuyerPage(page, "Lina");
+    check(plain(await page.locator(ROWS, { hasText: "Lina" }).innerText()).includes("Confirmed by buyer"), "the seller's row says Confirmed by buyer after Refresh status");
+
     // Open on my phone: the real QR from the laptop's screen. The phone below opens exactly what it says.
     await page.click("#open-on-phone");
     await page.waitForSelector("#pair-qr", { timeout: SLOW });
@@ -188,7 +217,7 @@ try {
     // Pickup scan: PayPal's real QR for Aisyah's invoice, in front of a fake camera, on a phone paired with that
     // link (the camera flags belong to a whole browser, so the phone needs a browser of its own).
     const aisyah = sent.find((row) => row.buyer === "Aisyah");
-    check((await liveState(page)).texts.find((t) => t.buyer === "Aisyah").message.endsWith("Show this QR when you pick up. Thank you!"), "Aisyah's pickup message says to show the QR");
+    check(/, which shows your pickup QR once paid: https:\/\/\S+\/order#[A-Za-z0-9_-]{43}$/.test((await liveState(page)).texts.find((t) => t.buyer === "Aisyah").message), "Aisyah's pickup message sends her order page, which shows the QR once paid");
     const qr = await page.evaluate(async (id) => (await fetch(`/api/invoices/${id}/qr`)).json(), aisyah.invoiceId);
     check(Boolean(qr.png), `PayPal made a real QR for Aisyah's invoice ${aisyah.invoiceId}`);
     const cameraFile = join(mkdtempSync(join(tmpdir(), "chatching-live-camera-")), "qr.y4m");
@@ -284,6 +313,14 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     await shot("4-paid", { fullPage: true });
 
+    // Lina comes back to her page: Paid, no Pay button, and PayPal's real QR for her invoice.
+    await buyer.reload({ waitUntil: "load" });
+    await buyer.waitForFunction(() => document.getElementById("order-status").textContent === "Paid", null, { timeout: SLOW });
+    await buyer.waitForSelector("#order-qr-image", { timeout: SLOW }).catch(() => {});
+    check(await buyer.$eval("#order-pay", (el) => el.hidden), "her page: Paid, and the Pay button is gone");
+    check((await readQrOnScreen(buyer, "#order-qr-image"))?.includes(linaRow.invoiceId), "her page shows PayPal's real QR, holding her invoice");
+    await buyer.screenshot({ path: `${OUT}${viewport.width}-4-order-page-paid.png`, fullPage: true });
+
     // Kitchen list.
     await page.click("#kitchen-list");
     await page.waitForSelector("#drawer.is-open .kitchen-day", { timeout: SLOW });
@@ -306,6 +343,10 @@ try {
     check((await cards(page)).includes("Orders 0") && end.orders.length === 0, `Reset demo: the table is empty ("${await cards(page)}")`);
     check(end.aiCallsLeft === aiBefore, `AI calls left unchanged at the end (${end.aiCallsLeft})`);
     await shot("6-reset", { fullPage: true });
+    await buyer.reload({ waitUntil: "load" });
+    await buyer.waitForFunction(() => document.getElementById("order-words").textContent.startsWith("This order link doesn't work any more."), null, { timeout: SLOW });
+    check(await buyer.$eval("#order-content", (el) => el.hidden), "after Reset demo her link stops working");
+    await buyerContext.close();
 
     check(errors.length === 0, `no console errors, warnings or failed requests${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();

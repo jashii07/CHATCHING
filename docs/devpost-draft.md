@@ -20,7 +20,8 @@ In more detail:
 
 - **Read orders:** the seller pastes a day of chats. Gemini returns the final order per buyer, with later changes and cancellations applied, and a one-line note on what it did.
 - **Review:** the orders appear in a table. Prices come from the seller's menu, never from the AI. Anything unclear is amber with its reason, and clicking a buyer shows their own messages highlighted.
-- **Send invoices:** one click creates and sends a PayPal invoice for each buyer, with a payer link and a ready-to-send message to paste into the chat.
+- **Send invoices:** one click creates and sends a PayPal invoice for each buyer, with a ready-to-send message to paste into the chat. The message links to the buyer's own private order page.
+- **The buyer confirms:** the order page shows the buyer what ChatChing understood from their messages: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. One tap says **Looks right**, or **Something's wrong** with a short note. The buyer pays with PayPal's own Pay button on the same page, sees the live status (Not paid, Paid, Collected) and gets their pickup QR once paid. The buyer can never change items, quantities or prices: the seller's table shows "Confirmed by buyer" or the buyer's note in amber, and the seller decides.
 - **Get paid:** the status updates from PayPal (Sent, Paid). The seller can record cash or bank payments in PayPal, so PayPal holds the full record.
 - **Make and hand over:** a Kitchen list shows how many of each item to make per day. At pickup, the seller scans the buyer's PayPal QR on their phone and sees green (paid) or amber (not paid yet).
 
@@ -31,7 +32,7 @@ In more detail:
 - **Google Gemini** (`gemini-3.6-flash`, with `gemini-3.8-flash` as a backup): one call reads all the chats and returns JSON in a fixed shape. The app's code checks every reply before it is used.
 - **AG Grid Community** for the order table: pagination, custom cells, highlighted rows, a totals row, search, CSV export and a green flash when an invoice turns Paid.
 - **Hosted on Render's free plan.** Each visitor gets their own table through a cookie, with no login.
-- **Tested as I went:** 654 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
+- **Tested as I went:** 675 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
 
 I am a first-year student. I directed the project and made the decisions; the code was written with Claude Code. Every decision and prompt is logged in the repo (`DECISIONS.md`, `PROMPT_LOG.md`).
 
@@ -109,11 +110,12 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 
 1. Your table starts empty. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice (no emails are sent).
-3. Click **Open invoice** on a sent row to open PayPal's payment page for that invoice.
-4. Click a buyer, then **Record payment** to record cash. The row shows Paid (cash/bank).
-5. Click **Kitchen list** to see what to make per day.
-6. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
-7. Click **Reset demo** at the bottom to start again. It only clears your own table.
+3. Be the buyer: click **Copy message** on Lina's row and open the link at its end in a private window or on a phone. That is her own order page. Tap **Looks right**, then click **Refresh status** in ChatChing: her row says "Confirmed by buyer".
+4. Click **Open invoice** on a sent row to open PayPal's payment page for that invoice (the buyer's page has the same Pay button).
+5. Click a buyer, then **Record payment** to record cash. The row shows Paid (cash/bank), and the buyer's page shows Paid and the pickup QR.
+6. Click **Kitchen list** to see what to make per day.
+7. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
+8. Click **Reset demo** at the bottom to start again. It only clears your own table.
 
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 
@@ -122,7 +124,7 @@ Sandbox buyer logins for paying an invoice (PayPal sandbox practice accounts wit
 - Judge buyer 1: `chatching.judge1@example.com`, password `judge1@EXAMPLE`
 - Judge buyer 2: `chatching.judge2@example.com`, password `judge2@EXAMPLE`
 
-Open any sent row's invoice (**Open invoice**) and pay it with one of these logins, then click **Refresh status** in ChatChing. If one login is locked or its password was changed, use the other.
+Open any buyer's order page and click **Pay** (or a row's **Open invoice**), pay it with one of these logins, then click **Refresh status** in ChatChing. If one login is locked or its password was changed, use the other.
 
 ## Devpost Additional info answers
 

@@ -13,7 +13,9 @@ import { fallbackParse } from "./fallback-parse.js";
 import { createPayPal, NOT_CONFIGURED, PayPalError } from "./paypal.js";
 import { createPaymentRecorder } from "./payments.js";
 import { createInvoicer } from "./invoices.js";
-import { createStatusChecker } from "./status.js";
+import { FINAL, createStatusChecker } from "./status.js";
+import { ORDER_LINK_GONE, createOrderLinks, hashOf } from "./order-links.js";
+import { orderView, readAnswer } from "./order-page.js";
 import { createPickup, qrFileName } from "./pickup.js";
 import { PAIR_EXPIRED, PAIR_REPLACE, PAIR_TTL_MS, createPairing, pairQr } from "./pairing.js";
 import { buyerPanel } from "./panel.js";
@@ -101,12 +103,42 @@ export function createApp(config, {
     },
   });
   const pairing = createPairing({ now }); // "Open on my phone": shared by all visitors, in memory only
+  const orderLinks = createOrderLinks({ dir: visitorsDir, log }); // the buyers' "Your order" links (src/order-links.js)
   const callsLeft = () => ai.callsLeft?.() ?? null; // a test's own fake AI may have no counter
 
+  // A sent invoice's rows: the ones a buyer's order page shows (cancelled at PayPal included: the page says so).
+  const sentInvoice = (row) => row.orderStatus === "active" && row.invoiceId && row.payerLink && row.invoiceStatus !== "Draft";
+  // invoice id -> the buyer's order page, for Copy message and the reminder. The link is rebuilt on every call
+  // (same link every time); the first time, its hash goes on the buyer's rows and into the index.
+  function pagesOf(req) {
+    const { store } = req.visitor;
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const pages = new Map();
+    const missing = [];
+    for (const row of store.rows()) {
+      if (!sentInvoice(row)) continue;
+      const token = orderLinks.tokenFor(req.visitorId, store.batch(), row.invoiceId);
+      pages.set(row.invoiceId, `${origin}/order#${token}`);
+      const hash = hashOf(token);
+      if (row.orderLink === hash) continue;
+      orderLinks.register(hash, req.visitorId); // first, so the rows never hold a hash the index can't find
+      missing.push({ ...row, orderLink: hash });
+    }
+    if (missing.length) store.replaceMany(missing);
+    return pages;
+  }
+  const textsOf = (req) => {
+    const pages = pagesOf(req);
+    const { store } = req.visitor;
+    return buyerMessages(store.rows(), store.source(), menu, pages);
+  };
+
   // What the table, cards, slim bar, kitchen list and ready-to-send texts need: the same shape after every change.
-  const table = (store) => {
+  const table = (req) => {
+    const texts = textsOf(req); // first: it may add the link hashes to the rows
+    const { store } = req.visitor;
     const rows = store.rows();
-    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: buyerMessages(rows, store.source(), menu), source: store.source(), batch: store.batch() };
+    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts, source: store.source(), batch: store.batch() };
   };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
@@ -171,6 +203,67 @@ export function createApp(config, {
     res.json({ paired: true });
   });
 
+  // The buyer's "Your order" page (6 Nov). Above the visitor step on purpose, like pairing: a buyer is not the
+  // seller's visitor, so these routes never set or read the visitor cookie. The token (after the # in the
+  // link) comes in a POST body, never in a URL, so it stays out of every log. A wrong link, another table's
+  // link and a link from a reset or replaced batch all get the same words (200, no red console line).
+  app.get("/order", (req, res) => res.sendFile("order.html", { root: PUBLIC_DIR }));
+  const GONE = { notice: ORDER_LINK_GONE, gone: true };
+  const orderFor = (token) => {
+    const found = orderLinks.find(token);
+    if (!found) return null;
+    const visitor = visitors.get(found.visitorId);
+    const rows = () => visitor.store.rows().filter((row) => row.orderLink === found.hash && sentInvoice(row));
+    return rows().length ? { visitor, rows } : null;
+  };
+  // ask: get PayPal's live status first (through src/status.js: its 10-second cache and one round at a time).
+  async function orderReply(found, { ask }) {
+    const { visitor } = found;
+    let checkFailed = false;
+    if (ask && config.paypalConfigured && !FINAL.includes(found.rows()[0].invoiceStatus)) {
+      const { failed } = await visitor.status.refresh();
+      checkFailed = failed.some((f) => f.buyer === found.rows()[0]?.buyer);
+    }
+    const rows = found.rows(); // a New batch or Reset may have happened while PayPal answered
+    if (!rows.length) return GONE;
+    let qr = null;
+    if (String(rows[0].invoiceStatus).startsWith("Paid") && !rows.every((row) => row.collected === true) && config.paypalConfigured) {
+      try {
+        if (!visitor.qrCodes.has(rows[0].invoiceId)) visitor.qrCodes.set(rows[0].invoiceId, (await paypal.qrCode(rows[0].invoiceId)).toString("base64"));
+        qr = { png: visitor.qrCodes.get(rows[0].invoiceId) };
+      } catch (err) {
+        if (!(err instanceof PayPalError)) throw err;
+        qr = { notice: "Your QR code couldn't be loaded just now. Please open this page again in a minute." };
+      }
+    }
+    return { order: orderView(found.rows(), visitor.store.source(), menu, { qr, checkFailed }) };
+  }
+  const tokenIn = (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const token = req.body?.token;
+    if (typeof token === "string") return token;
+    res.status(400).json({ error: 'Send { "token": "..." }.' });
+    return null;
+  };
+  app.post("/api/order/view", limited("order"), async (req, res) => {
+    const token = tokenIn(req, res);
+    if (token === null) return;
+    const found = orderFor(token);
+    res.json(found ? await orderReply(found, { ask: true }) : GONE);
+  });
+  // "Looks right" or "Something's wrong" (+ a note). Saved on the buyer's rows for the seller; it never changes
+  // an item, a quantity or a price. A later answer replaces the earlier one.
+  app.post("/api/order/answer", limited("orderAnswer"), async (req, res) => {
+    const token = tokenIn(req, res);
+    if (token === null) return;
+    const { answer, error } = readAnswer(req.body);
+    if (error) return res.status(400).json({ error });
+    const found = orderFor(token);
+    if (!found) return res.json(GONE);
+    found.visitor.store.replaceMany(found.rows().map((row) => ({ ...row, buyerAnswer: { ...answer, at: new Date(now()).toISOString() } })));
+    res.json(await orderReply(found, { ask: false }));
+  });
+
   // Everything after this belongs to one visitor. Each reply renews the cookie's 14 days, and says no-store
   // so a table can never sit in a shared cache. The health check above stays out, or every ping from Render
   // would be a new visitor. Secure follows the real connection: on Render req.secure reads X-Forwarded-Proto.
@@ -193,7 +286,7 @@ export function createApp(config, {
     req.visitor.store.touch();
     res.json({
       menu,
-      ...table(req.visitor.store),
+      ...table(req),
       aiMode: config.aiMode,
       aiCallsLeft: callsLeft(), // real calls left today, all models together (src/usage.js)
       paypalConfigured: config.paypalConfigured,
@@ -241,7 +334,7 @@ export function createApp(config, {
     }
     const updated = store.replace(recalcRow(next, menu));
     const rows = store.rows();
-    res.json({ row: updated, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: buyerMessages(rows, store.source(), menu) });
+    res.json({ row: updated, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts: textsOf(req) });
   });
 
   // Add an item to a buyer's order (the drawer's "Add item"): { itemId, qty } only. The price and total come
@@ -273,7 +366,7 @@ export function createApp(config, {
     }, menu);
     const at = rows.findLastIndex((other) => sameBuyer(other, row)) + 1;
     store.setRows(recheckBuyer([...rows.slice(0, at), added, ...rows.slice(at)], row));
-    res.json(table(store));
+    res.json(table(req));
   });
 
   // Remove one item (the drawer's "Remove item"). The buyer's last item can't just disappear: the reply
@@ -288,7 +381,7 @@ export function createApp(config, {
       return res.status(409).json({ error: `This is ${row.buyer}'s last item. Cancel the order instead.`, lastItem: true });
     }
     store.setRows(recheckBuyer(rows.filter((other) => other.id !== row.id), row));
-    res.json(table(store));
+    res.json(table(req));
   });
 
   // Cancel a buyer's order (after "Cancel this buyer's order?"): their rows stay, greyed out as cancelled,
@@ -300,7 +393,7 @@ export function createApp(config, {
     if (refused) return refuse(res, refused);
     store.setRows(store.rows().map((other) => (sameBuyer(other, row) && other.orderStatus === "active"
       ? { ...other, orderStatus: "cancelled", unclear: false, reason: "" } : other)));
-    res.json(table(store));
+    res.json(table(req));
   });
 
   // "Send anyway" (the drawer): the seller says this buyer's second invoice today is a real second order. It
@@ -313,7 +406,7 @@ export function createApp(config, {
     const waiting = (other) => sameBuyer(other, row) && other.orderStatus === "active" && other.earlierInvoice && !other.earlierInvoice.kept;
     if (!store.rows().some(waiting)) return res.status(400).json({ error: `${row.buyer} has no earlier invoice to check.` });
     store.setRows(store.rows().map((other) => (waiting(other) ? keepEarlierInvoice(other) : other)));
-    res.json(table(store));
+    res.json(table(req));
   });
 
   // Every read, with or without the AI: our checks, the rows, and the double-invoice guard between batches.
@@ -343,7 +436,7 @@ export function createApp(config, {
     if (withoutAi) {
       const rows = readRows(store, fallbackParse(messages, menu), messages, chatDate);
       store.setAll(rows, { text, chatDate, messages: messages.length, reader: "fallback" });
-      return res.json(table(store));
+      return res.json(table(req));
     }
 
     visitor.reading = true;
@@ -362,7 +455,7 @@ export function createApp(config, {
       visitor.readingStage = null;
     }
     store.setAll(rows, { text, chatDate, messages: messages.length });
-    res.json(table(store));
+    res.json(table(req));
   });
 
   // While Read orders waits, the page asks this about once a second: which words to show ("Reading the
@@ -390,7 +483,7 @@ export function createApp(config, {
     if (result.sent.length) status.markFresh(); // PayPal just told us these statuses
     const { limitedMs, ...sentResult } = result;
     if (limitedMs !== undefined) log(`Rate limit: too many invoices from one visitor; asked to wait ${Math.ceil(limitedMs / 1000)} s.`);
-    res.json({ ...sentResult, ...(limitedMs !== undefined && { notice: slowDown(limitedMs), rateLimited: true }), ...table(store) });
+    res.json({ ...sentResult, ...(limitedMs !== undefined && { notice: slowDown(limitedMs), rateLimited: true }), ...table(req) });
   });
 
   // Refresh status (the button, and the page's polling every 20 s): PayPal's status for every open
@@ -398,7 +491,7 @@ export function createApp(config, {
   app.post("/api/invoices/refresh", limited("refresh"), async (req, res) => {
     if (!config.paypalConfigured) return res.status(503).json({ error: NOT_CONFIGURED });
     const { store, status } = req.visitor;
-    res.json({ ...(await status.refresh()), ...table(store) });
+    res.json({ ...(await status.refresh()), ...table(req) });
   });
 
   // Record a cash / bank-transfer payment: the page sends ONLY the method; the amount is the saved
@@ -414,10 +507,10 @@ export function createApp(config, {
     if (invoicer.isBusy()) return res.status(409).json({ error: SENDING });
     try {
       const recorded = await payments.record(req.params.id, body.method);
-      res.json({ recorded, ...table(store) });
+      res.json({ recorded, ...table(req) });
     } catch (err) {
       if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ error: err.message });
-      if (err instanceof PayPalError) return res.json({ failed: err.message, ...table(store) });
+      if (err instanceof PayPalError) return res.json({ failed: err.message, ...table(req) });
       throw err;
     }
   });
@@ -430,19 +523,19 @@ export function createApp(config, {
     if (!ok) res.status(400).json({ error: 'Send { "invoiceId": "INV2-..." }.' });
     return ok;
   };
-  const pickupReply = (res, { store }, reply) => res.json(reply.notice ? reply : { ...reply, ...table(store) });
+  const pickupReply = (res, req, reply) => res.json(reply.notice ? reply : { ...reply, ...table(req) });
 
   // The scanned or typed invoice: buyer, items, total and paid or not, from PayPal's live status.
   app.post("/api/pickup/check", limited("pickup"), async (req, res) => {
     if (!readRef(req, res)) return;
     if (!config.paypalConfigured) return res.json({ notice: NOT_CONFIGURED });
-    pickupReply(res, req.visitor, await req.visitor.pickup.check(req.body.invoiceId));
+    pickupReply(res, req, await req.visitor.pickup.check(req.body.invoiceId));
   });
 
   // "Collected" (or { undo: true }): our own status, never sent to PayPal, only for a paid invoice.
   app.post("/api/pickup/collected", (req, res) => {
     if (!readRef(req, res)) return;
-    pickupReply(res, req.visitor, req.visitor.pickup.collected(req.body.invoiceId, { undo: req.body.undo }));
+    pickupReply(res, req, req.visitor.pickup.collected(req.body.invoiceId, { undo: req.body.undo }));
   });
 
   // The buyer panel (Step 7, #1 "Show your work"): the AI's note + the buyer's own messages with the
@@ -492,7 +585,7 @@ export function createApp(config, {
     if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });
     if (reading) return res.json({ notice: READING });
     store.reset();
-    res.json(table(store));
+    res.json(table(req));
   });
 
   // New batch: keep this batch (rows + invoice links) in the visitor's file and start an empty table.
@@ -501,7 +594,7 @@ export function createApp(config, {
     if (invoicer.isBusy() || payments.isBusy()) return res.json({ notice: SENDING });
     if (reading) return res.json({ notice: READING });
     store.newBatch();
-    res.json(table(store));
+    res.json(table(req));
   });
 
   app.use(express.static(PUBLIC_DIR));

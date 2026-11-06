@@ -560,13 +560,13 @@ test("#12 the payment method must be a string from the list", async () => {
   assert.ok((await c.post(`/api/invoices/${invoiceId}/payment`, { method: "CASH" })).body.recorded);
 });
 
-test("#15 a paid buyer gets no 'Pay here' message", async () => {
+test("#15 a paid buyer gets no payment message", async () => {
   const s = await start();
   const c = client(s.base);
   await readPlain(c, ["Lina: 2 classic brownies"]);
   await c.post("/api/invoices", {});
   const sent = (await c.get("/api/state")).body;
-  assert.match(sent.texts[0].message, /Pay here/, "still offered while unpaid");
+  assert.match(sent.texts[0].message, /pay on this page: /, "still offered while unpaid");
   await c.post(`/api/invoices/${sent.orders[0].invoiceId}/payment`, { method: "CASH" });
   assert.equal((await c.get("/api/state")).body.texts[0].message, null);
 });

@@ -3,7 +3,7 @@
 //   Pair: laptop QR -> phone opens the link -> same table -> phone scans -> Collected shows on the laptop.
 //   Refused: used twice, wrong code, no code, 10 minutes later. The code stays out of the address bar and the server.
 //   Also: a new link for a second phone, a phone that stays open while the laptop sends, Pickup scan reading
-//   the pairing QR, Save QR, and the "Show this QR" line.
+//   the pairing QR, Save QR, and the pickup QR line in the message (the order page shows it, 6 Nov).
 // Chromium's fake camera plays a REAL PayPal QR (test/fixtures/paypal-qr.png); PayPal is scripts/fake-paypal.mjs.
 // It fails on any console error or warning, and on any sideways scroll.
 // Run: npm run ui-pair. Screenshots go to tmp/screenshots-pair/ (git-ignored).
@@ -172,7 +172,7 @@ try {
   await shot(laptop, "2-save-qr");
   await closeDrawer(laptop);
   await openBuyer(laptop, "Aisyah");
-  check((await words(laptop, "#text-message")).endsWith("Show this QR when you pick up. Thank you!"), `a pickup order's message: "${(await words(laptop, "#text-message")).slice(-60)}"`);
+  check(/, which shows your pickup QR once paid: \S+\/order#[A-Za-z0-9_-]{43}$/.test(await words(laptop, "#text-message")), `a pickup order's message: "${(await words(laptop, "#text-message")).slice(-100)}"`);
   await closeDrawer(laptop);
 
   // ---- Pair: the QR on the laptop ----

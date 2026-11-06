@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Your order - ChatChing</title>
+  <link rel="icon" href="data:,">
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <!-- The buyer's "Your order" page. Its address holds a private key after the #, so it loads nothing from other
+       sites: no CDN, no icons font, only our own files. -->
+  <script defer src="order.js"></script>
+</head>
+<body class="order-page">
+  <div class="backdrop" aria-hidden="true"><span></span><span></span><span></span></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="wordmark">
+        <svg class="logo" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+          <path d="M7 4h15a5 5 0 0 1 5 5v6.5a5 5 0 0 1-5 5H13.5L8 25.2V20.5H7a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5z"
+                fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+          <circle cx="23.5" cy="22.5" r="7.5" fill="currentColor" stroke="#fff" stroke-width="2"/>
+          <circle cx="23.5" cy="22.5" r="3.6" fill="none" stroke="#fff" stroke-width="1.6"/>
+        </svg>
+        ChatChing
+      </span>
+    </div>
+  </header>
+
+  <main class="order-box">
+    <h1>Your order</h1>
+    <p id="order-words" class="order-lead" role="status">Opening your order...</p>
+
+    <div id="order-content" hidden>
+      <section class="panel order-card" aria-labelledby="order-title">
+        <div class="order-head">
+          <h2 id="order-title">What you ordered</h2>
+          <span id="order-status"></span>
+        </div>
+        <ul id="order-items" class="order-items"></ul>
+        <p class="order-total"><span>Total</span><span id="order-total" class="money"></span></p>
+        <p id="order-when" class="hint"></p>
+        <p id="order-check-failed" class="hint" hidden>Couldn't check with PayPal just now, so this is the last status we know.</p>
+      </section>
+
+      <section id="order-paid" class="panel order-card is-paid" hidden aria-labelledby="paid-title">
+        <h2 id="paid-title">Paid. Thank you!</h2>
+        <div id="order-qr"></div>
+      </section>
+
+      <!-- Check first, then pay: "Is this right?" comes before Pay. -->
+      <section class="panel order-card" aria-labelledby="answer-title">
+        <h2 id="answer-title">Is this right?</h2>
+        <p id="answer-said" class="answer-said" hidden></p>
+        <div class="actions">
+          <button type="button" id="answer-ok">Looks right</button>
+          <button type="button" id="answer-wrong" class="ghost">Something's wrong</button>
+        </div>
+        <form id="answer-form" class="answer-form" hidden>
+          <label class="field">
+            <span class="field-label">What's wrong? (optional)</span>
+            <textarea id="answer-note" maxlength="200" rows="3" placeholder="For example: I asked for 2 boxes, not 3."></textarea>
+          </label>
+          <p class="hint"><span id="answer-count">0</span> of 200 characters</p>
+          <div class="actions">
+            <button type="submit" id="answer-send">Tell the seller</button>
+            <button type="button" id="answer-cancel" class="ghost">Never mind</button>
+          </div>
+        </form>
+        <p id="answer-error" class="error-box" role="alert" hidden></p>
+        <p class="hint">Your answer goes to the seller. Items and prices come from the seller's menu, so only the seller can change them.</p>
+      </section>
+
+      <section id="order-pay" class="panel order-card" hidden aria-labelledby="pay-title">
+        <h2 id="pay-title">Pay</h2>
+        <a id="pay-link" class="button-link" target="_blank" rel="noopener noreferrer">Pay with PayPal</a>
+        <p class="hint">Opens PayPal's own page in a new tab. Come back here afterwards to see Paid.</p>
+      </section>
+
+      <section id="order-chat" class="panel order-card" hidden aria-labelledby="chat-title">
+        <h2 id="chat-title">What you wrote</h2>
+        <p class="hint">The messages your order was read from. The parts that mattered are marked.</p>
+        <ol id="order-messages" class="chat-list"></ol>
+      </section>
+
+      <p class="hint order-foot">This page is private to you: only people with this link can open it.</p>
+    </div>
+  </main>
+</body>
+</html>

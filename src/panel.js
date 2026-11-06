@@ -66,11 +66,13 @@ export function buyerPanel(rows, source, menu) {
     const colon = msg.text.indexOf(":");
     const sender = colon > 0 ? msg.text.slice(0, colon) : "";
     if (cleanName(sender) !== cleanName(buyer) && !used.has(msg.n)) continue;
-    const body = cleanName(sender) === cleanName(buyer) ? msg.text.slice(colon + 1).trim() : msg.text;
+    const own = cleanName(sender) === cleanName(buyer);
+    const body = own ? msg.text.slice(colon + 1).trim() : msg.text;
     const isUsed = used.has(msg.n);
     messages.push({
       n: msg.n,
       when: [msg.label?.replace(/ \d{4}$/, ""), msg.time].filter(Boolean).join(", "),
+      own, // the buyer wrote it (the buyer's own order page shows only these, 6 Nov)
       used: isUsed,
       parts: isUsed ? highlight(body, { menu, priceCheck: openCheck.has(msg.n) }) : [{ text: body, mark: null }],
     });

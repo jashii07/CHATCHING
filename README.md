@@ -11,11 +11,12 @@ No login is needed. Each judge gets their own table, so nobody else can see or c
 
 1. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even when the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice. No emails are sent.
-3. Click **Open invoice** on a sent row. This opens PayPal's own payment page for that invoice.
-4. Click a buyer, then **Record payment** to record cash. The row shows **Paid (cash/bank)**.
-5. Click **Kitchen list** to see how many of each item to make, per day.
-6. Click **Pickup scan** and type or scan a buyer's invoice number: green means paid, amber means not paid yet.
-7. Have a phone? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same table, so you can try Pickup scan there on a buyer's QR. The QR works once, for 10 minutes.
+3. Be the buyer: click **Copy message** on Lina's row and open the link at its end in a private window (or on a phone). That is Lina's own **Your order** page: her items, total and messages. Tap **Looks right** (or **Something's wrong** with a short note), then click **Refresh status** in ChatChing: her row says **Confirmed by buyer**.
+4. Click **Open invoice** on a sent row. This opens PayPal's own payment page for that invoice (the buyer's page has the same Pay button).
+5. Click a buyer, then **Record payment** to record cash. The row shows **Paid (cash/bank)**, and the buyer's page shows Paid and their pickup QR.
+6. Click **Kitchen list** to see how many of each item to make, per day.
+7. Click **Pickup scan** and type or scan a buyer's invoice number: green means paid, amber means not paid yet.
+8. Have a phone? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same table, so you can try Pickup scan there on a buyer's QR. The QR works once, for 10 minutes.
 
 **Reset demo** at the bottom clears your own table so you can start again. The free server also clears tables when it sleeps (after 15 minutes without visitors). If that happens, the page says so: click Load demo, then Read orders. Invoices already sent stay safe in PayPal.
 
@@ -28,15 +29,16 @@ Two PayPal **sandbox** buyer accounts, made only for judges, for paying an invoi
 | Judge buyer 1 | `chatching.judge1@example.com` | `judge1@EXAMPLE` |
 | Judge buyer 2 | `chatching.judge2@example.com` | `judge2@EXAMPLE` |
 
-To pay: click a row's **Open invoice**, choose to log in to PayPal, use either login above, then click **Refresh status** in ChatChing. There are two accounts so that if one is locked or its password is changed, the other still works.
+To pay: open a buyer's order page (the link in **Copy message**) and click **Pay**, or click a row's **Open invoice**; choose to log in to PayPal, use either login above, then click **Refresh status** in ChatChing. There are two accounts so that if one is locked or its password is changed, the other still works.
 
 ## What it does
 
 1. **Paste:** the seller pastes a day of chat messages and checks the chat date.
 2. **Read (AI):** Gemini reads all the messages and returns the final order per buyer. It applies later changes and cancellations, and marks anything unclear with a reason.
 3. **Review:** the orders appear in a table. The code fills in prices from the menu. Clicking a buyer shows their own messages, highlighted, and lets the seller fix the order.
-4. **Invoice (no AI):** one click creates and sends one PayPal invoice per buyer. Each buyer gets a payer link and a ready-to-send message to paste into the chat.
-5. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
+4. **Invoice (no AI):** one click creates and sends one PayPal invoice per buyer. Each buyer gets a ready-to-send message to paste into the chat, with a link to their own private order page.
+5. **Confirm (the buyer):** the order page shows the buyer what ChatChing understood: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. They tap **Looks right** or **Something's wrong** (with an optional note of up to 200 characters), pay with PayPal's own Pay button, and see the live status (Not paid, Paid, Collected) and their pickup QR once paid. The buyer can never change items, quantities or prices. The seller's table shows "Confirmed by buyer", or the buyer's note in amber; a note never changes the money, the seller decides.
+6. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
 
 A payment never waits on the AI: sending invoices, recording payments and checking status make no AI calls.
 
@@ -104,7 +106,8 @@ How well the AI reads chats, scored item by item: buyers, cancellations, items, 
 ## Security and safety
 
 - **Per-visitor tables:** each browser gets its own table through a cookie, with no login. One visitor can't see or reset another's orders. A phone joins a table only through a one-time QR (10 minutes, works once).
-- **Rate limits** on reading chats, sending invoices, recording payments, status checks, pickup checks and phone pairing, plus the daily AI counter. Over a limit, the page shows friendly words instead of an error.
+- **Private buyer links:** each sent invoice gets its own order page link with a 256-bit key after the `#` (browsers never send that part to a server, so it stays out of logs). The server keeps only a SHA-256 hash of it; the link is rebuilt from a server-only key when the seller copies it. It opens that one buyer's order and nothing else (no visitor id, no other buyer), sets no cookie, loads nothing from other sites, and stops working when the batch is reset or replaced. A buyer's note is shown as plain text everywhere.
+- **Rate limits** on reading chats, sending invoices, recording payments, status checks, pickup checks, phone pairing and the buyer's order page, plus the daily AI counter. Over a limit, the page shows friendly words instead of an error.
 - **Security headers** on every reply, including a Content-Security-Policy that only allows the app's own scripts and the two pinned CDN files.
 - **CSRF check:** a change sent from another website is refused (403).
 - **No keys in the repo:** keys live in `.env` (git-ignored) or Render's settings. `npm run check` fails if `.env` was ever committed.
@@ -124,6 +127,7 @@ Express server (server.js, src/app.js)
    |-- src/orders.js, src/money.js  prices from the menu, totals in sen
    |-- src/paypal.js, src/invoices.js   PayPal Invoicing API + double-invoice guard
    |-- src/store.js, src/visitors.js    one JSON file per visitor's table
+   |-- src/order-links.js, src/order-page.js   the buyer's private "Your order" page (public/order.html)
    |-- src/security.js, src/rate-limit.js
 ```
 
@@ -158,6 +162,7 @@ This runs every test, scores the saved demo reply, and checks that `.env` is not
 - **The oat-milk miss:** an add-on that is not on the menu can slip through as a clear order (see Accuracy).
 - **English chats only,** with a few Malay words in Read without AI.
 - **No undo** for a recorded cash payment.
+- **A buyer's order page has no login:** anyone the buyer forwards the link to can see that one order and answer for it. A buyer's answer reaches the seller's table on Refresh status or the next automatic check.
 - **Pickup scan and Open on my phone** were tested mostly in test browsers with a fake camera, not across many real phones.
 - **No menu editor:** the menu is edited in `data/menu.json`.
 - The full list, with the reasons, is in [DECISIONS.md](DECISIONS.md) under "Known weaknesses".

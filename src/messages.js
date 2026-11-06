@@ -1,8 +1,10 @@
 // Ready-to-send texts for the chat (Step 10, Part 2), built by CODE only, no AI: AI calls are scarce, and
 // the AI's job is reading chats. Names, items, money, dates and links all come from the rows and the menu,
 // so a text can never hold a wrong price or a made-up link.
-// - message: for a sent invoice, "Hi Lina! Your order: 3 x Classic brownies (RM 54.00), ... Pay here: <link>."
-// - reminder: a shorter, polite one with the link, while the invoice is unpaid.
+// - message: for a sent invoice, "Hi Lina! Thank you for your order: 3 x Classic brownies (RM 54.00), ... Please
+//   check it and pay on this page: <link>". The link is the buyer's own order page (6 Nov), which holds the
+//   PayPal Pay button, not PayPal's bare link. It comes last, so no full stop can stick to it in a chat app.
+// - reminder: a shorter, polite one with the same page, while the invoice is unpaid.
 // - question: for an unclear order, built from the menu and the reason, e.g. "Which brownies would you like:
 //   Classic (RM 18.00) or Cheese (RM 22.00)?"
 // Pure: no files, no network, no clock.
@@ -22,7 +24,7 @@ export const shortName = (name) => String(name).replace(/\s*\(.*\)\s*$/, "");
 // Intl puts a no-break space after "RM"; a chat message gets a normal one, so it pastes cleanly everywhere.
 const money = (amount, menu) => formatMoney(amount, menu.currency).replaceAll(" ", " ");
 // "2026-10-31" -> "Sat 31 Oct" (UTC, so no time zone can shift the day). Same words as the table.
-function dayLabel(iso) {
+export function dayLabel(iso) {
   const d = new Date(`${iso}T00:00:00Z`);
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
@@ -39,28 +41,29 @@ function sentLink(rows) {
   return row && row.invoiceStatus !== "Cancelled/Refunded" ? row : null;
 }
 
-// One buyer's rows -> the payment message for their sent invoice, or null. Nobody is asked to pay twice.
-export function paymentMessage(rows, menu) {
+// One buyer's rows + their order page -> the payment message for their sent invoice, or null. Nobody is asked to
+// pay twice, and with no order page there is no message (PayPal's bare link is never sent instead).
+export function paymentMessage(rows, menu, page = null) {
   const active = activeOf(rows);
   const sent = sentLink(active);
-  if (!sent || sent.invoiceStatus.startsWith("Paid") || !active.every((row) => row.lineTotal)) return null;
+  if (!page || !sent || sent.invoiceStatus.startsWith("Paid") || !active.every((row) => row.lineTotal)) return null;
   const lines = active.map((row) => `${row.qty} x ${shortName(itemOf(row, menu)?.name ?? row.itemName)} (${money(row.lineTotal, menu)})`);
   const total = fromSen(active.reduce((sum, row) => sum + toSen(row.lineTotal), 0));
   const when = [active[0].fulfilment, list(days(active))].filter(Boolean).join(" ");
   const parts = [list(lines), active.length > 1 ? `total ${money(total, menu)}` : "", when].filter(Boolean);
-  const showQr = active.some((row) => row.fulfilment === "pickup") ? " Show this QR when you pick up." : ""; // the seller sends the QR image with it
-  return `Hi ${cleanName(sent.buyer)}! Your order: ${parts.join(", ")}. Pay here: ${sent.payerLink}.${showQr} Thank you!`;
+  const qr = active.some((row) => row.fulfilment === "pickup") ? ", which shows your pickup QR once paid" : ""; // the page shows it
+  return `Hi ${cleanName(sent.buyer)}! Thank you for your order: ${parts.join(", ")}. Please check it and pay on this page${qr}: ${page}`;
 }
 
 // One buyer's rows -> a short, polite reminder while their invoice is unpaid, or null.
 // Part paid: we don't know what is left, so no amount is named.
-export function reminderMessage(rows, menu) {
+export function reminderMessage(rows, menu, page = null) {
   const active = activeOf(rows);
   const sent = sentLink(active);
-  if (!sent || NO_REMINDER.has(sent.invoiceStatus) || !active.every((row) => row.lineTotal)) return null;
+  if (!page || !sent || NO_REMINDER.has(sent.invoiceStatus) || !active.every((row) => row.lineTotal)) return null;
   const total = fromSen(active.reduce((sum, row) => sum + toSen(row.lineTotal), 0));
   const what = sent.invoiceStatus === "Part paid" ? "your order is not fully paid yet" : `your order (${money(total, menu)}) is still unpaid`;
-  return `Hi ${cleanName(sent.buyer)}! A gentle reminder that ${what}. Pay here: ${sent.payerLink}. Thank you!`;
+  return `Hi ${cleanName(sent.buyer)}! A gentle reminder that ${what}. You can check it and pay on this page: ${page}`;
 }
 
 // "Which brownies would you like: Classic (RM 18.00) or Cheese (RM 22.00)?" for the menu's ambiguous words.
@@ -121,7 +124,8 @@ export function buyerQuestion(rows, menu, texts = []) {
 // Every buyer in the table (first-seen order, "Lina" and "lina" together, as in orders.js) ->
 // { buyer, message, reminder, question }; each is a text to copy, or null. source = the pasted chats
 // ({ text, chatDate }), so a question can use the buyer's own words; without it, only the rows are used.
-export function buyerMessages(rows, source, menu) {
+// pages: invoice id -> that buyer's order page link (src/order-links.js: rebuilt per request, never stored).
+export function buyerMessages(rows, source, menu, pages = new Map()) {
   let chat = [];
   try {
     if (source?.text && source?.chatDate) chat = splitMessages(source.text, source.chatDate);
@@ -137,6 +141,7 @@ export function buyerMessages(rows, source, menu) {
   return [...groups.values()].map(({ buyer, rows: own }) => {
     const used = new Set(own.flatMap((row) => (Array.isArray(row.sourceMsgs) ? row.sourceMsgs : [])));
     const texts = chat.filter((msg) => used.has(msg.n) && !isSellerMessage(msg, menu)).map((msg) => msg.text);
-    return { buyer, message: paymentMessage(own, menu), reminder: reminderMessage(own, menu), question: buyerQuestion(own, menu, texts) };
+    const page = pages.get(own.find((row) => row.invoiceId)?.invoiceId) ?? null;
+    return { buyer, message: paymentMessage(own, menu, page), reminder: reminderMessage(own, menu, page), question: buyerQuestion(own, menu, texts) };
   });
 }
