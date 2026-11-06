@@ -125,6 +125,9 @@ try {
 
     // A new visitor: their own empty table, with the chat box open and Load demo in view; a safe cookie.
     check((await cards(page)).includes("Orders 0") && (await page.locator("#chat").isVisible()) && (await page.locator("#load-demo").isVisible()), "a new visitor: an empty table, the chat box open, Load demo visible");
+    const starter = await page.$eval("#starter", (el) => ({ shown: !el.hidden, inFirstScreen: el.getBoundingClientRect().bottom <= innerHeight, words: el.innerText.replace(/s+/g, " ").trim() })).catch(() => ({}));
+    check(starter.shown && starter.inFirstScreen && starter.words === "New here? Try the demo, or paste your chats below. Try the demo", `the starter card is on the first screen: ${JSON.stringify(starter)}`);
+    await shot("0-first-screen");
     const cookie = (await page.context().cookies()).find((c) => c.name === VISITOR_COOKIE);
     check(isVisitorId(cookie?.value) && cookie.httpOnly && cookie.secure && cookie.sameSite === "Lax", "the visitor cookie is HttpOnly, Secure and SameSite=Lax");
 
@@ -139,6 +142,8 @@ try {
     const summary = await cards(page);
     check(buyers.length === 10 && summary.includes("Expected RM 366.00") && summary.includes("Needs check 2"), `Read orders: ${buyers.length} buyers; "${summary}"`);
     check(parses === 1 && stopped === 0 && (await liveState(page)).aiCallsLeft === aiBefore, `no Gemini call: ${parses} demo read, AI calls left still ${aiBefore}`);
+    check(await page.$eval("#starter", (el) => el.hidden) && buyers.filter((text) => text.includes("Not sent")).length === 9 && !buyers.some((text) => /Draft/.test(text)),
+      "the starter card is gone; 9 buyers say Not sent, none say Draft");
     await page.evaluate(() => scrollTo(0, 0));
     await shot("1-read", { fullPage: true });
 
@@ -161,7 +166,12 @@ try {
     check((await liveState(otherJudge)).orders.length === 0 && (await otherJudge.locator("#load-demo").isVisible()), "a second browser at the same moment: its own empty table, Load demo visible");
     await otherJudge.close();
     const afterSend = await allBuyers(page);
-    check(afterSend.filter((text) => text.includes("Payer link") && text.includes("Copy link")).length === 7, "7 rows show the payer link and Copy");
+    check(afterSend.filter((text) => text.includes("Copy message") && text.includes("Open invoice")).length === 7 && !afterSend.some((text) => text.includes("Copy link")),
+      "7 rows show Copy message and Open invoice, none show Copy link");
+    if (viewport.name === "laptop") {
+      const scanBg = await page.$eval("#pickup-scan", (el) => getComputedStyle(el).backgroundColor);
+      check(scanBg === "rgb(238, 241, 250)", `after sending, Pickup scan is a pale button (${scanBg})`);
+    }
     await page.evaluate(() => scrollTo(0, 0));
     await shot("2-sent", { fullPage: true });
 

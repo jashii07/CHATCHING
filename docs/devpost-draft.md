@@ -109,7 +109,7 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 
 1. Your table starts empty. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even if the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice (no emails are sent).
-3. Click **Payer link** on a sent row to open PayPal's payment page for that invoice.
+3. Click **Open invoice** on a sent row to open PayPal's payment page for that invoice.
 4. Click a buyer, then **Record payment** to record cash. The row shows Paid (cash/bank).
 5. Click **Kitchen list** to see what to make per day.
 6. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
@@ -122,7 +122,7 @@ Sandbox buyer logins for paying an invoice (PayPal sandbox practice accounts wit
 - Judge buyer 1: `chatching.judge1@example.com`, password `judge1@EXAMPLE`
 - Judge buyer 2: `chatching.judge2@example.com`, password `judge2@EXAMPLE`
 
-Pay any invoice's payer link with one of these logins, then click **Refresh status** in ChatChing. If one login is locked or its password was changed, use the other.
+Open any sent row's invoice (**Open invoice**) and pay it with one of these logins, then click **Refresh status** in ChatChing. If one login is locked or its password was changed, use the other.
 
 ## Devpost Additional info answers
 
@@ -130,7 +130,7 @@ Pay any invoice's payer link with one of these logins, then click **Refresh stat
 
 AG Grid Community (v36, loaded from jsDelivr with a pinned version and integrity hash) is the heart of ChatChing's screen: one row per buyer, showing their items, date, total and live PayPal status.
 
-What I used: custom cell renderers (buyer avatars, item chips, status badges, the PayPal payer link with a Copy button), rowClassRules to turn unclear orders amber, a pinned totals row, quick-filter search, an external filter behind the "Check" card that shows only the orders to check, pagination driven by my own page arrows (AG Grid's own panel is hidden), CSV export built with AG Grid's getDataAsCsv (the app adds a UTF-8 mark for Excel and blocks spreadsheet formulas in every cell), and flashCells to flash a row green when a buyer pays. While invoices are being sent, the app redraws only the finished buyer's row (redrawRows with rowNodes), so the table updates live without flickering.
+What I used: custom cell renderers (buyer avatars, item chips, status badges, a Copy message button whose text holds the PayPal payer link, plus an Open invoice link), rowClassRules to turn unclear orders amber, a pinned totals row, quick-filter search, an external filter behind the "Check" card that shows only the orders to check, pagination driven by my own page arrows (AG Grid's own panel is hidden), CSV export built with AG Grid's getDataAsCsv (the app adds a UTF-8 mark for Excel and blocks spreadsheet formulas in every cell), and flashCells to flash a row green when a buyer pays. While invoices are being sent, the app redraws only the finished buyer's row (redrawRows with rowNodes), so the table updates live without flickering.
 
 What was hard: making the table fit its panel at every width. On laptops and tablets the app chooses which columns to show from the table's own width, not the screen's, and on phones it switches to one card per buyer, so it works on laptops, tablets and phones. AG Grid's theme also needed inline styles and data: fonts, which I allowed in the Content-Security-Policy while keeping scripts strictly locked to the app's own files and the two pinned CDN files.
 

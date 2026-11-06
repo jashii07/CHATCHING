@@ -184,6 +184,9 @@ try {
       check(lines.length === 11, `CSV has all 10 buyers, not just one page (${lines.length - 1} rows)`);
       check(meiLine.includes("1 × Cheese brownies (box of 6); 2 × Choc chip cookies (jar)") && meiLine.includes('"72.00"'), `CSV Mei Ling row: ${meiLine}`);
       check(lines.slice(1).every((line) => !/^"?[=+\-@\t\r]/.test(line)), "no CSV row starts with a formula character");
+      const statuses = lines.slice(1).map((line) => line.split('","').at(-1).replace(/"$/, ""));
+      check(statuses.filter((s) => s === "Not sent").length === 9 && statuses.filter((s) => s === "Cancelled").length === 1 && !text.includes("Draft"),
+        `CSV status before sending is "Not sent", never "Draft" (${[...new Set(statuses)].join(", ")})`);
     }
 
     if (viewport.name === "phone") {

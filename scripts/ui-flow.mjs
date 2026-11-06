@@ -110,6 +110,35 @@ try {
     check(empty.includes("No orders yet"), `starts empty: "${empty}"`);
     check((await cards(page)).includes("Orders 0") && !(await page.$eval("#chats", (el) => el.hidden)), "Orders 0, and the chat box is open");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1-empty.png`, fullPage: true });
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1b-first-screen.png` }); // what a first-time user sees
+
+    // The starter card (user test fix, 6 Nov): on the first screen, under the step guide, above the cards.
+    const starter = page.locator("#starter");
+    const starterBox = await starter.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const steps = document.querySelector(".steps").getBoundingClientRect();
+      const summary = document.querySelector(".summary").getBoundingClientRect();
+      return { visible: !el.hidden, inFirstScreen: box.bottom <= innerHeight, order: box.top >= steps.bottom && box.bottom <= summary.top };
+    }).catch(() => ({}));
+    const starterText = plain(await starter.innerText().catch(() => ""));
+    check(starterBox.visible && starterBox.inFirstScreen && starterBox.order, `starter card on the first screen, between the steps and the cards (${JSON.stringify(starterBox)})`);
+    check(starterText === "New here? Try the demo, or paste your chats below. Try the demo", `starter card words: "${starterText}"`);
+    // "Try the demo" = Load demo, then Read orders is scrolled into view and lit up once.
+    await page.click("#try-demo").catch(() => {});
+    await page.waitForTimeout(150);
+    const pointed = await page.$eval("#read-orders", (el) => ({ on: el.classList.contains("is-pointed"), anim: getComputedStyle(el).animationName }));
+    await page.waitForTimeout(900); // the smooth scroll
+    const readInView = await page.$eval("#read-orders", (el) => {
+      const box = el.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= innerHeight;
+    });
+    check((await page.inputValue("#chat")) === DEMO && (await page.inputValue("#chat-date")) === "2026-10-28"
+      && (await readMessage(page)) === "Demo chats loaded: 18 messages from Wed 28 Oct. Click Read orders.", "Try the demo does what Load demo does");
+    check(readInView && pointed.on && pointed.anim === "point-here", `Try the demo scrolls to Read orders and lights it up once (${JSON.stringify(pointed)}, in view: ${readInView})`);
+    await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1c-try-demo.png` });
+    await page.waitForTimeout(2200); // the highlight ends by itself
+    check(!(await page.$eval("#read-orders", (el) => el.classList.contains("is-pointed"))), "the highlight runs once, then goes");
+    await page.evaluate(() => scrollTo(0, 0));
 
     // Random text -> the friendly mock notice; nothing else changes.
     await page.fill("#chat", "hello! are you open tomorrow? i want to order something nice");
@@ -158,6 +187,11 @@ try {
     check(await page.$eval("#chats", (el) => el.hidden), "the chat box is folded away");
     const step = plain(await page.$eval(".steps li.current", (el) => el.innerText));
     check(step.endsWith("Review orders"), `guide moved to step 2: "${step}"`);
+    check(await page.$eval("#starter", (el) => el.hidden), "the starter card is gone once there are orders");
+    // Before sending, the status says what it means: "Not sent" (was "Draft").
+    const beforeSend = await allBuyers(page);
+    check(beforeSend.filter((text) => text.includes("Not sent")).length === 9 && !beforeSend.some((text) => /\bDraft\b/.test(text)),
+      `9 active buyers say "Not sent", none say "Draft" (${beforeSend.filter((text) => text.includes("Not sent")).length})`);
     if (viewport.name === "phone") {
       check(plain(await page.$eval("#phone-sum", (el) => el.innerText)) === "Total: 7 orders ready RM 366.00", "phone: the sticky total bar updated");
     } else {
@@ -205,6 +239,13 @@ try {
     const sentAtPayPal = [...fake.invoices.values()].filter((inv) => inv.status === "UNPAID").length;
     check(!mid.hidden && mid.max === 7 && mid.now === 2 && sentAtPayPal === 2, `mid-send: "${midText}", the bar counts REAL results (${mid.now} of ${mid.max} done, ${sentAtPayPal} sent at PayPal)`);
     check(await sendButton.evaluate((el) => el.disabled) && plain(await sendButton.innerText()) === "Sending 3 of 7...", `the button waits and counts: "${plain(await sendButton.innerText())}"`);
+    // Laptop: Pickup scan appears while sending, but as a pale button. Send invoices stays the main one.
+    const PALE = "rgb(238, 241, 250)"; // --blue-tint
+    const scanLook = () => page.$eval("#pickup-scan", (el) => ({ shown: !el.hidden, bg: getComputedStyle(el).backgroundColor }));
+    if (viewport.name === "laptop") {
+      const midScan = await scanLook();
+      check(midScan.shown && midScan.bg === PALE, `while sending, Pickup scan is a pale button, not the main one (${JSON.stringify(midScan)})`);
+    }
     await sendButton.click({ force: true }).catch(() => {}); // a click while sending does nothing
     await page.waitForTimeout(300); // let the bar finish easing to its new length
     await page.evaluate(() => scrollTo(0, document.getElementById("send-progress").getBoundingClientRect().top + scrollY - 200));
@@ -235,28 +276,34 @@ try {
     await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("1 of 1 sent"), null, { timeout: 10000 });
     await page.waitForTimeout(500);
     const sentMessage = plain(await page.$eval("#send-message", (el) => el.textContent));
-    check(sentMessage === "1 of 1 sent. Copy each payer link into the chat. Not sent: Priya, Jun Wei (need a check first).", `the retry: "${sentMessage}"`);
+    check(sentMessage === "1 of 1 sent. Copy each message into the chat. Not sent: Priya, Jun Wei (need a check first).", `the retry: "${sentMessage}"`);
     check(fake.invoices.size === 7 && !plain(await page.locator(ROWS, { hasText: "Arif" }).innerText()).includes("Error:"), "Arif is sent and his Error: is gone (7 invoices at PayPal)");
     check(fake.calls.filter((c) => c.kind === "send").every((c) => c.body.send_to_recipient === false), "sent without emailing anyone");
     fake.slow("send", 0);
 
     const afterSend = await allBuyers(page);
-    const withLinks = afterSend.filter((text) => text.includes("Invoice sent") && text.includes("Payer link") && text.includes("Copy link") && text.includes("Sent"));
-    check(withLinks.length === 7, `7 buyers show "Invoice sent", the payer link, Copy and the Sent tag (${withLinks.length})`);
+    const withLinks = afterSend.filter((text) => text.includes("Invoice sent") && text.includes("Copy message") && text.includes("Open invoice") && text.includes("Sent"));
+    check(withLinks.length === 7, `7 buyers show "Invoice sent", Copy message, Open invoice and the Sent tag (${withLinks.length})`);
+    check(!afterSend.some((text) => text.includes("Copy link") || text.includes("Payer link")), "no row shows Copy link or the old Payer link words");
     const priyaAfter = afterSend.find((text) => text.includes("Priya")) ?? "";
-    check(!priyaAfter.includes("Payer link") && priyaAfter.includes("Check:"), "Priya still needs a check and has no link");
+    check(!priyaAfter.includes("Open invoice") && priyaAfter.includes("Check:") && priyaAfter.includes("Not sent"), "Priya still needs a check, says Not sent and has no link");
     const step3 = plain(await page.$eval(".steps li.current", (el) => el.innerText));
     check(step3.endsWith("Get paid"), `guide moved to step 3: "${step3}"`);
+    // After sending: Send invoices ("All invoices sent") stays the main button; Pickup scan stays pale (laptop).
+    if (viewport.name === "laptop") {
+      const afterScan = await scanLook();
+      check(afterScan.shown && afterScan.bg === PALE && plain(await sendButton.innerText()) === "All invoices sent",
+        `after sending, Pickup scan is still pale, the main button says "${plain(await sendButton.innerText())}" (${JSON.stringify(afterScan)})`);
+    }
 
-    // The payer link and Copy: copying fills the clipboard and does NOT open the drawer.
+    // The row's actions: Copy message is the main (filled) button, Open invoice a small link to PayPal's page.
     const lina = page.locator(ROWS, { hasText: "Lina" });
     const href = await lina.locator(".pay-link a").getAttribute("href");
-    check(String(href).startsWith("https://www.sandbox.paypal.com/invoice/p/#INV2-"), `Lina's payer link: ${href}`);
-    await lina.locator(".copy-link").click();
-    await page.waitForTimeout(200);
-    const copied = await page.evaluate(() => navigator.clipboard.readText());
-    check(copied === href && plain(await lina.locator(".copy-link").innerText()) === "Copied", "Copy link puts Lina's link on the clipboard and says Copied");
-    check(await page.$eval("#drawer", (el) => el.hidden), "clicking Copy does not open the drawer");
+    check(String(href).startsWith("https://www.sandbox.paypal.com/invoice/p/#INV2-") && plain(await lina.locator(".pay-link a").innerText()) === "Open invoice",
+      `Lina's Open invoice link: ${href}`);
+    const mainCopy = await lina.locator('.copy-text[data-kind="message"]').evaluate((el) => ({ ghost: el.classList.contains("ghost"), bg: getComputedStyle(el).backgroundColor }));
+    check(!mainCopy.ghost && mainCopy.bg === "rgb(58, 91, 199)", `Copy message is the filled main button (${JSON.stringify(mainCopy)})`);
+    check((await page.locator("#grid .copy-link").count()) === 0, "no Copy link button in the rows");
 
     // ---- Step 10: ready-to-send texts, built by code (no AI). Exact text on the clipboard. ----
     const clipboard = async () => (await page.evaluate(() => navigator.clipboard.readText())).replaceAll("\r\n", "\n");
@@ -503,6 +550,20 @@ try {
     check(savedFile.rows.length === 0 && savedFile.source === null, "the saved orders file is cleared");
     check((await page.inputValue("#chat")) === "" && !(await page.locator("#chats").isHidden()), "the chat box is open and empty, ready for a new paste");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-9-reset.png`, fullPage: true });
+
+    // ---- After Reset the starter card is back. With reduced motion, Try the demo scrolls but doesn't animate ----
+    check(!(await page.$eval("#starter", (el) => el.hidden)), "the starter card is back on an empty table");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.click("#try-demo");
+    await page.waitForTimeout(300);
+    const calm = await page.$eval("#read-orders", (el) => {
+      const box = el.getBoundingClientRect();
+      return { on: el.classList.contains("is-pointed"), anim: getComputedStyle(el).animationName, inView: box.top >= 0 && box.bottom <= innerHeight };
+    });
+    check(!calm.on && calm.anim === "none" && calm.inView, `reduced motion: Try the demo scrolls to Read orders with no highlight animation (${JSON.stringify(calm)})`);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.fill("#chat", "");
 
     // ---- Load demo after Reset: fills the box, reads nothing; Read orders does the reading ----
     const loadDemo = page.locator("#load-demo");

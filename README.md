@@ -11,7 +11,7 @@ No login is needed. Each judge gets their own table, so nobody else can see or c
 
 1. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even when the AI is busy.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice. No emails are sent.
-3. Click **Payer link** on a sent row. This opens PayPal's own payment page for that invoice.
+3. Click **Open invoice** on a sent row. This opens PayPal's own payment page for that invoice.
 4. Click a buyer, then **Record payment** to record cash. The row shows **Paid (cash/bank)**.
 5. Click **Kitchen list** to see how many of each item to make, per day.
 6. Click **Pickup scan** and type or scan a buyer's invoice number: green means paid, amber means not paid yet.
@@ -28,7 +28,7 @@ Two PayPal **sandbox** buyer accounts, made only for judges, for paying an invoi
 | Judge buyer 1 | `chatching.judge1@example.com` | `judge1@EXAMPLE` |
 | Judge buyer 2 | `chatching.judge2@example.com` | `judge2@EXAMPLE` |
 
-To pay: open a row's **Payer link**, choose to log in to PayPal, use either login above, then click **Refresh status** in ChatChing. There are two accounts so that if one is locked or its password is changed, the other still works.
+To pay: click a row's **Open invoice**, choose to log in to PayPal, use either login above, then click **Refresh status** in ChatChing. There are two accounts so that if one is locked or its password is changed, the other still works.
 
 ## What it does
 
@@ -36,7 +36,7 @@ To pay: open a row's **Payer link**, choose to log in to PayPal, use either logi
 2. **Read (AI):** Gemini reads all the messages and returns the final order per buyer. It applies later changes and cancellations, and marks anything unclear with a reason.
 3. **Review:** the orders appear in a table. The code fills in prices from the menu. Clicking a buyer shows their own messages, highlighted, and lets the seller fix the order.
 4. **Invoice (no AI):** one click creates and sends one PayPal invoice per buyer. Each buyer gets a payer link and a ready-to-send message to paste into the chat.
-5. **Track:** the status moves from Draft to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
+5. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
 
 A payment never waits on the AI: sending invoices, recording payments and checking status make no AI calls.
 

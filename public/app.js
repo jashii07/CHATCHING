@@ -108,6 +108,10 @@ function initials(name) {
 
 // ---- One table row per buyer, built from the server's groups (no money maths: totals come from the server) ----
 
+// The server keeps PayPal's word "Draft" for "no invoice yet" (saved tables use it). The seller reads "Not sent"
+// (user test fix, 6 Nov): the table, the cards, the drawer and the CSV all show this label.
+const shownStatus = (status) => (status === "Draft" ? "Not sent" : status);
+
 function buyerRows() {
   return groups.map((group) => {
     const rows = group.rowIds.map((id) => rowsById.get(id)).filter(Boolean);
@@ -131,7 +135,7 @@ function buyerRows() {
       unclear: unclear.length > 0,
       reason: [...new Set(unclear.map((row) => row.reason))].join(" "),
       dates: [...new Set(active.map((row) => row.deliveryDate).filter(Boolean))].sort(),
-      status: group.cancelled ? "Cancelled" : active[0]?.invoiceStatus ?? "Draft",
+      status: group.cancelled ? "Cancelled" : shownStatus(active[0]?.invoiceStatus ?? "Draft"),
     };
   });
 }
@@ -147,26 +151,25 @@ const itemsText = (data) => data.rows
 
 const buyerSub = (data) => (data.cancelled ? "Cancelled" : data.unclear ? "Needs a check" : data.payerLink ? "Invoice sent" : plural(data.items, "item"));
 
-// After the invoice is sent: the payer link (opens PayPal's pay page) and a Copy button for the chat.
+// After the invoice is sent: "Copy message" is the main action (the message already holds the payer link),
+// and a small "Open invoice" link opens PayPal's pay page (user test fix, 6 Nov: no separate Copy link).
 // Both are inside the row, so the row-click handler ignores clicks on links and buttons.
 function payLink(data) {
   if (!data.payerLink) return null;
   const line = el("span", "pay-link");
+  if (data.texts.message) line.append(copyTextButton(data, "message", "", true));
   const link = Object.assign(el("a", "", ""), { href: data.payerLink, target: "_blank", rel: "noopener" });
-  link.append(icon("external-link"), "Payer link");
-  const copy = Object.assign(el("button", "ghost small copy-link", "Copy link"), { type: "button" });
-  copy.dataset.link = data.payerLink;
-  copy.setAttribute("aria-label", `Copy ${data.buyer}'s payer link`);
-  line.append(link, copy);
-  if (data.texts.message) line.append(copyTextButton(data, "message"));
+  link.append(icon("external-link"), "Open invoice");
+  link.setAttribute("aria-label", `Open invoice for ${data.buyer || "this buyer"}`);
+  line.append(link);
   return line;
 }
 
 // Step 10: "Copy message" / "Copy reminder" / "Copy question". The words come from the server (src/messages.js):
 // names, items, money and links are filled in by code, never by the AI.
 const COPY_LABELS = { message: "Copy message", reminder: "Copy reminder", question: "Copy question" };
-function copyTextButton(data, kind, id = "") {
-  const button = Object.assign(el("button", "ghost small copy-text", COPY_LABELS[kind]), { type: "button" });
+function copyTextButton(data, kind, id = "", main = false) {
+  const button = Object.assign(el("button", `${main ? "" : "ghost "}small copy-text`, COPY_LABELS[kind]), { type: "button" });
   if (id) button.id = id;
   button.dataset.buyer = data.key;
   button.dataset.kind = kind;
@@ -204,7 +207,7 @@ function chips(data) {
 
 // One icon per status, so the tag reads at a glance (the words carry the meaning, not the icon).
 const STATUS_ICONS = {
-  Draft: "pencil-line", Sent: "send", "Part paid": "hourglass", Paid: "circle-check",
+  "Not sent": "pencil-line", Sent: "send", "Part paid": "hourglass", Paid: "circle-check",
   "Paid (cash/bank)": "banknote", "Cancelled/Refunded": "circle-x", Cancelled: "circle-x", Collected: "package-check",
 };
 
@@ -1131,6 +1134,7 @@ function showOrders(state) {
   kitchen = state.kitchen;
   texts = textMap(state.texts);
   rowsById = new Map(state.orders.map((row) => [row.id, row]));
+  $("starter").hidden = state.orders.length > 0; // the first-minute card, only on an empty table
   $("fallback-note").hidden = source?.reader !== "fallback" || !state.orders.length;
   showSetup();
   showSummary();
@@ -1785,7 +1789,7 @@ async function sendInvoices() {
   if (sent) startPolling();
   if (stopped) return say(stopped);
   say([
-    failed ? `${sent} of ${total} sent, ${failed} ${failed === 1 ? "needs" : "need"} a retry.` : `${sent} of ${total} sent. Copy each payer link into the chat.`,
+    failed ? `${sent} of ${total} sent, ${failed} ${failed === 1 ? "needs" : "need"} a retry.` : `${sent} of ${total} sent. Copy each message into the chat.`,
     needCheck.length ? `Not sent: ${needCheck.join(", ")} (${needCheck.length === 1 ? "needs" : "need"} a check first).` : "",
   ].filter(Boolean).join(" "));
 }
@@ -1827,10 +1831,25 @@ async function loadDemo() {
     $("chat-date").value = reply.chatDate;
     $("read-without-ai").hidden = true;
     say(`Demo chats loaded: ${plural(reply.messages, "message")} from ${formatDate(reply.chatDate)}. Click Read orders.`);
-    $("read-orders").focus();
+    $("read-orders").focus({ preventScroll: true }); // Try the demo scrolls there itself (Load demo sits next to it)
+    return true;
   } catch (err) {
     showError(`The demo chats could not be loaded (${err.message}).`);
   }
+  return false;
+}
+
+// The starter card's "Try the demo" (user test fix, 6 Nov): exactly Load demo, then it brings Read orders into
+// view (below the first screen on a laptop, below the four cards on a phone) and lights it up once.
+// With reduced motion: a plain jump and no highlight.
+async function tryDemo() {
+  if (!(await loadDemo())) return;
+  const read = $("read-orders");
+  read.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
+  if (reducedMotion.matches) return;
+  read.classList.remove("is-pointed");
+  void read.offsetWidth; // a second click starts the highlight again
+  read.classList.add("is-pointed");
 }
 
 // "Reset demo": the server empties this visitor's table so their demo can start over.
@@ -1883,12 +1902,6 @@ async function copyBuyerText(button) {
   setTimeout(() => (button.textContent = COPY_LABELS[button.dataset.kind]), 2000);
 }
 
-async function copyLink(button) {
-  await copyText(button.dataset.link);
-  button.textContent = "Copied";
-  setTimeout(() => (button.textContent = "Copy link"), 2000);
-}
-
 // The kitchen list as plain text, built by the server (one line per item), so it pastes cleanly.
 async function copyKitchen(button) {
   await copyText(kitchen.text);
@@ -1925,9 +1938,9 @@ for (const button of document.querySelectorAll("[data-new-batch]")) button.addEv
 $("refresh-status").addEventListener("click", () => refreshStatus({ byHand: true }));
 $("reset-demo").addEventListener("click", resetDemo);
 $("load-demo").addEventListener("click", loadDemo);
+$("try-demo").addEventListener("click", tryDemo);
+for (const type of ["animationend", "animationcancel"]) $("read-orders").addEventListener(type, () => $("read-orders").classList.remove("is-pointed"));
 $("grid").addEventListener("click", (event) => {
-  const copy = event.target.closest(".copy-link");
-  if (copy) copyLink(copy);
   const words = event.target.closest(".copy-text");
   if (words) copyBuyerText(words);
 });

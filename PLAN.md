@@ -93,9 +93,9 @@ Only one new package is planned: **express**. (31 Oct: also **qrcode-generator 2
 |---|---|
 | Pagination (`pagination`, 6 rows per page, our own arrows via `paginationGoToNextPage`) | one buyer per row, 6 buyers per page (design round 3) |
 | Auto row height + custom cell renderers | buyer avatar, item chips with food icons, phone cards |
-| Custom cell renderer: status badge | Draft / Sent / Paid / Paid (cash) / Cancelled in colours |
+| Custom cell renderer: status badge | Not sent (was Draft until 6 Nov) / Sent / Paid / Paid (cash) / Cancelled in colours |
 | `rowClassRules` | highlight unclear rows (and grey out cancelled ones) |
-| Custom cell renderer: Copy-link button | copy the payer link for the chat |
+| Custom cell renderer: Copy message button (was Copy link until 6 Nov) | copy the ready message, which holds the payer link, plus a small Open invoice link |
 | Pinned bottom row | totals: number of orders and RM total |
 | Quick filter search box (`quickFilterText`) | find a buyer or item fast (**built early, 27 Oct**) |
 | External filter (`isExternalFilterPresent` / `doesExternalFilterPass`) | the Needs check card shows only the buyers that need a check (27 Oct) |
@@ -477,7 +477,7 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 
 | Tag | Background | Text |
 |---|---|---|
-| Draft | warm beige `#F3ECE1` | `#5C4A30` |
+| Not sent (was Draft until 6 Nov) | warm beige `#F3ECE1` | `#5C4A30` |
 | Sent / Part paid | light blue `#E3EBF8` | dark slate `#2B3A55` (not blue: tags aren't clickable) |
 | Paid / Paid (cash/bank) | green tint `#DCF2E3` | `#1E5B35` |
 | Cancelled/Refunded | grey `#EEEEF0` | `#636368`, strikethrough |
@@ -539,7 +539,7 @@ Jasper's reasons: round 1 "the original design is too simple"; round 2 "no perso
 - **Pill buttons:** "Read orders" is a fully rounded warmer-blue pill with a soft hover transition (colour + glow); secondary actions ("Edit", "Hide chats") are quiet pills with blue text on a pale blue tint.
 - **Hover lift (scale 1.02) on the summary cards only,** only with a mouse and when reduced motion is off; scaling the big table would blur its text and shift its editors.
 - **Icons: Lucide 1.55.0** (jsDelivr, pinned, integrity hash, ISC licence), 20-24 px, **inside soft tinted circles (40-44 px)** on the summary cards and steps (neutral tint; the Paid card's circle is green; on the hero it is white at 14%). **Food icons on the item chips** come from an optional `"icon"` field per item in `data/menu.json` (Lucide names, e.g. "cookie", "cake-slice"), so a seller can change them. Always next to words; never amber; no emoji. The page works without them.
-  - Status icons: Draft = pencil-line, Sent = send, Part paid = hourglass, Paid = circle-check, Paid (cash/bank) = banknote, Cancelled = circle-x.
+  - Status icons: Not sent = pencil-line, Sent = send, Part paid = hourglass, Paid = circle-check, Paid (cash/bank) = banknote, Cancelled = circle-x.
 - **Summary cards: Expected (hero), Orders, Paid, Needs check,** counted per buyer by the server (`summary()`; the page does no money maths). They change colour with the facts: Needs check turns amber (tint + stripe) above 0; Paid turns green once money arrives.
 
 ### AG Grid

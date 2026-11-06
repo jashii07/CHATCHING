@@ -54,6 +54,14 @@
       <p id="error" class="error-box" role="alert" hidden></p>
     </section>
 
+    <!-- First minute (user test fix, 6 Nov): only while the table is empty, so the way in is on the first screen.
+         Try the demo does exactly what Load demo does, then points at Read orders. -->
+    <section class="starter" id="starter" aria-label="Get started" hidden>
+      <span class="icon-circle"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+      <p>New here? Try the demo, or paste your chats below.</p>
+      <button type="button" id="try-demo"><i data-lucide="play" aria-hidden="true"></i>Try the demo</button>
+    </section>
+
     <!-- The day at a glance. Expected is the hero: a deep indigo card, like a bank card. -->
     <section class="summary" aria-label="Today at a glance">
       <article class="stat stat-hero" id="stat-expected">
@@ -141,8 +149,9 @@
           <button type="button" id="send-invoices" data-send-invoices>Send invoices</button>
           <!-- Asks PayPal who has paid (the page also checks by itself every 20 s while invoices are open). -->
           <button type="button" class="ghost" id="refresh-status" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh status</button>
-          <!-- Step 10c: scan the buyer's PayPal QR at pickup. On phones this button sits in the sticky total bar. -->
-          <button type="button" id="pickup-scan" data-pickup-scan hidden><i data-lucide="scan-qr-code" aria-hidden="true"></i>Pickup scan</button>
+          <!-- Step 10c: scan the buyer's PayPal QR at pickup. On phones this button sits in the sticky total bar.
+               Pale here (6 Nov): Send invoices stays the one main button above the table. -->
+          <button type="button" class="ghost" id="pickup-scan" data-pickup-scan hidden><i data-lucide="scan-qr-code" aria-hidden="true"></i>Pickup scan</button>
         </div>
         <!-- Step 10: these rows were read without AI (simple rules), so every row deserves a look. -->
         <p class="filter-note" id="fallback-note" role="status" hidden>

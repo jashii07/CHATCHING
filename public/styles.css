@@ -269,6 +269,46 @@ h2 {
   box-shadow: inset 4px 0 0 var(--amber);
 }
 
+/* ---- The starter card (user test fix, 6 Nov): only on an empty table, under the step guide. Same white
+   card, shadow and pill button as the rest of the page. ---- */
+.starter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin: -8px 0 32px;
+  padding: 16px 20px;
+  border-radius: 24px;
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.starter[hidden] {
+  display: none;
+}
+
+.starter p {
+  flex: 1 1 240px;
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Try the demo brings Read orders into view and lights it up once: a soft blue ring that fades. */
+@keyframes point-here {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(58, 91, 199, 0); }
+  35% { box-shadow: 0 0 0 10px rgba(58, 91, 199, 0.25); }
+}
+
+#read-orders.is-pointed {
+  animation: point-here 1.4s ease-out 0.3s 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #read-orders.is-pointed {
+    animation: none;
+  }
+}
+
 /* ---- Summary cards ---- */
 .summary {
   display: grid;
@@ -650,7 +690,7 @@ button:disabled {
   margin: 0 0 16px;
 }
 
-/* The payer link (blue = clickable) and its quiet Copy button, under a sent buyer's items. */
+/* Under a sent buyer's items: Copy message (the main action) and a small Open invoice link (blue = clickable). */
 .pay-link {
   display: flex;
   flex-wrap: wrap;
@@ -664,6 +704,7 @@ button:disabled {
   gap: 6px;
   min-height: 44px;
   color: var(--blue);
+  font-size: 0.9375rem;
   font-weight: 600;
 }
 
@@ -901,7 +942,7 @@ button:disabled {
   height: 15px;
 }
 
-.badge-draft { background: #f3ece1; color: #5c4a30; }
+.badge-not-sent { background: #f3ece1; color: #5c4a30; }
 .badge-sent, .badge-part-paid { background: #e3ebf8; color: #2b3a55; }
 .badge-paid, .badge-paid-cash-bank { background: var(--green-tint); color: var(--green-ink); }
 .badge-cancelled, .badge-cancelled-refunded {
@@ -951,6 +992,7 @@ button:disabled {
   color: var(--ink-2);
 }
 
+button.small,
 button.ghost.small {
   min-height: 44px;
   padding: 6px 16px;
