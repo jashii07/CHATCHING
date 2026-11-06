@@ -1,2 +1,5 @@
 # Saved AI replies are kept byte for byte (Step 3b): git must never change their line endings.
 data/ai-cache/*.json -text
+# Third-party files served to the browser (public/vendor/) are kept byte for byte: the page checks AG Grid's and
+# Lucide's integrity hashes, and a Windows checkout turning line endings into CRLF would make the browser refuse them.
+public/vendor/** -text

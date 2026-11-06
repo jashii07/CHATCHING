@@ -51,16 +51,15 @@ test("the policy forbids what it should: no eval, no inline scripts, no wildcard
   assert.ok(!Object.values(policy).flat().some((value) => value === "*" || value === "https:" || value === "blob:"), "no wide-open source");
 });
 
-test("the page's scripts: its own, or the exact pinned CDN files, each with an integrity hash", async () => {
+test("the page's scripts all come from our own server (6 Nov: no CDN), and the policy allows only that", async () => {
   const res = await fetch(await start());
-  const allowed = policyOf(res)["script-src"];
   const tags = scriptsIn(await res.text());
   assert.ok(tags.length >= 3);
-  const outside = tags.flatMap((tag) => tag.match(/src="(https:[^"]+)"/)?.slice(1) ?? []);
-  assert.deepEqual(allowed.toSorted(), ["'self'", ...outside].toSorted(), "the policy lists exactly the page's own outside scripts");
+  assert.deepEqual(policyOf(res)["script-src"], ["'self'"], "no other site may serve a script");
   for (const tag of tags) {
     assert.match(tag, /\bsrc="/, "no inline script");
-    if (/src="https:/.test(tag)) assert.match(tag, /integrity="sha384-/, tag);
+    assert.doesNotMatch(tag, /src="(https?:)?\/\//, `a script from another site: ${tag}`);
+    if (/src="vendor\//.test(tag)) assert.match(tag, /integrity="sha384-/, `third-party code keeps its integrity hash: ${tag}`);
   }
 });
 

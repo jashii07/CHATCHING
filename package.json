@@ -37,7 +37,9 @@
     "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
+    "ag-grid-community": "36.2.0",
     "jsqr": "1.4.0",
+    "lucide": "1.55.0",
     "playwright-core": "1.64.0"
   }
 }

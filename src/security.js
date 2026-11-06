@@ -1,20 +1,16 @@
 // Backup protection for every reply and every changing request. No script injection was found in the review
 // (1 Nov), so these are a second lock on the door, not the only one.
 // Content-Security-Policy: a list the browser enforces of what this page may load and run.
-//   script-src: our own files + the exact pinned CDN files. No inline scripts and never 'unsafe-eval'.
+//   script-src: our own files only. AG Grid and Lucide are served from public/vendor/ since 6 Nov (no CDN, so a
+//     network that blocks jsDelivr still gets the table). No inline scripts and never 'unsafe-eval'.
 //   style-src: 'unsafe-inline' is needed because AG Grid adds its theme as a <style> tag from JavaScript, and a
 //     nonce would need a page built per request (this app serves plain files). It lets in styles, never scripts.
 //   img-src data: is for the QR images, which arrive as Base64 pictures (and the empty favicon link).
 //   font-src data: is for AG Grid's icon fonts, which sit as text inside its pinned, hash-checked file. Browsers
 //     have no way to allow one data: font by hash. A data: font holds all its bytes itself, so it reaches nothing.
-const CDN_SCRIPTS = [
-  "https://cdn.jsdelivr.net/npm/ag-grid-community@36.2.0/dist/ag-grid-community.min.js",
-  "https://cdn.jsdelivr.net/npm/lucide@1.55.0/dist/umd/lucide.min.js",
-];
-
 const POLICY = [
   "default-src 'self'",
-  `script-src 'self' ${CDN_SCRIPTS.join(" ")}`,
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",

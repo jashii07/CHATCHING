@@ -49,10 +49,13 @@ async function open(viewport, url = base, who = visitor) {
   // Warnings count too: AG Grid reports misuse as a warning, not an error.
   page.on("console", (msg) => ["error", "warning"].includes(msg.type()) && errors.push(`${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => errors.push(err.message));
+  // Every request the page makes (6 Nov: AG Grid and Lucide moved to our own server): no other site, ever.
+  const outside = [];
+  page.on("request", (req) => !/^(data|blob):/.test(req.url()) && new URL(req.url()).origin !== new URL(url).origin && outside.push(req.url()));
   await page.goto(url);
   await page.waitForSelector(ROWS);
   await page.waitForTimeout(500); // let the grid finish measuring the rows
-  return { page, errors };
+  return { page, errors, outside };
 }
 
 const headers = (page) => page.$$eval(".ag-header-cell-text", (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
@@ -95,8 +98,10 @@ async function goToPage(page, n) {
 
 try {
   for (const viewport of WIDTHS) {
-    const { page, errors } = await open(viewport);
+    const { page, errors, outside } = await open(viewport);
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}.png`, fullPage: true });
+    const vendor = await page.evaluate(() => ({ grid: typeof agGrid?.createGrid === "function", icons: Boolean(window.lucide?.icons?.Wallet), svgs: document.querySelectorAll(".stat .icon-circle svg.lucide").length }));
+    check(outside.length === 0 && vendor.grid && vendor.icons && vendor.svgs === 4, `nothing loads from another site; AG Grid and Lucide come from our own server and work (${outside.length ? outside.join(", ") : JSON.stringify(vendor)})`);
     const cols = await headers(page);
     const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     console.log(`\n${viewport.width} px (${viewport.name}): columns = ${cols.join(", ") || "(phone cards, no header)"}`);

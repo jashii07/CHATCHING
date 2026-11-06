@@ -252,7 +252,7 @@ try {
 
       // ---- Images never leave the phone; no new website is contacted ----
       check(posts.every((post) => post.body.length < 500), "nothing the size of an image was ever posted");
-      check([...hosts].every((host) => host.startsWith("localhost") || host === "cdn.jsdelivr.net"), `only our server and the existing CDN: ${[...hosts].join(", ")}`);
+      check([...hosts].every((host) => host.startsWith("localhost")), `only our own server, no other site (6 Nov: no CDN either): ${[...hosts].join(", ")}`);
       check(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === "/vendor/jsQR.js")), "jsQR came from our own server");
 
       // ---- The camera refused: type or paste ----

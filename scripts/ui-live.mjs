@@ -83,7 +83,7 @@ try {
   for (const path of ["/", "/pair", "/order", "/app.js", "/api/health"]) {
     const { headers } = await fetch(`${BASE}${path}`);
     const policy = headers.get("content-security-policy") ?? "";
-    check(policy.includes("frame-ancestors 'none'") && policy.includes("script-src 'self' https://cdn.jsdelivr.net/") && !policy.includes("unsafe-eval"), `${path}: Content-Security-Policy`);
+    check(policy.includes("frame-ancestors 'none'") && policy.includes("script-src 'self';") && !policy.includes("unsafe-eval"), `${path}: Content-Security-Policy`);
     check(headers.get("x-content-type-options") === "nosniff", `${path}: X-Content-Type-Options`);
     check(headers.get("referrer-policy") === "same-origin", `${path}: Referrer-Policy`);
     check(headers.get("permissions-policy")?.includes("camera=(self)"), `${path}: Permissions-Policy`);
@@ -102,6 +102,9 @@ try {
     page.on("pageerror", (err) => errors.push(err.message));
     page.on("response", (res) => res.status() >= 400 && errors.push(`HTTP ${res.status()} ${res.url()}`));
     page.on("requestfailed", (req) => errors.push(`failed: ${req.url()} (${req.failure()?.errorText})`));
+    // Nothing the seller's page loads comes from another site (6 Nov: AG Grid and Lucide are served by the app).
+    const outside = new Set();
+    page.on("request", (req) => req.frame() === page.mainFrame() && !/^(data|blob):/.test(req.url()) && new URL(req.url()).origin !== new URL(BASE).origin && outside.add(new URL(req.url()).origin));
 
     // The Gemini guard: only the exact demo chats + date may reach the server's parse route.
     let parses = 0;
@@ -349,6 +352,7 @@ try {
     await buyerContext.close();
 
     check(errors.length === 0, `no console errors, warnings or failed requests${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+    check(outside.size === 0, `the seller's page loaded nothing from another site${outside.size ? `: ${[...outside].join(", ")}` : ""}`);
     await page.close();
   }
 } finally {

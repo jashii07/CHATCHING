@@ -8,14 +8,13 @@
   <!-- Inter is served from our own server (public/fonts, SIL Open Font License): no font CDN. -->
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
-  <!-- AG Grid Community and Lucide icons, each pinned to an exact version (DECISIONS.md). The integrity
-       hash makes the browser refuse a file if the CDN ever serves different bytes. -->
-  <script defer src="https://cdn.jsdelivr.net/npm/ag-grid-community@36.2.0/dist/ag-grid-community.min.js"
-          integrity="sha384-icvtRKM0YJJgeDhXnWY8UlF1PVBFd4K8Pj61la+vG+EU+awBeoP0xGPZhCD2SQOV"
-          crossorigin="anonymous"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/lucide@1.55.0/dist/umd/lucide.min.js"
-          integrity="sha384-SZUFq9Dx112fyzY/iIBEjyd2gu3jY4XVhp+LUNXSpEMB2IEm/TOoMTNH4BHtQ6Hz"
-          crossorigin="anonymous"></script>
+  <!-- AG Grid Community 36.2.0 and Lucide 1.55.0, served from our own server (public/vendor/, with their licences),
+       so a network that blocks a CDN still gets the table (6 Nov). Same files and integrity hashes as when they
+       came from a CDN: the browser refuses a file whose bytes differ. -->
+  <script defer src="vendor/ag-grid-community.min.js"
+          integrity="sha384-icvtRKM0YJJgeDhXnWY8UlF1PVBFd4K8Pj61la+vG+EU+awBeoP0xGPZhCD2SQOV"></script>
+  <script defer src="vendor/lucide.min.js"
+          integrity="sha384-SZUFq9Dx112fyzY/iIBEjyd2gu3jY4XVhp+LUNXSpEMB2IEm/TOoMTNH4BHtQ6Hz"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
