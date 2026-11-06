@@ -511,6 +511,112 @@ function showSetup() {
   $("setup").replaceChildren(...items.map((text) => el("li", "", text)));
 }
 
+// ---- What to do next (user test, 6 Nov): the line under the steps, Show me, and the banner after sending ----
+
+const nextStepCode = import("./next-step.js"); // the rules, shared with test/next-step.test.js
+const NEXT_ICONS = { start: "sparkles", fix: "triangle-alert", send: "send", message: "message-square-share", watch: "hourglass", pickup: "scan-qr-code", done: "circle-check", nothing: "clipboard-paste" };
+const BANNER_WORDS = ["Invoices sent. Now send each buyer their message.", "Tap Copy message on each row and paste it into your chat with that buyer. It has their order page, Pay button and QR code."];
+let next = null; // the line shown now: { key, text, buyer }
+let bannerOn = false; // a send sent something; off again on Got it, New batch or Reset
+
+// What the seller already did here for this batch: copied a buyer's question ("question:lina"), or their message or
+// reminder ("message:lina"). A note in this browser only (localStorage), so a private window or another device
+// starts without it; it only changes the line, never what can be done.
+const DID_KEY = "chatching-did";
+let did = new Set();
+function loadDid() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DID_KEY) ?? "null");
+    did = new Set(saved?.batch === batch && Array.isArray(saved.items) ? saved.items : []);
+  } catch {
+    did = new Set();
+  }
+}
+
+function markDid(item) {
+  did.add(item);
+  try {
+    localStorage.setItem(DID_KEY, JSON.stringify({ batch, items: [...did] }));
+  } catch {}
+  showNext();
+}
+
+async function showNext() {
+  const { nextStep, waitingForMessage } = await nextStepCode;
+  const buyers = buyerRows();
+  next = nextStep(buyers, did);
+  if ($("next-text").textContent !== next.text) $("next-text").textContent = next.text; // read out only when it changes
+  if ($("next-step").dataset.next !== next.key) {
+    $("next-step").dataset.next = next.key;
+    $("next-icon").replaceChildren(icon(NEXT_ICONS[next.key]));
+  }
+  $("try-demo").hidden = next.key !== "start";
+  $("next-show").hidden = next.key === "start";
+  // The banner after sending stays until every sent buyer has their message.
+  const banner = $("sent-banner");
+  const show = bannerOn && waitingForMessage(buyers, did).length > 0;
+  if (show === !banner.hidden) return;
+  banner.hidden = !show;
+  banner.querySelector(".sent-banner-words").replaceChildren(...(show ? [el("p", "sent-banner-title", BANNER_WORDS[0]), el("p", "", BANNER_WORDS[1])] : []));
+}
+
+// Show me: scroll to the button the line is about, put the focus on it and light it up once (as Try the demo does
+// for Read orders). With reduced motion: a plain jump, no highlight.
+async function showMe() {
+  const target = await nextTarget(next);
+  if (target) point(target);
+}
+
+function point(target) {
+  target.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
+  target.focus({ preventScroll: true });
+  if (reducedMotion.matches) return;
+  target.classList.remove("is-pointed");
+  void target.offsetWidth; // a second click starts the highlight again
+  target.classList.add("is-pointed");
+}
+
+// The first of these that is on the page (the Send button sits in the sticky bar on phones, above the table elsewhere).
+const onPage = (selector) => [...document.querySelectorAll(selector)].find((node) => node.offsetParent !== null) ?? null;
+
+async function nextTarget(step) {
+  switch (step?.key) {
+    case "fix": return rowButton(step.buyer, "question");
+    case "send": return onPage("[data-send-invoices]");
+    case "message": return rowButton(step.buyer, "message");
+    case "watch": return onPage("#refresh-status");
+    case "pickup": return onPage("[data-pickup-scan]");
+    case "done": return onPage("[data-new-batch]");
+    case "nothing": return onPage("#chat-edit") ?? $("chat");
+    default: return null;
+  }
+}
+
+// A buyer's Copy button in the table. Their row may be on another page, or hidden by the search box or the Needs
+// check filter: those are cleared first so the row can be shown.
+async function rowButton(key, kind) {
+  const data = buyerRows().find((row) => row.key === key);
+  if (!data || !grid) return null;
+  if ($("search").value) {
+    $("search").value = "";
+    grid.setGridOption("quickFilterText", "");
+  }
+  if (onlyNeedsCheck && !(data.unclear && !data.cancelled)) setNeedsCheckFilter(false);
+  const node = grid.getRowNode(data.id);
+  if (node?.rowIndex == null) return null;
+  grid.paginationGoToPage(Math.floor(node.rowIndex / BUYERS_PER_PAGE));
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  const row = document.querySelector(`#grid .ag-row[row-id="${CSS.escape(data.id)}"]`);
+  return row?.querySelector(`.copy-text[data-kind="${kind}"]`) ?? row;
+}
+
+// Tapping a step scrolls to its part of the page: 1 the chats (or their slim bar), 2 the orders, 3 the buttons
+// above the table (Send invoices, Refresh status, Pickup scan).
+function goToStep(n) {
+  const target = n === 1 ? ($("chat-bar").hidden ? $("chats") : $("chat-bar")) : document.querySelector(n === 2 ? ".panel.orders" : ".table-tools");
+  target.scrollIntoView({ block: "start", behavior: reducedMotion.matches ? "auto" : "smooth" });
+}
+
 // No rows yet -> 1 Paste; rows but no invoices -> 2 Review; any invoice sent -> 3 Get paid.
 function showStep(rows) {
   const step = !rows.length ? 1 : rows.some((row) => row.invoiceId) ? 3 : 2;
@@ -559,6 +665,7 @@ function refreshTable(onlyId = null) {
   showTotals();
   showPager();
   showSendButtons();
+  showNext();
 }
 
 // ---- The drawer: fix one buyer's items, quantities and dates ----
@@ -646,6 +753,7 @@ function addCard(data) {
 // stays on the same buyer, whose first row id may have changed. Same updates as an edit, nothing folds.
 async function changeItems(method, path, body) {
   const key = buyerRows().find((row) => row.id === openGroupId)?.key;
+  savedNote("saving");
   try {
     const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, ...(body && { body: JSON.stringify(body) }) });
     const reply = await res.json();
@@ -659,8 +767,10 @@ async function changeItems(method, path, body) {
     kitchen = reply.kitchen;
     texts = textMap(reply.texts);
     hideError("drawer-error");
+    savedNote("saved");
     loadPanel(); // the buyer's messages: the first row id may be new
   } catch (err) {
+    savedNote("");
     showError(`That change was not saved (${err.message}).`, "drawer-error");
     await tableStillHere();
   }
@@ -669,9 +779,22 @@ async function changeItems(method, path, body) {
   renderDrawer();
 }
 
+// "Saved" with a check mark after every change in the drawer (user test, 6 Nov: my friend wanted to confirm).
+// Changes still save the moment they are made; this says each one arrived. "" clears it (a refused change).
+function savedNote(state) {
+  const note = $("saved-note");
+  note.classList.remove("is-new");
+  if (state === "saving") return note.replaceChildren("Saving...");
+  if (state !== "saved") return note.replaceChildren();
+  note.replaceChildren(icon("check"), "Saved");
+  void note.offsetWidth; // each new "Saved" fades in again
+  note.classList.add("is-new");
+}
+
 async function addItem() {
   const qty = Number($("add-item-qty").value);
   if (!(Number.isInteger(qty) && qty >= 1 && qty <= 99)) {
+    savedNote("");
     showError(`That item was not added (Quantity must be a whole number from 1 to 99, got ${$("add-item-qty").value || "nothing"}).`, "drawer-error");
     return $("add-item-qty").focus();
   }
@@ -896,6 +1019,7 @@ function openDrawer(id) {
 }
 
 function showDrawer() {
+  savedNote(""); // a "Saved" belongs to the changes made since the drawer opened
   $("scrim").hidden = false;
   $("drawer").hidden = false;
   document.body.classList.add("drawer-open");
@@ -1043,6 +1167,7 @@ async function saveField(control) {
   // The quantity is checked here first, so a typo never even reaches the server (the browser would
   // log every refused request as a red console error). The server still checks everything.
   if (name === "qty" && !(Number.isInteger(value) && value >= 1 && value <= 99)) {
+    savedNote("");
     showError(`That change was not saved (Quantity must be a whole number from 1 to 99, got ${raw === "" ? "nothing" : raw}).`, "drawer-error");
     renderDrawer();
     $(`edit-${id}-${name}`)?.focus();
@@ -1052,6 +1177,7 @@ async function saveField(control) {
   const twin = name === "itemId" && [...rowsById.values()].find((row) => row.id !== id && row.orderStatus === "active" && row.itemId === value
     && String(row.buyer).trim().toLowerCase() === String(rowsById.get(id)?.buyer).trim().toLowerCase());
   if (twin) {
+    savedNote("");
     showError(`That change was not saved (${twin.buyer} already has ${twin.itemName}: change its quantity instead.).`, "drawer-error");
     renderDrawer();
     $(`edit-${id}-${name}`)?.focus();
@@ -1063,6 +1189,7 @@ async function saveField(control) {
 
 // PUT one row's change; the server's reply updates the drawer, the table and the cards.
 async function putRow(id, change) {
+  savedNote("saving");
   try {
     const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
       method: "PUT",
@@ -1078,7 +1205,9 @@ async function putRow(id, change) {
     kitchen = reply.kitchen;
     texts = textMap(reply.texts);
     hideError("drawer-error");
+    savedNote("saved");
   } catch (err) {
+    savedNote("");
     showError(`That change was not saved (${err.message}).`, "drawer-error");
     await tableStillHere();
   }
@@ -1173,7 +1302,7 @@ function showOrders(state) {
   kitchen = state.kitchen;
   texts = textMap(state.texts);
   rowsById = new Map(state.orders.map((row) => [row.id, row]));
-  $("starter").hidden = state.orders.length > 0; // the first-minute card, only on an empty table
+  loadDid(); // what was already copied for this batch (another batch starts with nothing)
   $("fallback-note").hidden = source?.reader !== "fallback" || !state.orders.length;
   showSetup();
   showSummary();
@@ -1185,6 +1314,7 @@ function showOrders(state) {
     refreshTable();
   }
   showSendButtons();
+  showNext();
   if (openGroupId || kitchenOpen) renderDrawer();
 }
 
@@ -1214,6 +1344,7 @@ function showServerTable(state) {
   closeDrawer();
   stopPolling();
   sendErrors = new Map();
+  bannerOn = false;
   showProgress(0, 0);
   for (const id of ["send-message", "status-message"]) $(id).textContent = "";
   showOrders(state);
@@ -1679,8 +1810,10 @@ async function undoCollected(button) {
       return renderDrawer();
     }
     showOrders(reply);
+    savedNote("saved");
     $("drawer-close").focus();
   } catch (err) {
+    savedNote("");
     showError(`That was not saved (${err.message}).`, "drawer-error");
     renderDrawer();
   }
@@ -1890,13 +2023,19 @@ async function sendInvoices() {
   }
   sending = false;
   sendProgress = null;
+  if (sent) bannerOn = true; // right after sending: the banner says to send each buyer their message
   refreshTable(); // the amber Error: rows, and the button's new label
   if (sent) startPolling();
   if (stopped) return say(stopped);
   say([
-    failed ? `${sent} of ${total} sent, ${failed} ${failed === 1 ? "needs" : "need"} a retry.` : `${sent} of ${total} sent. Copy each message into the chat.`,
+    failed ? `${sent} of ${total} sent, ${failed} ${failed === 1 ? "needs" : "need"} a retry.` : `${sent} of ${total} sent.`,
     needCheck.length ? `Not sent: ${needCheck.join(", ")} (${needCheck.length === 1 ? "needs" : "need"} a check first).` : "",
   ].filter(Boolean).join(" "));
+  if (!sent) return;
+  // On a phone the seller tapped Send in the bottom bar, maybe far from the table: bring the banner into view.
+  await showNext();
+  const banner = $("sent-banner");
+  if (!banner.hidden && !clearOfBars(banner)) banner.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
 }
 
 // "New batch": the server saves this batch (rows + invoice links) and starts an empty table, so the
@@ -1914,6 +2053,7 @@ async function newBatch() {
     $("read-without-ai").hidden = true;
     $("send-message").textContent = "";
     sendErrors = new Map();
+    bannerOn = false;
     showProgress(0, 0);
     showOrders(reply);
     $("chat").focus();
@@ -1948,13 +2088,7 @@ async function loadDemo() {
 // view (below the first screen on a laptop, below the four cards on a phone) and lights it up once.
 // With reduced motion: a plain jump and no highlight.
 async function tryDemo() {
-  if (!(await loadDemo())) return;
-  const read = $("read-orders");
-  read.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
-  if (reducedMotion.matches) return;
-  read.classList.remove("is-pointed");
-  void read.offsetWidth; // a second click starts the highlight again
-  read.classList.add("is-pointed");
+  if (await loadDemo()) point($("read-orders"));
 }
 
 // "Reset demo": the server empties this visitor's table so their demo can start over.
@@ -1972,6 +2106,7 @@ async function resetDemo() {
     for (const id of ["read-message", "send-message", "status-message"]) $(id).textContent = "";
     $("read-without-ai").hidden = true;
     sendErrors = new Map();
+    bannerOn = false;
     showProgress(0, 0);
     $("chat").value = "";
     showOrders(reply);
@@ -2005,6 +2140,8 @@ async function copyBuyerText(button) {
   await copyText(text);
   button.textContent = "Copied";
   setTimeout(() => (button.textContent = COPY_LABELS[button.dataset.kind]), 2000);
+  // The guide moves on: this buyer was asked, or has their message (the reminder holds their order page too).
+  markDid(`${button.dataset.kind === "question" ? "question" : "message"}:${button.dataset.buyer}`);
 }
 
 // The kitchen list as plain text, built by the server (one line per item), so it pastes cleanly.
@@ -2044,7 +2181,17 @@ $("refresh-status").addEventListener("click", () => refreshStatus({ byHand: true
 $("reset-demo").addEventListener("click", resetDemo);
 $("load-demo").addEventListener("click", loadDemo);
 $("try-demo").addEventListener("click", tryDemo);
-for (const type of ["animationend", "animationcancel"]) $("read-orders").addEventListener(type, () => $("read-orders").classList.remove("is-pointed"));
+$("next-show").addEventListener("click", showMe);
+for (const button of document.querySelectorAll(".steps button")) button.addEventListener("click", () => goToStep(Number(button.closest("li").dataset.step)));
+$("sent-banner-close").addEventListener("click", () => {
+  bannerOn = false;
+  showNext();
+  ($("grid").querySelector('.copy-text[data-kind="message"]') ?? $("next-show")).focus(); // the banner had the focus
+});
+// The "look here" ring (Try the demo, Show me) runs once, then goes.
+for (const type of ["animationend", "animationcancel"]) {
+  document.addEventListener(type, (event) => ["point-here", "point-inside"].includes(event.animationName) && event.target.classList.remove("is-pointed"));
+}
 $("grid").addEventListener("click", (event) => {
   const words = event.target.closest(".copy-text");
   if (words) copyBuyerText(words);
@@ -2069,6 +2216,7 @@ $("open-on-phone").addEventListener("click", openPairing);
 $("page-prev").addEventListener("click", () => grid?.paginationGoToPreviousPage());
 $("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
 $("drawer-close").addEventListener("click", closeDrawer);
+$("drawer-done").addEventListener("click", closeDrawer);
 $("scrim").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("keydown", drawerKeys);
 $("drawer-body").addEventListener("click", (event) => {

@@ -77,13 +77,19 @@ test("no secret value appears in any reply", async () => {
   }
 });
 
-test("GET / serves the page with AG Grid 36.2.0 and Lucide 1.55.0 pinned", async () => {
+test("GET / serves the page with AG Grid 36.2.0 and Lucide 1.55.0 pinned, from our own server (6 Nov)", async () => {
   const res = await call("/");
   assert.equal(res.status, 200);
   assert.match(res.type, /text\/html/);
-  assert.match(res.text, /ag-grid-community@36\.2\.0\/dist\/ag-grid-community\.min\.js/);
-  assert.match(res.text, /integrity="sha384-/);
-  assert.match(res.text, /lucide@1\.55\.0\/dist\/umd\/lucide\.min\.js"\s+integrity="sha384-/); // icons pinned + hash
+  assert.match(res.text, /AG Grid Community 36\.2\.0 and Lucide 1\.55\.0/);
+  assert.match(res.text, /src="vendor\/ag-grid-community\.min\.js"\s+integrity="sha384-/);
+  assert.match(res.text, /src="vendor\/lucide\.min\.js"\s+integrity="sha384-/); // icons pinned + hash
+  // The files themselves are served (test/vendor.test.js proves they are the pinned packages' files).
+  for (const path of ["/vendor/ag-grid-community.min.js", "/vendor/lucide.min.js"]) {
+    const file = await call(path);
+    assert.equal(file.status, 200, path);
+    assert.match(file.type, /javascript/, path);
+  }
 });
 
 test("unknown route -> 404 JSON", async () => {

@@ -24,6 +24,7 @@ In more detail:
 - **The buyer confirms:** the order page shows the buyer what ChatChing understood from their messages: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. One tap says **Looks right**, or **Something's wrong** with a short note. The buyer pays with PayPal's own Pay button on the same page, sees the live status (Not paid, Paid, Collected) and gets their pickup QR once paid. The buyer can never change items, quantities or prices: the seller's table shows "Confirmed by buyer" or the buyer's note in amber, and the seller decides.
 - **Get paid:** the status updates from PayPal (Sent, Paid). The seller can record cash or bank payments in PayPal, so PayPal holds the full record.
 - **Make and hand over:** a Kitchen list shows how many of each item to make per day. At pickup, the seller scans the buyer's PayPal QR on their phone and sees green (paid) or amber (not paid yet).
+- **Always says what's next:** one line under the three steps tells the seller the next action from the table's state (fix the amber rows, send invoices, send each buyer their message, watch for Paid, pickup), with **Show me** to jump to the right button. I added it after a user test: my friend didn't know what to do in which order, or that each buyer needs their message.
 
 ## How we built it
 
@@ -32,7 +33,7 @@ In more detail:
 - **Google Gemini** (`gemini-3.6-flash`, with `gemini-3.8-flash` as a backup): one call reads all the chats and returns JSON in a fixed shape. The app's code checks every reply before it is used.
 - **AG Grid Community** for the order table: pagination, custom cells, highlighted rows, a totals row, search, CSV export and a green flash when an invoice turns Paid.
 - **Hosted on Render's free plan.** Each visitor gets their own table through a cookie, with no login.
-- **Tested as I went:** 675 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
+- **Tested as I went:** 695 automated tests, browser checks at phone and laptop sizes, and a check of the whole flow on the live site with real sandbox invoices.
 
 I am a first-year student. I directed the project and made the decisions; the code was written with Claude Code. Every decision and prompt is logged in the repo (`DECISIONS.md`, `PROMPT_LOG.md`).
 
@@ -80,7 +81,7 @@ Devpost tags (15 of the 25 allowed), each checked against package.json and the c
 javascript, node.js, express, html5, css3, paypal, paypal-invoicing-api, google-gemini, ag-grid, render, playwright, jsqr, qrcode-generator, lucide, claude-code
 
 - express 5.3.0 and qrcode-generator 2.0.4 are in `dependencies`; jsqr 1.4.0 and playwright-core 1.64.0 (the browser checks) in `devDependencies`.
-- AG Grid Community 36.2.0 and Lucide 1.55.0 load from jsDelivr, pinned in `public/index.html`.
+- AG Grid Community 36.2.0 and Lucide 1.55.0 are pinned in `devDependencies` and served from the app's own server (`public/vendor/`, unchanged copies with their licences), so a network that blocks a CDN still shows the table.
 - Gemini (`src/gemini.js`) and PayPal Invoicing v2 are called over their REST APIs, with no SDK.
 - Hosted on Render (free plan). Built with Claude Code.
 
@@ -130,11 +131,11 @@ Open any buyer's order page and click **Pay** (or a row's **Open invoice**), pay
 
 ### If you used AG Grid, what was your experience building with AG Grid/AG Charts/AG Studio?
 
-AG Grid Community (v36, loaded from jsDelivr with a pinned version and integrity hash) is the heart of ChatChing's screen: one row per buyer, showing their items, date, total and live PayPal status.
+AG Grid Community (v36.2.0, a pinned copy served from the app's own server and checked against its integrity hash) is the heart of ChatChing's screen: one row per buyer, showing their items, date, total and live PayPal status.
 
 What I used: custom cell renderers (buyer avatars, item chips, status badges, a Copy message button whose text holds the PayPal payer link, plus an Open invoice link), rowClassRules to turn unclear orders amber, a pinned totals row, quick-filter search, an external filter behind the "Check" card that shows only the orders to check, pagination driven by my own page arrows (AG Grid's own panel is hidden), CSV export built with AG Grid's getDataAsCsv (the app adds a UTF-8 mark for Excel and blocks spreadsheet formulas in every cell), and flashCells to flash a row green when a buyer pays. While invoices are being sent, the app redraws only the finished buyer's row (redrawRows with rowNodes), so the table updates live without flickering.
 
-What was hard: making the table fit its panel at every width. On laptops and tablets the app chooses which columns to show from the table's own width, not the screen's, and on phones it switches to one card per buyer, so it works on laptops, tablets and phones. AG Grid's theme also needed inline styles and data: fonts, which I allowed in the Content-Security-Policy while keeping scripts strictly locked to the app's own files and the two pinned CDN files.
+What was hard: making the table fit its panel at every width. On laptops and tablets the app chooses which columns to show from the table's own width, not the screen's, and on phones it switches to one card per buyer, so it works on laptops, tablets and phones. AG Grid's theme also needed inline styles and data: fonts, which I allowed in the Content-Security-Policy while keeping scripts strictly locked to the app's own files. AG Grid itself is served by the app, so the page loads nothing from another site.
 
 I stayed on the free Community edition. Features like row grouping are Enterprise-only, so the Kitchen list (what to make per day) is built in the app's own code instead. As a first-year student, AG Grid let me ship a professional, responsive table in days instead of weeks.
 

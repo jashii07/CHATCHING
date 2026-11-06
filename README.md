@@ -9,7 +9,7 @@ The first load can take up to a minute while the free server wakes up.
 
 No login is needed. Each judge gets their own table, so nobody else can see or change your orders.
 
-1. Click **Load demo**, then **Read orders**. The demo uses a saved AI reply, so it works even when the AI is busy.
+1. Click **Try the demo** (or **Load demo**), then **Read orders**. The demo uses a saved AI reply, so it works even when the AI is busy. The line under the three steps always says what to do next, and **Show me** scrolls to the right button.
 2. Click **Send invoices**. Each buyer gets a real PayPal sandbox invoice. No emails are sent.
 3. Be the buyer: click **Copy message** on Lina's row and open the link at its end in a private window (or on a phone). That is Lina's own **Your order** page: her items, total and messages. Tap **Looks right** (or **Something's wrong** with a short note), then click **Refresh status** in ChatChing: her row says **Confirmed by buyer**.
 4. Click **Open invoice** on a sent row. This opens PayPal's own payment page for that invoice (the buyer's page has the same Pay button).
@@ -39,6 +39,8 @@ To pay: open a buyer's order page (the link in **Copy message**) and click **Pay
 4. **Invoice (no AI):** one click creates and sends one PayPal invoice per buyer. Each buyer gets a ready-to-send message to paste into the chat, with a link to their own private order page.
 5. **Confirm (the buyer):** the order page shows the buyer what ChatChing understood: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. They tap **Looks right** or **Something's wrong** (with an optional note of up to 200 characters), pay with PayPal's own Pay button, and see the live status (Not paid, Paid, Collected) and their pickup QR once paid. The buyer can never change items, quantities or prices. The seller's table shows "Confirmed by buyer", or the buyer's note in amber; a note never changes the money, the seller decides.
 6. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
+
+**What to do next:** one line under the three steps always tells the seller the next action, worked out from the table: try the demo or paste chats, fix the amber rows (Copy question asks the buyer), send invoices, send each buyer their message, watch for Paid or record cash, then Pickup scan and Collected. **Show me** scrolls to the button for it, and each step can be tapped to jump to its part of the page. Right after sending, a banner says in plain words to send each buyer their message. While the AI reads, a card over the table shows how many messages it is reading, what the server is doing and the seconds so far. In a buyer's panel each change saves at once, shows **Saved**, and **Done** closes it.
 
 A payment never waits on the AI: sending invoices, recording payments and checking status make no AI calls.
 
@@ -87,7 +89,7 @@ The ready-to-send messages, reminders and "Copy question" texts are code templat
 
 ## The table: AG Grid Community
 
-The order table is **AG Grid Community 36.2.0** (free version, no Enterprise features), loaded from a CDN with a pinned version and integrity hash. It uses pagination, custom cell renderers (buyer avatar, item chips, status badges, Copy link), row highlighting for amber and cancelled rows, a pinned totals row, the quick-filter search box, an external filter for "Needs check", CSV export, and a green flash on the status cell when an invoice turns Paid.
+The order table is **AG Grid Community 36.2.0** (free version, no Enterprise features), served from the app's own server: a pinned copy of the npm package's file, unchanged, checked against its integrity hash, so a network that blocks a CDN still shows the table. It uses pagination, custom cell renderers (buyer avatar, item chips, status badges, Copy message), row highlighting for amber and cancelled rows, a pinned totals row, the quick-filter search box, an external filter for "Needs check", CSV export, and a green flash on the status cell when an invoice turns Paid.
 
 ## Accuracy
 
@@ -108,7 +110,7 @@ How well the AI reads chats, scored item by item: buyers, cancellations, items, 
 - **Per-visitor tables:** each browser gets its own table through a cookie, with no login. One visitor can't see or reset another's orders. A phone joins a table only through a one-time QR (10 minutes, works once).
 - **Private buyer links:** each sent invoice gets its own order page link with a 256-bit key after the `#` (browsers never send that part to a server, so it stays out of logs). The server keeps only a SHA-256 hash of it; the link is rebuilt from a server-only key when the seller copies it. It opens that one buyer's order and nothing else (no visitor id, no other buyer), sets no cookie, loads nothing from other sites, and stops working when the batch is reset or replaced. A buyer's note is shown as plain text everywhere.
 - **Rate limits** on reading chats, sending invoices, recording payments, status checks, pickup checks, phone pairing and the buyer's order page, plus the daily AI counter. Over a limit, the page shows friendly words instead of an error.
-- **Security headers** on every reply, including a Content-Security-Policy that only allows the app's own scripts and the two pinned CDN files.
+- **Security headers** on every reply, including a Content-Security-Policy that only allows the app's own scripts. AG Grid and Lucide are served by the app too, so no page loads anything from another site.
 - **CSRF check:** a change sent from another website is refused (403).
 - **No keys in the repo:** keys live in `.env` (git-ignored) or Render's settings. `npm run check` fails if `.env` was ever committed.
 - **The 1 Nov review:** a full bug hunt and security audit (QA Bug Hunter + finecomb) found 18 issues: 0 critical, 2 high, 7 medium, 9 low. Each fix was written test-first, in two fix sessions on 1 and 2 Nov. One low item, a rare crash of Node's test runner on Windows, is worked around (the file reruns once), not fixed.
@@ -118,7 +120,7 @@ How well the AI reads chats, scored item by item: buyers, cancellations, items, 
 One small Node server. No database, no build step.
 
 ```
-Browser (public/: HTML + JS + AG Grid)
+Browser (public/: HTML + JS; AG Grid, Lucide and jsQR in public/vendor/)
    |
 Express server (server.js, src/app.js)
    |-- src/ai.js, src/gemini.js     Gemini call, time budget, backup model, cache

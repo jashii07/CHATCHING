@@ -112,8 +112,9 @@ try {
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1-empty.png`, fullPage: true });
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-1b-first-screen.png` }); // what a first-time user sees
 
-    // The starter card (user test fix, 6 Nov): on the first screen, under the step guide, above the cards.
-    const starter = page.locator("#starter");
+    // The starter card (user test fix, 6 Nov): on the first screen, under the step guide, above the cards. Since the
+    // second user test (same day) it is the guide's "what to do next" card on an empty table (npm run ui-guide).
+    const starter = page.locator("#next-step");
     const starterBox = await starter.evaluate((el) => {
       const box = el.getBoundingClientRect();
       const steps = document.querySelector(".steps").getBoundingClientRect();
@@ -122,7 +123,7 @@ try {
     }).catch(() => ({}));
     const starterText = plain(await starter.innerText().catch(() => ""));
     check(starterBox.visible && starterBox.inFirstScreen && starterBox.order, `starter card on the first screen, between the steps and the cards (${JSON.stringify(starterBox)})`);
-    check(starterText === "New here? Try the demo, or paste your chats below. Try the demo", `starter card words: "${starterText}"`);
+    check(starterText === "New here? Try the demo, or paste your chats below, then click Read orders. Try the demo", `starter card words: "${starterText}"`);
     // "Try the demo" = Load demo, then Read orders is scrolled into view and lit up once.
     await page.click("#try-demo").catch(() => {});
     await page.waitForTimeout(150);
@@ -187,7 +188,8 @@ try {
     check(await page.$eval("#chats", (el) => el.hidden), "the chat box is folded away");
     const step = plain(await page.$eval(".steps li.current", (el) => el.innerText));
     check(step.endsWith("Review orders"), `guide moved to step 2: "${step}"`);
-    check(await page.$eval("#starter", (el) => el.hidden), "the starter card is gone once there are orders");
+    check(await page.$eval("#try-demo", (el) => el.hidden) && plain(await page.$eval("#next-text", (el) => el.textContent)).startsWith("Next: fix the amber rows"),
+      "once there are orders, the card says what to do next instead of Try the demo");
     // Before sending, the status says what it means: "Not sent" (was "Draft").
     const beforeSend = await allBuyers(page);
     check(beforeSend.filter((text) => text.includes("Not sent")).length === 9 && !beforeSend.some((text) => /\bDraft\b/.test(text)),
@@ -276,7 +278,8 @@ try {
     await page.waitForFunction(() => document.getElementById("send-message").textContent.startsWith("1 of 1 sent"), null, { timeout: 10000 });
     await page.waitForTimeout(500);
     const sentMessage = plain(await page.$eval("#send-message", (el) => el.textContent));
-    check(sentMessage === "1 of 1 sent. Copy each message into the chat. Not sent: Priya, Jun Wei (need a check first).", `the retry: "${sentMessage}"`);
+    check(sentMessage === "1 of 1 sent. Not sent: Priya, Jun Wei (need a check first)." && await page.isVisible("#sent-banner"),
+      `the retry: "${sentMessage}", and the banner says to send each buyer their message`);
     check(fake.invoices.size === 7 && !plain(await page.locator(ROWS, { hasText: "Arif" }).innerText()).includes("Error:"), "Arif is sent and his Error: is gone (7 invoices at PayPal)");
     check(fake.calls.filter((c) => c.kind === "send").every((c) => c.body.send_to_recipient === false), "sent without emailing anyone");
     fake.slow("send", 0);
@@ -555,7 +558,7 @@ try {
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-9-reset.png`, fullPage: true });
 
     // ---- After Reset the starter card is back. With reduced motion, Try the demo scrolls but doesn't animate ----
-    check(!(await page.$eval("#starter", (el) => el.hidden)), "the starter card is back on an empty table");
+    check(!(await page.$eval("#try-demo", (el) => el.hidden)), "Try the demo is back on an empty table");
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.evaluate(() => scrollTo(0, 0));
     await page.click("#try-demo");

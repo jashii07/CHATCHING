@@ -44,21 +44,24 @@
   <div class="page">
     <section class="intro">
       <h1>Today's orders</h1>
-      <!-- The 3-step guide (PLAN.md Section 12). A real sequence, so it is numbered. Not buttons, so no blue. -->
+      <!-- The 3-step guide (PLAN.md Section 12). A real sequence, so it is numbered. Each step can be tapped to
+           scroll to its part of the page (user test, 6 Nov); the current one stays the filled charcoal circle. -->
       <ol class="steps" aria-label="Progress">
-        <li data-step="1"><span class="icon-circle"><i data-lucide="clipboard-paste" aria-hidden="true"></i></span><span><small>Step 1</small>Paste chats</span></li>
-        <li data-step="2"><span class="icon-circle"><i data-lucide="list-checks" aria-hidden="true"></i></span><span><small>Step 2</small>Review orders</span></li>
-        <li data-step="3"><span class="icon-circle"><i data-lucide="hand-coins" aria-hidden="true"></i></span><span><small>Step 3</small>Get paid</span></li>
+        <li data-step="1"><button type="button" class="step"><span class="icon-circle"><i data-lucide="clipboard-paste" aria-hidden="true"></i></span><span><small>Step 1</small>Paste chats</span></button></li>
+        <li data-step="2"><button type="button" class="step"><span class="icon-circle"><i data-lucide="list-checks" aria-hidden="true"></i></span><span><small>Step 2</small>Review orders</span></button></li>
+        <li data-step="3"><button type="button" class="step"><span class="icon-circle"><i data-lucide="hand-coins" aria-hidden="true"></i></span><span><small>Step 3</small>Get paid</span></button></li>
       </ol>
       <p id="error" class="error-box" role="alert" hidden></p>
     </section>
 
-    <!-- First minute (user test fix, 6 Nov): only while the table is empty, so the way in is on the first screen.
-         Try the demo does exactly what Load demo does, then points at Read orders. -->
-    <section class="starter" id="starter" aria-label="Get started" hidden>
-      <span class="icon-circle"><i data-lucide="sparkles" aria-hidden="true"></i></span>
-      <p>New here? Try the demo, or paste your chats below.</p>
+    <!-- What to do next (user test, 6 Nov): one short line from the table's state (public/next-step.js), always
+         under the steps. On an empty table it is the first-minute starter card: Try the demo does exactly what
+         Load demo does, then points at Read orders. Otherwise Show me scrolls to the button to use next. -->
+    <section class="starter" id="next-step" aria-label="What to do next">
+      <span class="icon-circle" id="next-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+      <p id="next-text" aria-live="polite">New here? Try the demo, or paste your chats below, then click Read orders.</p>
       <button type="button" id="try-demo"><i data-lucide="play" aria-hidden="true"></i>Try the demo</button>
+      <button type="button" class="ghost" id="next-show" hidden>Show me<i data-lucide="chevron-right" aria-hidden="true"></i></button>
     </section>
 
     <!-- The day at a glance. Expected is the hero: a deep indigo card, like a bank card. -->
@@ -163,6 +166,13 @@
         <!-- Sending invoices: moves only after each buyer's invoice is really done (no timer). -->
         <div class="send-progress" id="send-progress" role="progressbar" aria-label="Invoices sent" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" hidden><span></span></div>
         <p class="hint send-message" id="send-message" role="status"></p>
+        <!-- Right after sending (user test, 6 Nov: the buyer never got their pay link). It goes by itself once every
+             sent buyer has their message (copied here, answered on their page, or paid), or on Got it. -->
+        <div class="sent-banner" id="sent-banner" hidden>
+          <span class="icon-circle small"><i data-lucide="message-square-share" aria-hidden="true"></i></span>
+          <div class="sent-banner-words" role="status"></div>
+          <button type="button" class="ghost small" id="sent-banner-close">Got it</button>
+        </div>
         <p class="hint send-message" id="status-message" role="status"></p>
         <!-- Shown while the Needs check card filters the table. -->
         <p class="filter-note" id="filter-note" role="status" hidden>
@@ -211,7 +221,15 @@
     </div>
     <p class="drawer-error error-box" id="drawer-error" role="alert" hidden></p>
     <div class="drawer-body" id="drawer-body"></div>
-    <p class="hint drawer-foot" id="drawer-foot"></p>
+    <!-- Stays at the bottom of the drawer: changes save as they are made, "Saved" confirms each one, and Done
+         closes it (user test, 6 Nov: my friend wanted a button to confirm). -->
+    <div class="drawer-bottom">
+      <p class="hint drawer-foot" id="drawer-foot"></p>
+      <div class="drawer-actions">
+        <span class="saved-note" id="saved-note" role="status"></span>
+        <button type="button" id="drawer-done">Done</button>
+      </div>
+    </div>
   </aside>
 
   <!-- Pickup scan (Step 10c): a full-screen sheet with the camera. The picture is read on this device by
