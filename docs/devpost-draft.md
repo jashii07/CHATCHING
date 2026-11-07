@@ -24,6 +24,7 @@ In more detail:
 - **The buyer confirms:** the order page shows the buyer what ChatChing understood from their messages: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. One tap says **Looks right**, or **Something's wrong** with a short note. The buyer pays with PayPal's own Pay button on the same page, sees the live status (Not paid, Paid, Collected) and gets their pickup QR once paid. The buyer can never change items, quantities or prices: the seller's table shows "Confirmed by buyer" or the buyer's note in amber, and the seller decides.
 - **Get paid:** the status updates from PayPal (Sent, Paid). The seller can record cash or bank payments in PayPal, so PayPal holds the full record.
 - **Make and hand over:** a Kitchen list shows how many of each item to make per day. At pickup, the seller scans the buyer's PayPal QR on their phone and sees green (paid) or amber (not paid yet).
+- **Your own menu:** **My menu** lets a seller add their own items, prices and the words their buyers use ("pz", "pizzas"). Everything follows it: the AI's list of allowed items, the prices and totals, the invoices and the buyer's page. It locks once invoices are sent, so an invoice always matches its menu. My friend asked for it in the user test: "what if the seller sells other food?"
 - **Always says what's next:** one line under the three steps tells the seller the next action from the table's state (fix the amber rows, send invoices, send each buyer their message, watch for Paid, pickup), with **Show me** to jump to the right button. I added it after a user test: my friend didn't know what to do in which order, or that each buyer needs their message.
 
 ## How we built it
@@ -65,7 +66,6 @@ I am a first-year student. I directed the project and made the decisions; the co
 
 ## What's next for ChatChing
 
-- A menu editor in the app
 - Voice notes as input
 - Chat screenshots as input
 - Daily stock limits ("only 10 boxes on Saturday")
@@ -116,7 +116,8 @@ Each judge gets their own fresh table: nobody else can see or change your orders
 5. Click a buyer, then **Record payment** to record cash. The row shows Paid (cash/bank), and the buyer's page shows Paid and the pickup QR.
 6. Click **Kitchen list** to see what to make per day.
 7. Have a phone with you? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same orders, so you can try **Pickup scan** there on a buyer's QR. The QR works once, for 10 minutes.
-8. Click **Reset demo** at the bottom to start again. It only clears your own table.
+8. Click **Reset demo** at the bottom to start again. It only clears your own table, and brings back the demo bakery menu.
+9. Want to try your own food? Open **My menu**, add your items, then paste chats that use them. For example: add Pizza at 25.00, paste `[06/11 10:00 AM] Amir: 2 pizzas pls` with the chat date 6 Nov, and click **Read orders**: 2 x Pizza, RM 50.00. New chats use one of the day's free AI reads; if the AI is busy or used up, **Read without AI** reads simple orders like this one with no AI call. If invoices were already sent, click **New batch** first: the menu is locked while a batch has invoices.
 
 The free server sleeps after 15 minutes without visitors, and that clears tables. If yours is cleared, the page says so: click **Load demo**, then **Read orders**. Invoices already sent stay safe in PayPal.
 

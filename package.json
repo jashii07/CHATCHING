@@ -1,6 +1,6 @@
 {
   "name": "chatching",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Turn messy chat orders into PayPal invoices",
   "main": "server.js",
   "scripts": {
@@ -15,6 +15,7 @@
     "ui-pair": "node scripts/ui-pair.mjs",
     "ui-order": "node scripts/ui-order.mjs",
     "ui-guide": "node scripts/ui-guide.mjs",
+    "ui-menu": "node scripts/ui-menu.mjs",
     "ui-live": "node scripts/ui-live.mjs",
     "gallery": "node scripts/gallery.mjs"
   },

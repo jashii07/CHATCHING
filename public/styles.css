@@ -1871,6 +1871,32 @@ mark.hl-price-check {
   align-self: flex-start;
 }
 
+/* My menu (7 Nov): one card per item (name, price, other names, Edit + Remove), then the Add card. Names are the
+   seller's own text and can be one long word, so they wrap anywhere instead of pushing the price out. */
+.menu-name,
+.menu-other {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.menu-card .edit-name {
+  min-width: 0;
+}
+
+.menu-card .money {
+  flex: none;
+}
+
+.menu-other {
+  margin: 0;
+}
+
+.menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 /* "Invoice sent: items are locked ...": a quiet hint (not amber: nothing to check), said once above the items. */
 .locked-note {
   margin: 0;
