@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { parseRequest, replyToOrders } from "./ai-prompt.js";
 import { BACKUP_MODEL, GeminiError, MAIN_MODEL, callGemini } from "./gemini.js";
 import { createUsage, resetHourMalaysia } from "./usage.js";
+import { loadDemoMenu, menuHash } from "./menu.js";
 
 const DEMO_REPLY = fileURLToPath(new URL("../data/ai-cache/demo-parse.json", import.meta.url));
 const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
@@ -40,18 +41,21 @@ export const AI_REFUSED = "The AI could not read these chats, so your orders wer
 export const usedUp = (ms) => `Today's free AI reads are used up. Try again after ${resetHourMalaysia(ms)} Malaysia time, or click Load demo.`;
 const NOT_BUILT = { off: "AI reading is switched off on this server (AI_MODE=off), so the chats can only be read without AI." };
 
-// The cache key for one parse: a hash of the Chat date + the chat text. Line endings, blank lines and
-// spaces at the ends of lines don't change it, so the same chats pasted again find the same saved reply.
+// The cache key for one parse: a hash of the Chat date + the chat text + the menu. Line endings, blank lines
+// and spaces at the ends of lines don't change it, so the same chats pasted again find the same saved reply.
 // The Chat date is part of the key: the same chats on another day are another question (PLAN.md Section 6).
-export function parseKey(text, chatDate) {
+// So is the menu (7 Nov, "My menu"): a reply chose item ids from the menu it was given, so a reply saved for
+// the demo menu is never used with a visitor's own menu, and a price or name change means a fresh read.
+export function parseKey(text, chatDate, menu) {
+  if (!menu?.items) throw new TypeError("parseKey needs the menu the chats are read with.");
   const lines = String(text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return createHash("sha256").update(`${chatDate}\n${lines.join("\n")}`).digest("hex");
+  return createHash("sha256").update(`${chatDate}\n${lines.join("\n")}\n${menuHash(menu)}`).digest("hex");
 }
 
-// The saved replies that ship with the app: cache key -> file. Only the demo chats.
-export function demoReplies() {
+// The saved replies that ship with the app: cache key -> file. Only the demo chats, with the demo menu.
+export function demoReplies(menu = loadDemoMenu()) {
   const { chatDate } = JSON.parse(readFileSync(DEMO_ANSWERS, "utf8"));
-  return new Map([[parseKey(readFileSync(DEMO_CHATS, "utf8"), chatDate), DEMO_REPLY]]);
+  return new Map([[parseKey(readFileSync(DEMO_CHATS, "utf8"), chatDate, menu), DEMO_REPLY]]);
 }
 
 // A saved reply -> the AI's orders. A missing or broken file is a clear error, never a silent
@@ -94,7 +98,7 @@ export function createAi({
   const cacheFile = (key) => join(cacheDir, `parse-${key}.json`);
 
   async function realParse({ text, chatDate, menu, onStage, validate }) {
-    const key = parseKey(text, chatDate);
+    const key = parseKey(text, chatDate, menu);
     if (existsSync(cacheFile(key))) return { orders: mockParse(cacheFile(key)), from: "cache" };
     if (!apiKey) return { notice: NO_KEY };
     const usable = models.filter((model) => usage.left(model) > 0);
@@ -160,7 +164,7 @@ export function createAi({
     // validate(orders): the caller's checks, run before a real reply is cached. It throws to refuse the reply.
     async parse({ text, chatDate, menu, onStage = () => {}, validate = () => {} }) {
       if (mode !== "mock" && mode !== "real") return { notice: NOT_BUILT[mode] ?? MOCK_UNKNOWN };
-      const file = replies.get(parseKey(text, chatDate));
+      const file = replies.get(parseKey(text, chatDate, menu));
       if (file) return { orders: mockParse(file), from: "saved" };
       if (mode === "mock") return { notice: MOCK_UNKNOWN };
       return realParse({ text, chatDate, menu, onStage, validate });

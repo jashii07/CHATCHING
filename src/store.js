@@ -5,12 +5,15 @@
 // A "batch" is one read of the chats: its id goes into every invoice number (CHATCHING-{batch}-{nn}).
 // New batch keeps the old batch inside the visitor's file, so invoice links are kept and the cleanup leaves
 // nothing behind.
+// The visitor's own menu ("My menu", 7 Nov) is saved in the same file. No menu saved means the demo bakery menu,
+// so a new visitor starts with it, and Reset demo (or Load demo) brings it back.
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { toRows } from "./orders.js";
 import { splitMessages } from "./dates.js";
 import { mockParse } from "./ai.js";
+import { checkSavedMenu, loadDemoMenu, sameMenu } from "./menu.js";
 
 const DEMO_FILE = new URL("../data/expected-orders.json", import.meta.url);
 const DEMO_CHATS = new URL("../data/demo-chats.txt", import.meta.url);
@@ -36,9 +39,19 @@ export function demoSource() {
   return { text, chatDate, messages: splitMessages(text, chatDate).length };
 }
 
+// A saved menu that fails its checks (a hand-edited or broken file) is dropped, so the visitor gets the demo menu.
+function savedMenu(saved, demoMenu, log) {
+  if (saved === undefined || saved === null) return null;
+  const problems = checkSavedMenu(saved, demoMenu);
+  if (!problems.length) return saved;
+  log(`Warning: a visitor's saved menu has problems (${problems.join(" ")}), so they get the demo menu.`);
+  return null;
+}
+
 // onNewFile: called once, right after this visitor's file is first written (the cleanup runs then).
-export function createStore({ file, log = console.log, onNewFile = () => {} }) {
+export function createStore({ file, log = console.log, onNewFile = () => {}, demoMenu = loadDemoMenu() }) {
   let rows = [];
+  let menu = null; // null = the demo menu
   let source = null;
   let batch = null;
   let batches = []; // this visitor's earlier batches, oldest first: rows + invoice links
@@ -50,6 +63,7 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
       source = saved.source ?? null;
       batch = /^[A-Z0-9]{12}$/.test(saved.batch) ? saved.batch : null;
       batches = Array.isArray(saved.batches) ? saved.batches : [];
+      menu = savedMenu(saved.menu, demoMenu, log);
     } catch (err) {
       log(`Warning: could not read a visitor's saved orders (${err.message}), so their table starts empty.`);
     }
@@ -58,10 +72,10 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
 
   function save() {
     const isNew = !existsSync(file);
-    if (isNew && !rows.length && !batches.length) return;
+    if (isNew && !rows.length && !batches.length && !menu) return;
     // Write to a temporary file first, then rename: a crash mid-write can't leave half a file.
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(`${file}.tmp`, JSON.stringify({ batch, rows, source, batches }, null, 2));
+    writeFileSync(`${file}.tmp`, JSON.stringify({ batch, rows, source, batches, ...(menu && { menu }) }, null, 2));
     renameSync(`${file}.tmp`, file);
     if (isNew) onNewFile();
   }
@@ -85,6 +99,14 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
     batches: () => batches,
     hasInvoices: () => rows.some((row) => row.invoiceId || row.sendUnknown), // a send with no answer may have made one
     find: (id) => rows.find((row) => row.id === id) ?? null,
+    menu: () => menu ?? demoMenu,
+    menuIsDemo: () => menu === null,
+    // The visitor's new menu and the rows it re-priced, saved together. The demo menu again is stored as "none".
+    setMenu(next, newRows = rows) {
+      menu = sameMenu(next, demoMenu) ? null : next;
+      rows = newRows;
+      save();
+    },
     // A page load: the visitor is still here, so the cleanup must not count their table as old.
     touch() {
       if (!existsSync(file)) return;
@@ -125,6 +147,7 @@ export function createStore({ file, log = console.log, onNewFile = () => {} }) {
       if (rows.some((row) => row.invoiceId)) keepBatch();
       // "Start the demo over": what is saved stays saved, but raises no "already has an invoice" check again.
       batches = batches.map((saved) => ({ ...saved, fromReset: true }));
+      menu = null; // the demo bakery menu again
       emptyTable();
     },
   };

@@ -106,7 +106,7 @@ test("main model OK: one batched call, key in a header (never the URL), reply ca
   assert.doesNotMatch(gemini.calls[0].url, /fake-key|key=/);
   assert.ok(gemini.calls[0].body.contents[0].parts[0].text.includes("Zara: 2 jars of cookies"));
   assert.ok(gemini.calls[0].body.generationConfig.responseSchema.properties.orders);
-  assert.equal(readFileSync(join(cacheDir, `parse-${parseKey(CHATS, CHAT_DATE)}.json`), "utf8"), reply()); // byte for byte
+  assert.equal(readFileSync(join(cacheDir, `parse-${parseKey(CHATS, CHAT_DATE, menu)}.json`), "utf8"), reply()); // byte for byte
   assert.ok(logs.every((line) => !line.includes("fake-key")));
   assert.deepEqual(time.timeouts, [60 * S]); // the main model's share of the 90 s
   assert.deepEqual(stages, []); // no "trying the backup"
