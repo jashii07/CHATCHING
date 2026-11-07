@@ -23,13 +23,18 @@ Use the **Sound Recorder** app that comes with Windows 11 (Start menu, type "Sou
 1. In Sound Recorder, pick your microphone (the small menu at the bottom left). A headset mic sounds better than the laptop's own.
 2. Find a quiet room and keep the mic about a hand's width from your mouth.
 3. Record **one file per scene**, reading the words in PLAN.md Section 14. Leave about half a second of silence before you start talking. If you stumble, record that scene again; only the last good take matters.
-4. Sound Recorder saves to `Documents\Sound recordings` as `.m4a`. Rename the files exactly like this:
-   `scene1.m4a`, `scene2.m4a`, … `scene10.m4a`
-5. Put all ten in **`video\public\voice\`**.
+4. Put them in **`video\public\voice\`** as they are. A phone's names work: `scene 1.m4a` … `scene 10.m4a` (`scene1.m4a` too). A scene recorded in two parts is `scene 3.m4a` (part 1) plus a file starting with `scene 3 second part` (part 2).
+5. Run **`npm run voice`**. It never changes your files. It makes the copies the video uses, in `public\voice-ready\scene1.wav` … `scene10.wav`:
+   - silence at the start and end trimmed (anything quieter than -45 dB), keeping 0.2 s on each side; the tap of the phone's record and stop button is left out too
+   - a two-part scene joined: part 1, a 0.3 s pause, part 2
+   - every line made equally loud: -16 LUFS, the usual speech level for online video, with peaks held under -1.5 dBTP so nothing clips (ffmpeg's loudnorm, in up to 3 rounds until each line is within 0.5 LU)
+   - then a report, also saved as `public\voice-ready\report.md`: each line's length against its scene's time in PLAN.md Section 13, the loudness before and after, and anything wrong it can spot (a missing or silent file, clipping, a very quiet recording, a pause over 1.2 s, or a speed in words a second that doesn't fit the line in PLAN.md Section 14)
 
-**How long each line can be.** A scene grows to fit its voice line, so nothing is cut off. But the whole video must stay under 2:55, and the render stops if it won't. As a guide, keep each line about 1 second shorter than its time in PLAN.md Section 13. Scenes 3 and 6 have the most room: their screen recordings are about 29 s and 32 s long.
+Run `npm run voice` again after re-recording any line. Your recordings and the processed copies are git-ignored.
 
-Check the timing any time: `npm run draft` prints every scene's length and the total before it renders.
+**How long each line can be.** A scene grows to fit its voice line (the line starts 0.25 s in, and 0.8 s of quiet follows it), so nothing is cut off. But the whole video must stay under 2:55, and the render stops if it won't. As a guide, keep each line about 1 second shorter than its time in PLAN.md Section 13. Scenes 3 and 6 have the most room: their screen recordings are about 29 s and 32 s long.
+
+Check the timing any time: `node scripts/timeline.mjs` prints every scene's length and the total (with the last recording's clips), and `npm run draft` does the same before it renders.
 
 ## 2. Add your phone clip (scene 8, pickup scan)
 
@@ -51,7 +56,7 @@ npm run final
 
 It does three things in a row:
 
-1. It checks that all ten voice lines and the phone clip are there. If any are missing, it stops before recording anything.
+1. It checks that all ten processed voice lines (`npm run voice`) and the phone clip are there. If any are missing, it stops before recording anything.
 2. It **records the live site again** (about 4 minutes), so the video shows the new design. If Render isn't on the new version yet, it stops.
 3. It renders **`video\out\chatching-final.mp4`** and prints its length.
 
@@ -67,6 +72,7 @@ Options:
 
 | Command | What it does |
 |---|---|
+| `npm run voice` | Trims and evens out your voice lines into `public/voice-ready/`, and reports their lengths and problems |
 | `npm run record` | Records the live site again; the clips go to `public/clips/` |
 | `npm run clips` | Re-cuts the clips from the last recording (no new recording) |
 | `npm run draft` | Renders `out/chatching-draft.mp4` with a DRAFT badge; missing voice lines and the phone clip become silent placeholders |
@@ -81,6 +87,7 @@ Options:
 | `scripts/lib/human.mjs` | Slow, human-like mouse moves, the cursor highlight, the blur on PayPal's login |
 | `scripts/lib/stream.mjs` | Sharp frames straight from Chrome (no browser bars) |
 | `scripts/clips.mjs` | Frames → one 30 fps clip per scene, with the waits cut out |
+| `scripts/voice.mjs` | Your recordings → trimmed, equally loud copies, and the voice report |
 | `scripts/timeline.mjs` | Captions from PLAN.md, voice lengths, scene lengths, the 2:55 check |
 | `src/Demo.jsx` | The video itself (Remotion) |
 

@@ -8,6 +8,7 @@
   "scripts": {
     "record": "node scripts/record.mjs",
     "clips": "node scripts/clips.mjs",
+    "voice": "node scripts/voice.mjs",
     "studio": "node scripts/timeline.mjs && remotion studio src/index.jsx",
     "draft": "node scripts/render.mjs --draft",
     "final": "node scripts/render.mjs",

@@ -41,6 +41,10 @@ export function storyboard() {
 }
 
 const findFile = (dir, base, exts) => exts.map((e) => `${dir}${base}.${e}`).find((f) => existsSync(f));
+// A scene's voice line: the processed copy from npm run voice (public/voice-ready/sceneN.wav: trimmed, equally loud)
+// first, else a file already named sceneN in public/voice/. Jasper's phone originals ("scene 1.m4a") are only read
+// by npm run voice, never used as they are.
+export const findVoice = (n) => findFile(`${PUBLIC}voice-ready/`, `scene${n}`, ["wav"]) ?? findFile(`${PUBLIC}voice/`, `scene${n}`, ["m4a", "mp3", "wav", "M4A"]);
 
 function chats() {
   return readFileSync(new URL("data/demo-chats.txt", ROOT), "utf8").trim().split(/\r?\n/).map((line) => {
@@ -96,11 +100,11 @@ export function buildTimeline({ draft = true, freshCheck = false } = {}) {
   const missing = { voice: [], clips: [], phone: !phone };
 
   const scenes = board.map((b) => {
-    const voiceFile = findFile(`${PUBLIC}voice/`, `scene${b.n}`, ["m4a", "mp3", "wav", "M4A"]);
+    const voiceFile = findVoice(b.n);
     const voiceSeconds = voiceFile ? mediaSeconds(voiceFile) : null;
     if (!voiceFile) missing.voice.push(b.n);
     const voiceNeeds = voiceSeconds ? VOICE_DELAY + voiceSeconds + VOICE_PAD : 0;
-    const scene = { n: b.n, caption: b.caption, planned: b.planned, voice: voiceFile ? `voice/${voiceFile.split("/").pop()}` : null, voiceSeconds, voiceDelay: VOICE_DELAY };
+    const scene = { n: b.n, caption: b.caption, planned: b.planned, voice: voiceFile ? voiceFile.slice(PUBLIC.length) : null, voiceSeconds, voiceDelay: VOICE_DELAY };
     if (CLIP_SCENES.includes(b.n)) {
       const clip = manifest?.scenes?.[b.n];
       if (!clip) missing.clips.push(b.n);
