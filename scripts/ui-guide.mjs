@@ -37,6 +37,8 @@ const check = (ok, label) => {
   if (!ok) failed++;
 };
 const plain = (text) => text.replace(/\s+/g, " ").trim();
+// Closed: the drawer slides out (200 ms, 8 Nov polish) and is hidden once the slide is over.
+const drawerClosed = (page) => page.waitForSelector("#drawer", { state: "hidden", timeout: 2000 }).then(() => true, () => false);
 
 async function startServer() {
   const visitorsDir = mkdtempSync(join(tmpdir(), "chatching-ui-guide-"));
@@ -201,7 +203,7 @@ try {
     await page.waitForFunction(() => document.getElementById("saved-note").textContent.includes("Saved"), null, { timeout: 5000 }).catch(() => {});
     await page.click("#drawer-done");
     await page.waitForTimeout(300);
-    check(await page.$eval("#drawer", (el) => el.hidden), "Done closes the drawer");
+    check(await drawerClosed(page), "Done closes the drawer");
     await lina.locator(".chips").click();
     await page.waitForSelector("#drawer.is-open");
     check(plain(await page.$eval("#saved-note", (el) => el.textContent)) === "", "opened again: no old Saved note");

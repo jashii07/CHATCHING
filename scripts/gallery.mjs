@@ -55,7 +55,7 @@ try {
   await page.waitForTimeout(300);
   await page.locator(ROWS, { hasText: "Priya" }).locator('.copy-text[data-kind="question"]').click();
   await page.click(".panel.orders .panel-head h2"); // moves focus out of the table: no focus box on Priya's cell
-  await frameAt("#chat-bar"); // both check rows whole, and the developer footer ("AI mode: mock") stays out of view
+  await frameAt("#chat-bar"); // both check rows whole, and the footer stays out of view
   await shot("2-check-row-copy-question");
   await page.click("#stat-check");
 

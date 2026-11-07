@@ -3,7 +3,7 @@
 ChatChing turns a day of messy chat orders into a clean order list and one PayPal invoice per buyer. It is built for small home sellers (cakes, kuih, frozen food) who take their orders in chats.
 
 **Live app: https://chatching.onrender.com/**
-The first load can take up to a minute while the free server wakes up.
+The first load can take up to a minute while the free server wakes up: the page says "Waking up the server..." and keeps trying by itself.
 
 ## Try it in 1 minute
 
@@ -39,7 +39,7 @@ To pay: open a buyer's order page (the link in **Copy message**) and click **Pay
 3. **Review:** the orders appear in a table. The code fills in prices from the menu. Clicking a buyer shows their own messages, highlighted, and lets the seller fix the order.
 4. **Invoice (no AI):** one click creates and sends one PayPal invoice per buyer. Each buyer gets a ready-to-send message to paste into the chat, with a link to their own private order page.
 5. **Confirm (the buyer):** the order page shows the buyer what ChatChing understood: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. They tap **Looks right** or **Something's wrong** (with an optional note of up to 200 characters), pay with PayPal's own Pay button, and see the live status (Not paid, Paid, Collected) and their pickup QR once paid. The buyer can never change items, quantities or prices. The seller's table shows "Confirmed by buyer", or the buyer's note in amber; a note never changes the money, the seller decides.
-6. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
+6. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup. When a buyer pays, their row flashes green, the Paid card counts up and a soft "cha-ching" plays: two short notes made in code with the Web Audio API (no sound file), only after the seller has clicked something on the page, with a mute button on the Paid card that this browser remembers. With "reduce motion" turned on in the device's settings, nothing moves and nothing plays; the numbers just change.
 
 **My menu:** each seller (each browser) has their own menu, starting with the demo bakery's 5 items. **My menu** adds, changes and removes items: a name (up to 60 characters), a price (more than 0, at most 10,000.00, at most 2 decimals) and up to 10 "other names", the words buyers use in chats ("pz", "pepperoni"); simple plurals like "pizzas" are matched by themselves. 1 to 50 items. Everything follows the seller's own menu: the AI's prompt and its list of allowed items, the checks, the prices and totals, Read without AI, the Kitchen list, the Copy texts, the invoices and the buyer's page. Once this batch has a sent invoice the menu is locked ("Start a New batch to change your menu"), so an invoice always matches the menu it was made from; the server refuses changes too, not only the page. **Load demo** and **Reset demo** bring back the demo bakery menu, asking first if the seller changed it.
 

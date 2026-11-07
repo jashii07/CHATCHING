@@ -91,7 +91,7 @@ function hideError(box = "error") {
 // "cake-slice" or "CakeSlice" -> a Lucide icon as an <svg>, or nothing if it doesn't exist or the
 // icon library didn't load (the words always show anyway).
 function icon(name) {
-  const pascal = String(name ?? "").replace(/(^|-)([a-z])/g, (m, dash, ch) => ch.toUpperCase());
+  const pascal = String(name ?? "").replace(/(^|-)([a-z0-9])/g, (m, dash, ch) => ch.toUpperCase()); // "volume-2" -> "Volume2"
   const node = window.lucide?.icons?.[pascal];
   if (!node) return document.createTextNode("");
   const svg = window.lucide.createElement(node);
@@ -231,16 +231,21 @@ const STATUS_ICONS = {
   "Paid (cash/bank)": "banknote", "Cancelled/Refunded": "circle-x", Cancelled: "circle-x", Collected: "package-check",
 };
 
-function statusTag(label) {
-  const tag = el("span", `badge badge-${String(label).toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "")}`);
+function statusTag(label, pop = false) {
+  const tag = el("span", `badge badge-${String(label).toLowerCase().replace(/[^a-z]+/g, "-").replace(/-$/, "")}${pop ? " is-new-paid" : ""}`);
   tag.append(icon(STATUS_ICONS[label] ?? "circle"), label);
   return tag;
 }
 
+// Buyers who just turned Paid: for a moment their tag is drawn with the pop (styles.css, paid-pop). A time window,
+// not a one-off flag, because AG Grid may draw the row a frame later.
+let justPaid = { keys: new Set(), until: 0 };
+const popsNow = (key) => justPaid.keys.has(key) && Date.now() < justPaid.until;
+
 // PayPal's status, plus our own Collected badge once the order was picked up (Step 10c).
 function statusTags(data) {
   const tags = el("span", "status-tags");
-  tags.append(statusTag(data.status));
+  tags.append(statusTag(data.status, popsNow(data.key)));
   if (data.collected) tags.append(statusTag("Collected"));
   return tags;
 }
@@ -333,16 +338,16 @@ function columns(size) {
       valueGetter: (p) => (p.node.rowPinned ? ordersText(p.data.orders) : itemsText(p.data)),
     },
     {
-      colId: "date", headerName: "Date", minWidth: 130, flex: 0.8, wrapText: true, hide: !wide,
+      colId: "date", headerName: "Date", minWidth: 118, flex: 0.8, wrapText: true, hide: !wide,
       valueGetter: (p) => (p.node.rowPinned ? "" : datesText(p.data)),
     },
     {
-      colId: "total", headerName: "Total", type: "rightAligned", minWidth: 140, flex: 0.8, hide: isPhone,
+      colId: "total", headerName: "Total", type: "rightAligned", minWidth: wide ? 140 : 128, flex: 0.8, hide: isPhone,
       cellClass: ["money", "ag-right-aligned-cell"],
       valueGetter: (p) => (p.data.total == null ? "—" : formatMoney(p.data.total)),
     },
     {
-      colId: "status", headerName: "Status", minWidth: wide ? 156 : 128, flex: 0.9, hide: isPhone,
+      colId: "status", headerName: "Status", minWidth: wide ? 168 : 140, flex: 0.9, hide: isPhone,
       valueGetter: (p) => (p.node.rowPinned ? "" : p.data.collected ? `${p.data.status}, collected` : p.data.status),
       cellRenderer: (p) => (p.node.rowPinned ? "" : statusTags(p.data)),
     },
@@ -384,8 +389,10 @@ let themes = null;
 // Which columns fit is decided by the TABLE's own width, not the screen's: with the chat box open on a laptop
 // the table is much narrower (814 px at 1280). Phones always get cards; a table narrower than IPAD_MIN gets
 // the cards too, so no column is ever pushed out of sight.
-const LAPTOP_MIN = 200 + 220 + 130 + 140 + 156 + 64; // 910: buyer, items, date, total, status, arrow
-const IPAD_MIN = 170 + 200 + 140 + 128 + 48; // 686: no Date column; tag icons hidden (styles.css)
+// Status got 12 px from Date (laptop) and from Total (iPad) on 8 Nov, so "(cash/bank)" fits on one line of its tag
+// (it broke as "(cash/ban" + "k)" at 820 px); the minimums add up to the same 910 and 686.
+const LAPTOP_MIN = 200 + 220 + 118 + 140 + 168 + 64; // 910: buyer, items, date, total, status, arrow
+const IPAD_MIN = 170 + 200 + 128 + 140 + 48; // 686: no Date column; tag icons hidden (styles.css)
 let layout = null; // "phone", "cards", "ipad" or "laptop"
 function chooseLayout() {
   if (phone.matches) return "phone";
@@ -438,10 +445,32 @@ function showPager() {
   $("page-next").disabled = page >= pages - 1;
 }
 
+// The Paid figure counts up to its new value when money arrives (8 Nov polish): 300 ms, quick at first, soft at the
+// end. Only the shown digits move: the last frame is the server's own figure. Reduced motion: it just changes.
+const COUNT_MS = 300;
+let countRun = 0; // goes up on every new figure, so a count still running stops
+function countUp(node, from, to) {
+  const run = ++countRun;
+  const [start, end] = [Math.round(Number(from) * 100), Math.round(Number(to) * 100)]; // sen, for the in-between frames only
+  let began = null; // the clock starts at the first frame, after the table has redrawn, so the whole count is seen
+  const frame = (now) => {
+    if (run !== countRun || !node.isConnected) return;
+    began ??= now;
+    const t = Math.min(1, (now - began) / COUNT_MS);
+    const eased = 1 - (1 - t) ** 3;
+    node.textContent = t < 1 ? formatMoney(((start + (end - start) * eased) / 100).toFixed(2)) : formatMoney(to);
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  node.textContent = formatMoney(from);
+  requestAnimationFrame(frame);
+}
+
 // The four summary cards. Figures come from the server; Expected is the hero.
 // The cards turn amber when an order needs checking and green when money has arrived.
-function showSummary() {
+// countFrom: the Paid figure shown before, in this same table: a higher new figure counts up from it.
+function showSummary({ countFrom = null } = {}) {
   if (!summary) return;
+  countRun++; // the figure set below is the newest: no older count may write over it
   const set = (id, figure, caption, state) => {
     const card = $(id);
     const el = card.querySelector("[data-figure]");
@@ -454,6 +483,9 @@ function showSummary() {
   set("stat-expected", formatMoney(summary.expected), summary.ready ? `From ${plural(summary.ready, "order")} ready to invoice` : "No orders ready yet");
   set("stat-orders", String(summary.orders), summary.orders ? "One per buyer" : "Paste chats to start");
   set("stat-paid", formatMoney(summary.paid), summary.paidOrders ? `From ${plural(summary.paidOrders, "order")}` : "Nothing paid yet", summary.paidOrders ? "is-paid" : "");
+  if (countFrom != null && !reducedMotion.matches && Number(summary.paid) > Number(countFrom)) {
+    countUp($("stat-paid").querySelector("[data-figure]"), countFrom, summary.paid);
+  }
   set("stat-check", String(summary.needsCheck), summary.needsCheck ? `${plural(summary.needsCheck, "order")} to fix` : "All clear", summary.needsCheck ? "is-check" : "");
   // Nothing left to check: the filter switches itself off, so the table never sits empty.
   if (!summary.needsCheck && onlyNeedsCheck) setNeedsCheckFilter(false);
@@ -503,21 +535,6 @@ async function exportCsv() {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-// Setup details for the developer and judges, in the quiet footer (not in the seller's way).
-// Rows read without AI say so here too, for that batch (Step 10).
-let setup = null; // the setup facts from /api/state
-function showSetup() {
-  if (!setup) return;
-  const state = setup;
-  const items = [
-    `Menu: ${menuItems.length} items in ${currency}${menuIsDemo ? "" : " (yours)"}`,
-    `AI mode: ${source?.reader === "fallback" ? "read without AI" : state.aiMode}`,
-    `PayPal keys: ${state.paypalConfigured ? "set" : "missing"}`,
-    `Gemini key: ${state.geminiConfigured ? "set" : "missing"}`,
-  ];
-  $("setup").replaceChildren(...items.map((text) => el("li", "", text)));
-}
-
 // ---- What to do next (user test, 6 Nov): the line under the steps, Show me, and the banner after sending ----
 
 const nextStepCode = import("./next-step.js"); // the rules, shared with test/next-step.test.js
@@ -552,6 +569,7 @@ async function showNext() {
   const { nextStep, waitingForMessage } = await nextStepCode;
   const buyers = buyerRows();
   next = nextStep(buyers, did);
+  $("next-step").hidden = false; // after a failed first load, the table arrived after all
   if ($("next-text").textContent !== next.text) $("next-text").textContent = next.text; // read out only when it changes
   if ($("next-step").dataset.next !== next.key) {
     $("next-step").dataset.next = next.key;
@@ -1024,15 +1042,51 @@ function openDrawer(id) {
   renderPanel();
   loadPanel(id);
   showDrawer();
-  ($("drawer-body").querySelector("select:not(:disabled), input:not(:disabled)") ?? $("drawer-close")).focus();
+  ($("drawer-body").querySelector("select:not(:disabled), input:not(:disabled)") ?? $("drawer-close")).focus({ preventScroll: true }); // still sliding in
+}
+
+// The drawer slides in (280 ms) and back out (200 ms, styles.css). While it slides out it is already inert: the
+// keyboard and screen readers are back on the page at once; it is hidden for good when the slide is over.
+const DRAWER_OUT_MS = 200;
+let drawerHideTimer = null;
+
+// The page under the drawer or the scan sheet stops scrolling. The scrollbar's width (Windows) is kept as padding
+// (styles.css), so the table behind doesn't jump sideways when the scrollbar goes and comes back.
+function lockPage() {
+  if (!document.body.classList.contains("drawer-open")) {
+    document.body.style.setProperty("--scrollbar-width", `${innerWidth - document.documentElement.clientWidth}px`);
+  }
+  document.body.classList.add("drawer-open");
 }
 
 function showDrawer() {
   savedNote(""); // a "Saved" belongs to the changes made since the drawer opened
+  clearTimeout(drawerHideTimer); // opened again while sliding out: it turns round
+  const drawer = $("drawer");
+  drawer.inert = false;
   $("scrim").hidden = false;
-  $("drawer").hidden = false;
-  document.body.classList.add("drawer-open");
-  requestAnimationFrame(() => $("drawer").classList.add("is-open"));
+  drawer.hidden = false;
+  lockPage();
+  void drawer.offsetWidth; // the closed position is drawn first, so the slide-in always runs
+  drawer.classList.add("is-open");
+  $("scrim").classList.add("is-open");
+}
+
+function hideDrawerBox() {
+  const drawer = $("drawer");
+  drawer.classList.remove("is-open");
+  $("scrim").classList.remove("is-open");
+  document.body.classList.remove("drawer-open");
+  clearTimeout(drawerHideTimer);
+  if (drawer.hidden) return;
+  const hide = () => {
+    drawer.hidden = true;
+    $("scrim").hidden = true;
+    drawer.inert = false;
+  };
+  if (reducedMotion.matches) return hide();
+  drawer.inert = true;
+  drawerHideTimer = setTimeout(hide, DRAWER_OUT_MS);
 }
 
 // ---- The kitchen list (Step 10b): per date, how many of each item to make. The server counts. ----
@@ -1085,7 +1139,7 @@ function openKitchen() {
   hideError("drawer-error");
   renderDrawer();
   showDrawer();
-  ($("copy-kitchen").disabled ? $("drawer-close") : $("copy-kitchen")).focus();
+  ($("copy-kitchen").disabled ? $("drawer-close") : $("copy-kitchen")).focus({ preventScroll: true });
 }
 
 // ---- Open on my phone: a one-time QR, so a phone opens this same table (src/pairing.js) ----
@@ -1151,7 +1205,7 @@ function openPairing() {
   returnFocus = document.activeElement;
   hideError("drawer-error");
   showDrawer();
-  $("drawer-close").focus();
+  $("drawer-close").focus({ preventScroll: true });
   newPairLink();
 }
 
@@ -1264,7 +1318,7 @@ function openMenu() {
   hideError("drawer-error");
   renderDrawer();
   showDrawer();
-  ($("drawer-body").querySelector("button:not(:disabled)") ?? $("drawer-close")).focus();
+  ($("drawer-body").querySelector("button:not(:disabled)") ?? $("drawer-close")).focus({ preventScroll: true });
 }
 
 // One menu change -> the server, whose reply is the whole table (rows re-priced from the new menu).
@@ -1341,10 +1395,7 @@ function closeDrawer() {
   editDraft = null;
   pairRun++;
   clearTimeout(pairTimer);
-  $("drawer").classList.remove("is-open");
-  $("drawer").hidden = true;
-  $("scrim").hidden = true;
-  document.body.classList.remove("drawer-open");
+  hideDrawerBox();
   if (returnFocus?.isConnected) returnFocus.focus();
 }
 
@@ -1482,8 +1533,32 @@ function createOrdersGrid() {
   return api;
 }
 
+// A buyer whose money arrived (PayPal, or cash/bank recorded by the seller).
+const isPaid = (data) => !data.cancelled && String(data.status).startsWith("Paid");
+
+// After Read orders the new rows and the summary figures come in gently (styles.css, enter-up), once.
+let enterTimer = null;
+function enterGently() {
+  if (reducedMotion.matches) return;
+  const parts = [$("grid"), document.querySelector(".summary")];
+  for (const part of parts) {
+    part.classList.remove("is-entering");
+    void part.offsetWidth; // a second read in a row starts it again
+    part.classList.add("is-entering");
+  }
+  clearTimeout(enterTimer);
+  enterTimer = setTimeout(() => parts.forEach((part) => part.classList.remove("is-entering")), 700);
+}
+
 // The rows, totals, cards and chats, from /api/state or from a new parse (same shape).
-function showOrders(state) {
+// reveal: this is a fresh read (Read orders), so the rows come in gently.
+// Every way a payment reaches the page comes through here (the 20-second check, Refresh status, Record payment,
+// the pickup scan, another device's change seen when the tab comes back): a buyer who was not Paid in THIS
+// table and is now gets the moment: their tag pops, their row flashes green, the Paid card counts up, cha-ching.
+function showOrders(state, { reveal = false } = {}) {
+  const sameTable = batch != null && state.batch === batch;
+  const paidBefore = sameTable ? new Set(buyerRows().filter(isPaid).map((data) => data.key)) : null;
+  const paidFrom = sameTable ? summary?.paid ?? null : null;
   if (state.menu) {
     currency = state.menu.currency;
     menuItems = state.menu.items;
@@ -1499,9 +1574,11 @@ function showOrders(state) {
   texts = textMap(state.texts);
   rowsById = new Map(state.orders.map((row) => [row.id, row]));
   loadDid(); // what was already copied for this batch (another batch starts with nothing)
+  const newlyPaid = paidBefore ? buyerRows().filter((data) => isPaid(data) && !paidBefore.has(data.key)) : [];
+  if (newlyPaid.length) justPaid = { keys: new Set(newlyPaid.map((data) => data.key)), until: Date.now() + 600 };
   $("fallback-note").hidden = source?.reader !== "fallback" || !state.orders.length;
-  showSetup();
-  showSummary();
+  if (reveal) enterGently();
+  showSummary({ countFrom: paidFrom });
   showSource();
   foldChats(Boolean(source && state.orders.length));
   showStep(state.orders);
@@ -1512,20 +1589,57 @@ function showOrders(state) {
   showSendButtons();
   showNext();
   if (openGroupId || kitchenOpen || menuOpen) renderDrawer();
+  if (newlyPaid.length) {
+    flashPaid(newlyPaid);
+    chaChing();
+  }
+}
+
+// The free host (Render) sleeps when nobody uses it, and answers 502/503/504 (or not at all) for a moment while it
+// wakes up or a new version starts. The page's first request then waits and tries again by itself, about 30 s in
+// all, and the next-step card says so (8 Nov polish). Until a load works, nothing can be sent: the Send buttons
+// start disabled (index.html) and the AI counter stays hidden, so no "..." is left on screen.
+const WAKE_WAITS_MS = [2000, 3000, 5000, 8000, 12000];
+const WAKING_WORDS = "Waking up the server... It sleeps when nobody is using it, so this can take up to a minute.";
+const busyReply = (res) => !res || [502, 503, 504].includes(res.status);
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function showWaking(words) {
+  $("next-step").hidden = false;
+  $("next-step").dataset.next = "waking";
+  $("next-icon").replaceChildren(icon("hourglass"));
+  $("next-text").textContent = words;
+  $("try-demo").hidden = true;
+  $("next-show").hidden = true;
+}
+
+function showLoadFailed(reason) {
+  $("next-step").hidden = true; // its buttons would need the server too
+  showError(`Can't reach the server${reason ? ` (${reason})` : ""}. Please wait a minute, then reload the page. Running ChatChing yourself? Check that npm start is running.`);
 }
 
 async function loadState() {
+  let res = null;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch("/api/state");
+    } catch {
+      res = null; // no answer at all: asleep, starting, or offline
+    }
+    if (!busyReply(res)) break;
+    if (attempt >= WAKE_WAITS_MS.length) return showLoadFailed(res ? `HTTP ${res.status}` : "no answer");
+    showWaking(WAKING_WORDS);
+    await pause(WAKE_WAITS_MS[attempt]);
+  }
   try {
-    const res = await fetch("/api/state");
     const state = await res.json();
     if (!res.ok) throw new Error(state.error ?? `HTTP ${res.status}`);
     paypalReady = state.paypalConfigured;
-    setup = state;
     showCallsLeft(state.aiCallsLeft);
     showOrders(state);
     if (hasOpenInvoices()) startPolling();
   } catch (err) {
-    showError(`Can't reach the server (${err.message}). Is npm start running?`);
+    showLoadFailed(err.message);
   }
 }
 
@@ -1616,7 +1730,6 @@ async function refreshStatus({ byHand }) {
     if (reply.notice) return ($("status-message").textContent = reply.notice); // e.g. too many checks: friendly words, polling goes on
     if (reply.batch !== batch) return showServerTable(reply);
     if (reply.changed.length || tableChanged(reply.orders)) showOrders(reply);
-    if (reply.changed.length) flashPaid(reply.changed);
     const paid = reply.changed.filter((c) => c.to.startsWith("Paid")).map((c) => c.buyer);
     $("status-message").textContent = [
       paid.length ? `Paid: ${paid.join(", ")}.` : "",
@@ -1640,14 +1753,83 @@ async function refreshStatus({ byHand }) {
 
 // The Paid flash: when a buyer turns Paid, their status cell (the whole card on phones) flashes the
 // green tint once. AG Grid's flashCells (Community). Nothing flashes when reduced motion is on.
-function flashPaid(changed) {
+// buyers: the buyers who just turned Paid (from showOrders).
+function flashPaid(buyers) {
   if (!grid || reducedMotion.matches) return;
-  const paid = new Set(changed.filter((c) => c.to.startsWith("Paid")).map((c) => c.buyer.trim().toLowerCase()));
+  const paid = new Set(buyers.map((data) => data.key));
   const rowNodes = [];
   grid.forEachNode((node) => {
     if (paid.has(String(node.data?.buyer ?? "").trim().toLowerCase())) rowNodes.push(node);
   });
   if (rowNodes.length) grid.flashCells({ rowNodes, columns: [cardLayout() ? "card" : "status"], flashDuration: 1200, fadeDuration: 1000 });
+}
+
+// ---- The cha-ching (8 Nov polish): a soft coin sound when a buyer turns Paid ----
+// Made right here with the Web Audio API (two short bell-like notes), so there is no sound file and no copyright.
+// Browsers block sound until the person has used the page, so it plays only after a click or key press here.
+// Never with reduced motion (Jasper: no sound or count-up then) and never when muted. Mute is remembered in this
+// browser only (localStorage); when that is blocked, the sound simply starts on.
+const SOUND_KEY = "chatching-sound";
+let soundOn = true;
+try {
+  soundOn = localStorage.getItem(SOUND_KEY) !== "off";
+} catch {}
+let pageUsed = false; // a click, tap or key press on this page: browsers allow sound from then on
+let audio = null; // one AudioContext, made at the first sound
+let audioRest = null;
+for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, () => (pageUsed = true), { capture: true, passive: true });
+// iPhones show a button's pressed look (:active) only when the page listens for touches: this empty listener is the
+// standard switch for that, so buttons press in on a phone as they do with a mouse.
+document.addEventListener("touchstart", () => {}, { passive: true });
+
+function chaChing({ preview = false } = {}) {
+  if (!soundOn || !pageUsed || reducedMotion.matches || !window.AudioContext) return;
+  try {
+    audio ??= new AudioContext();
+    audio.resume().catch(() => {});
+    const out = audio.createGain();
+    out.gain.value = preview ? 0.12 : 0.16; // soft: well under a notification sound
+    out.connect(audio.destination);
+    const start = audio.currentTime + 0.02;
+    // Each note is a small bell: the main tone plus two quieter overtones that fade faster.
+    const note = (at, freq) => {
+      for (const [ratio, level, fade] of [[1, 1, 0.5], [2.76, 0.25, 0.18], [5.4, 0.08, 0.08]]) {
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        osc.frequency.value = freq * ratio;
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(level, at + 0.005); // 5 ms in: no click
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + fade);
+        osc.connect(gain).connect(out);
+        osc.start(at);
+        osc.stop(at + fade + 0.05);
+      }
+    };
+    note(start, 1318.5); // E6
+    note(start + 0.09, 1975.5); // then B6, a fifth above: "cha-ching"
+    clearTimeout(audioRest);
+    audioRest = setTimeout(() => audio?.suspend().catch(() => {}), 1500); // the sound device rests between payments
+  } catch {
+    // No sound is never an error: the page carries on.
+  }
+}
+
+// The mute toggle in the Paid card's corner. Hidden with reduced motion: there is no sound to mute then.
+function showSoundToggle() {
+  const button = $("sound-toggle");
+  button.hidden = reducedMotion.matches || !window.AudioContext;
+  button.setAttribute("aria-pressed", String(soundOn));
+  button.title = soundOn ? "Payment sound is on. Click to mute it." : "Payment sound is off. Click to turn it on.";
+  button.replaceChildren(icon(soundOn ? "volume-2" : "volume-x"));
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  try {
+    localStorage.setItem(SOUND_KEY, soundOn ? "on" : "off");
+  } catch {}
+  showSoundToggle();
+  if (soundOn) chaChing({ preview: true }); // so the seller hears what it sounds like
 }
 
 // ---- Record a cash / bank-transfer payment (in the drawer) ----
@@ -1695,7 +1877,6 @@ async function recordPayment(button) {
     if (reply.failed) throw new Error(reply.failed);
     closeDrawer(); // so the flash is seen, also on phones (full-screen drawer)
     showOrders(reply);
-    flashPaid([{ buyer: data.buyer, to: "Paid (cash/bank)" }]);
     $("status-message").textContent = `Recorded: ${data.buyer} paid ${formatMoney(reply.recorded.amount)} by ${how}.`;
   } catch (err) {
     showError(`The payment was not recorded (${err.message}).`, "drawer-error");
@@ -1833,7 +2014,7 @@ async function openScan() {
   $("scan-input").value = "";
   $("scan-result").hidden = true;
   $("scan-sheet").hidden = false;
-  document.body.classList.add("drawer-open");
+  lockPage();
   $("scan-close").focus();
   await startCamera();
 }
@@ -1909,7 +2090,6 @@ function showScanResult(reply) {
 function showPickupTable(reply) {
   if (reply.batch !== batch) return showServerTable(reply);
   showOrders(reply);
-  if (reply.changed?.length) flashPaid(reply.changed);
 }
 
 async function checkPickup(ref) {
@@ -1973,7 +2153,6 @@ async function scanRecordCash(button) {
     if (reply.notice) return showScanBox("is-check", reply.notice);
     if (reply.failed) throw new Error(reply.failed);
     showOrders(reply);
-    flashPaid([{ buyer, to: "Paid (cash/bank)" }]);
     await checkPickup(invoiceId);
   } catch (err) {
     showScanBox("is-check", `The payment was not recorded (${err.message}).`);
@@ -2020,8 +2199,11 @@ let reading = false; // one parse at a time: the button is disabled while the se
 const STAGE_WORDS = { reading: "Reading the chats... Long chats can take up to a minute.", backup: "The AI is busy, trying the backup..." };
 
 // "AI calls left today: 37" in the top bar (the server's daily counter, src/usage.js).
+// Shown only once the server has said how many (8 Nov polish): never a "..." placeholder.
 function showCallsLeft(left) {
-  $("ai-calls-text").textContent = `AI calls left today: ${left ?? "…"}`;
+  if (left == null) return;
+  $("ai-calls-text").textContent = `AI calls left today: ${left}`;
+  $("ai-calls").hidden = false;
 }
 
 // While the server reads, ask it once a second which step it is on (no timer guessing: the words change
@@ -2136,8 +2318,10 @@ async function readOrders({ withoutAi = false } = {}) {
       say(reply.notice);
       without.hidden = !reply.readWithoutAi;
     } else {
+      clearInterval(poll);
+      await stopReadingCard(); // the loading card goes first, then the new rows come in gently (8 Nov polish)
       say("");
-      showOrders(reply);
+      showOrders(reply, { reveal: true });
       $("chat-edit").focus(); // the chat box folded away: keep keyboard focus on the slim bar
     }
   } catch (err) {
@@ -2145,7 +2329,7 @@ async function readOrders({ withoutAi = false } = {}) {
     showError(`The orders could not be read (${err.message}).`);
   } finally {
     clearInterval(poll);
-    await stopReadingCard(); // the new rows are already in the table under it
+    await stopReadingCard(); // already gone after a read; after a notice or an error it goes here
     reading = false;
     button.disabled = false;
     button.removeAttribute("aria-busy");
@@ -2408,6 +2592,8 @@ $("chat-hide").addEventListener("click", () => {
   $("chat-edit").focus();
 });
 $("stat-check").addEventListener("click", () => setNeedsCheckFilter(!onlyNeedsCheck));
+$("sound-toggle").addEventListener("click", toggleSound);
+reducedMotion.addEventListener("change", showSoundToggle);
 $("filter-clear").addEventListener("click", () => {
   setNeedsCheckFilter(false);
   $("stat-check").focus();
@@ -2469,5 +2655,6 @@ new ResizeObserver(() => requestAnimationFrame(() => {
 if (window.lucide) window.lucide.createIcons({ icons: window.lucide.icons });
 else console.info("Lucide icons did not load; the page works without them.");
 showStep([]);
+showSoundToggle();
 grid = createOrdersGrid();
 loadState();

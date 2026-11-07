@@ -242,8 +242,7 @@ try {
     check(lina.includes("Check: read without AI, this buyer changed their order."), `Lina says why: "${lina}"`);
     const cardsText = plain(await page.$eval(".summary", (el) => el.innerText));
     check(cardsText.includes("Expected RM 72.00") && cardsText.includes("Needs check 9"), `summary: RM 72.00 ready, 9 to check: "${cardsText}"`);
-    const footer = plain(await page.$eval("#setup", (el) => el.innerText));
-    check(footer.includes("AI mode: read without AI"), `footer: "${footer}"`);
+    check(!(await page.$eval("#fallback-note", (el) => el.hidden)), "the note above the table says the rows were read without AI");
     check(gemini.models.length === 3, "Read without AI made no AI call");
     check(!(await page.isVisible("#read-without-ai")) && (await readMessage(page)) === "", "the button and the notice are gone");
     await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-5-without-ai.png`, fullPage: true });
@@ -251,8 +250,7 @@ try {
     await page.reload();
     await page.waitForSelector(ROWS);
     await page.waitForTimeout(400);
-    check(!(await page.$eval("#fallback-note", (el) => el.hidden)) && plain(await page.$eval("#setup", (el) => el.innerText)).includes("AI mode: read without AI"),
-      "after a reload: still the banner and the footer note");
+    check(!(await page.$eval("#fallback-note", (el) => el.hidden)), "after a reload: still the note above the table");
     await page.click("#chat-edit");
 
     await page.click("#load-demo");
@@ -270,8 +268,7 @@ try {
     check((await readMessage(page)) === "" && (await page.$$(ROWS)).length > 0, "at 0, Load demo + Read orders still fills the table (saved reply)");
     check(!(await page.evaluate(() => window.cardSeen)), "a quick read never flashes the loading card");
     check(gemini.models.length === 3, "still no new call");
-    check(await page.$eval("#fallback-note", (el) => el.hidden) && plain(await page.$eval("#setup", (el) => el.innerText)).includes("AI mode: real"),
-      "an AI read again: no banner, the footer says AI mode: real");
+    check(await page.$eval("#fallback-note", (el) => el.hidden), "an AI read again: no read-without-AI note");
 
     check(errors.length === 0, `no console errors or warnings${errors.length ? `: ${errors.join(" | ")}` : ""}`);
     await page.close();

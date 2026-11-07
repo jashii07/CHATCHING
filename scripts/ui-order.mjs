@@ -29,6 +29,7 @@ const WIDTHS = [
 const ROWS = ".ag-grid-scrolling-container > .ag-row";
 const XSS = `<img src=x onerror="window.__xss=1"><b>2</b> cheesecakes pls`;
 const BLUE = "rgb(58, 91, 199)";
+const PALE = "rgb(238, 241, 250)"; // the pale (ghost) button tint
 const GREEN = "rgb(220, 242, 227)";
 const AMBER = "rgb(252, 239, 214)";
 
@@ -111,8 +112,14 @@ try {
     check((await words(lina, "#order-when")) === "Delivery, Sat 31 Oct", `day and delivery: "${await words(lina, "#order-when")}"`);
     check((await words(lina, "#order-status")) === "Not paid", `status: "${await words(lina, "#order-status")}"`);
     const pay = await lina.$eval("#pay-link", (el) => ({ href: el.href, text: el.innerText.replace(/\s+/g, " "), target: el.target, rel: el.rel, bg: getComputedStyle(el).backgroundColor, h: el.getBoundingClientRect().height }));
-    check(pay.href === rowOf("Lina").payerLink && pay.text === "Pay RM 54.00 with PayPal" && pay.target === "_blank" && pay.rel.includes("noreferrer") && pay.bg === BLUE && pay.h >= 44,
+    check(pay.href === rowOf("Lina").payerLink && pay.text === "Pay RM 54.00 with PayPal" && pay.target === "_blank" && pay.rel.includes("noreferrer") && pay.h >= 44,
       `the Pay button opens her PayPal invoice (${JSON.stringify(pay)})`);
+    // 8 Nov polish: before she answers, Looks right is the one filled button and Pay is pale (still a working link).
+    const okBg = () => lina.$eval("#answer-ok", (el) => getComputedStyle(el).backgroundColor);
+    const payBg = () => lina.$eval("#pay-link", (el) => getComputedStyle(el).backgroundColor);
+    check((await okBg()) === BLUE && pay.bg === PALE, `before her answer: Looks right is the main button, Pay is pale (${await okBg()} / ${pay.bg})`);
+    const order = await lina.$$eval("#order-content > section:not([hidden])", (els) => els.map((el) => el.id || el.querySelector("h2").id));
+    check(order.join(",") === "order-title,order-chat,answer-title,order-pay", `What you wrote sits right under What you ordered (${order.join(", ")})`);
     const messages = await lina.$$eval("#order-messages .chat-msg", (els) => els.map((el) => ({ text: el.querySelector(".chat-text").textContent, marks: el.querySelectorAll("mark").length })));
     // Her 3rd message ("pls send me the payment link later") names no item, number or day: no marks, as in the drawer.
     check(messages.length === 3 && messages[0].marks > 0 && messages[1].marks > 0 && messages[1].text === "oh wait, make it 3 boxes, my friend wants some too",
@@ -129,6 +136,9 @@ try {
     await lina.click("#answer-ok");
     await lina.waitForSelector("#answer-said:not([hidden])");
     check((await words(lina, "#answer-said")) === "You said this looks right. Thank you!", `after Looks right: "${await words(lina, "#answer-said")}"`);
+    await lina.waitForTimeout(250); // the colours change with a short fade
+    check((await payBg()) === BLUE && (await okBg()) === PALE, `after Looks right: Pay is the main button (${await payBg()} / ${await okBg()})`);
+    await shot(lina, "1b-lina-confirmed");
     await seller.reload();
     await seller.waitForSelector(ROWS);
     await goToBuyerPage(seller, "Lina");
