@@ -21,9 +21,16 @@ const laptop = window.matchMedia("(min-width: 1024px)");
 
 const $ = (id) => document.getElementById(id);
 
-// Filled in from /api/state: the currency and menu come from data/menu.json, never from the code.
+// Filled in from the server's replies: the currency and this visitor's menu ("My menu", 7 Nov; a new visitor has the
+// demo bakery menu from data/menu.json), never from the code.
 let currency = null;
 let menuItems = [];
+let menuIsDemo = true; // the menu is the demo bakery menu: Load demo and Reset demo ask first when it isn't
+let menuOpen = false; // the drawer shows My menu
+let menuEditing = null; // the id of the item being changed in My menu
+let menuDraft = { name: "", price: "", otherNames: "" }; // what is typed in My menu's Add card (kept over a redraw)
+let editDraft = null; // the same for the item being changed
+const menuRules = import("./menu-rules.js"); // the server's own checks for an item (no refused request, no red line)
 let grid = null;
 let totals = { orders: 0, total: "0.00" };
 let summary = null;
@@ -503,7 +510,7 @@ function showSetup() {
   if (!setup) return;
   const state = setup;
   const items = [
-    `Menu: ${state.menu.items.length} items in ${currency}`,
+    `Menu: ${menuItems.length} items in ${currency}${menuIsDemo ? "" : " (yours)"}`,
     `AI mode: ${source?.reader === "fallback" ? "read without AI" : state.aiMode}`,
     `PayPal keys: ${state.paypalConfigured ? "set" : "missing"}`,
     `Gemini key: ${state.geminiConfigured ? "set" : "missing"}`,
@@ -827,6 +834,7 @@ $("drawer-body").append(drawerChat, drawerItems, drawerQr);
 function renderDrawer() {
   if (pairOpen) return renderPair();
   if (kitchenOpen) return renderKitchen();
+  if (menuOpen) return renderMenu();
   const data = buyerRows().find((row) => row.id === openGroupId);
   if (!data) return closeDrawer();
   $("drawer-foot").textContent = "Changes save as you make them. Prices and totals come from your menu.";
@@ -1009,6 +1017,7 @@ async function loadPanel(id = openGroupId) {
 function openDrawer(id) {
   openGroupId = id;
   kitchenOpen = false;
+  menuOpen = false;
   returnFocus = document.activeElement;
   hideError("drawer-error");
   renderDrawer();
@@ -1071,6 +1080,7 @@ function renderKitchen() {
 function openKitchen() {
   openGroupId = null;
   kitchenOpen = true;
+  menuOpen = false;
   returnFocus = document.activeElement;
   hideError("drawer-error");
   renderDrawer();
@@ -1136,6 +1146,7 @@ async function newPairLink() {
 function openPairing() {
   openGroupId = null;
   kitchenOpen = false;
+  menuOpen = false;
   pairOpen = true;
   returnFocus = document.activeElement;
   hideError("drawer-error");
@@ -1144,10 +1155,190 @@ function openPairing() {
   newPairLink();
 }
 
+// ---- My menu (7 Nov): the seller's own items, prices and other names, in the drawer ----
+// Every name is the seller's own text: el() puts it in as text, never HTML. The checks are the server's own
+// (public/menu-rules.js); the server checks again and saves. Prices only come from here, never from the AI.
+
+const MENU_LOCKED_WORDS = "Invoices are sent for this batch. Start a New batch to change your menu.";
+const MENU_FOOT = "Changes save as you make them. Other names are the words buyers use in chats, like pz or pizzas.";
+const DEMO_MENU_ASK = "This replaces your menu with the demo bakery menu.";
+// This batch has an invoice (or a send with no answer): the menu waits for New batch. The same rule as the server's,
+// read from the rows, so every reply that changes the rows (sending too) keeps it right.
+const menuLocked = () => [...rowsById.values()].some((row) => row.invoiceId || row.sendUnknown);
+const otherNamesOf = (item) => (Array.isArray(item.otherNames) ? item.otherNames : item.aliases);
+
+// "RM" for MYR, "$" for USD: the label of the price box, from the menu's currency.
+function currencySymbol() {
+  return new Intl.NumberFormat("en", { style: "currency", currency, currencyDisplay: "narrowSymbol" })
+    .formatToParts(0).find((part) => part.type === "currency")?.value ?? currency;
+}
+
+// What the seller typed survives a redraw (a reply from another device, or the tab coming back).
+function keepMenuTyping() {
+  const read = (prefix) => ($(`${prefix}-name`) ? { name: $(`${prefix}-name`).value, price: $(`${prefix}-price`).value, otherNames: $(`${prefix}-others`).value } : null);
+  menuDraft = read("menu-add") ?? menuDraft;
+  // Only the form of the item still being changed: after Edit on another item, the old form's text must not move over.
+  if ($("menu-change-form")?.dataset.item === menuEditing) editDraft = read("menu-change") ?? editDraft;
+}
+
+function menuCard(item) {
+  const card = el("section", "edit-card menu-card");
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon(item.icon ?? "utensils-crossed"));
+  name.append(circle, el("span", "menu-name", item.name));
+  title.append(name, el("span", "money", formatMoney(item.price)));
+  const others = otherNamesOf(item);
+  card.append(title, el("p", "hint menu-other", others.length ? `Other names: ${others.join(", ")}` : "No other names."));
+  if (menuLocked()) return card;
+  const actions = el("div", "menu-actions");
+  const edit = Object.assign(el("button", "ghost small menu-edit"), { type: "button", id: `menu-edit-${item.id}` });
+  edit.append(icon("pencil"), "Edit");
+  const remove = Object.assign(el("button", "ghost small menu-remove"), { type: "button", id: `menu-remove-${item.id}`, disabled: menuItems.length <= 1 });
+  remove.append(icon("trash"), "Remove");
+  for (const [button, verb] of [[edit, "Edit"], [remove, "Remove"]]) {
+    button.dataset.item = item.id;
+    button.setAttribute("aria-label", `${verb} ${item.name}`);
+  }
+  actions.append(edit, remove);
+  card.append(actions);
+  return card;
+}
+
+// The Add card (item = null) or the card of the item being changed: a form, so Enter saves too.
+function menuForm(item) {
+  const adding = !item;
+  const prefix = adding ? "menu-add" : "menu-change";
+  const draft = (adding ? menuDraft : editDraft) ?? { name: "", price: "", otherNames: "" };
+  const card = Object.assign(el("form", `edit-card ${adding ? "add-card" : "menu-card is-editing"}`), { id: `${prefix}-form`, noValidate: true });
+  if (!adding) card.dataset.item = item.id;
+  const title = el("div", "edit-title");
+  const name = el("span", "edit-name");
+  const circle = el("span", "icon-circle small");
+  circle.append(icon(adding ? "plus" : "pencil"));
+  name.append(circle, el("span", "menu-name", adding ? "Add item" : `Change ${item.name}`));
+  title.append(name);
+  const input = (id, value, extra = {}) => Object.assign(document.createElement("input"), { type: "text", id, value, autocomplete: "off", ...extra });
+  const pair = el("div", "field-pair");
+  pair.append(field(`Price (${currencySymbol()})`, input(`${prefix}-price`, draft.price, { inputMode: "decimal", placeholder: "25.00" })));
+  card.append(title, field("Name", input(`${prefix}-name`, draft.name, { placeholder: "Pizza" })), pair,
+    field("Other names (split with commas)", input(`${prefix}-others`, draft.otherNames, { placeholder: "pz, pizzas" })));
+  const actions = el("div", "menu-actions");
+  const save = Object.assign(el("button", ""), { type: "submit", id: adding ? "menu-add" : "menu-save" });
+  save.append(icon(adding ? "plus" : "check"), adding ? "Add to menu" : "Save");
+  actions.append(save);
+  if (!adding) actions.append(Object.assign(el("button", "ghost", "Cancel"), { type: "button", id: "menu-cancel" }));
+  card.append(actions);
+  return card;
+}
+
+function renderMenu() {
+  keepMenuTyping();
+  const locked = menuLocked();
+  const focused = document.activeElement?.id;
+  if (!menuItems.some((item) => item.id === menuEditing)) menuEditing = null; // removed elsewhere, or a Reset
+  $("drawer-avatar").replaceChildren(icon("book-open"));
+  $("drawer-title").textContent = "My menu";
+  $("drawer-sub").textContent = `${plural(menuItems.length, "item")}. Prices come from here, never from the AI.`;
+  $("drawer-foot").textContent = locked ? "The invoices already sent keep the prices they were sent with." : MENU_FOOT;
+  drawerChat.replaceChildren();
+  drawerQr.replaceChildren();
+  const cards = menuItems.map((item) => (item.id === menuEditing && !locked ? menuForm(item) : menuCard(item)));
+  const full = menuItems.length >= 50 ? [el("p", "hint", "Your menu has 50 items, the most it can have. Remove one to add another.")] : [];
+  drawerItems.replaceChildren(
+    ...(locked ? [Object.assign(el("p", "hint locked-note", MENU_LOCKED_WORDS), { id: "menu-locked" })] : []),
+    ...cards,
+    ...(locked ? [] : full.length ? full : [menuForm(null)]),
+  );
+  if (focused && $(focused) && $("drawer-body").contains($(focused))) $(focused).focus();
+}
+
+function openMenu() {
+  openGroupId = null;
+  kitchenOpen = false;
+  pairOpen = false;
+  menuOpen = true;
+  menuEditing = null;
+  returnFocus = document.activeElement;
+  hideError("drawer-error");
+  renderDrawer();
+  showDrawer();
+  ($("drawer-body").querySelector("button:not(:disabled)") ?? $("drawer-close")).focus();
+}
+
+// One menu change -> the server, whose reply is the whole table (rows re-priced from the new menu).
+async function sendMenu(method, path, body, whenSaved) {
+  hideError("drawer-error");
+  savedNote("saving");
+  try {
+    const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, ...(body && { body: JSON.stringify(body) }) });
+    const reply = await res.json();
+    if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    whenSaved();
+    showOrders(reply);
+    savedNote("saved");
+    return true;
+  } catch (err) {
+    savedNote("");
+    showError(`That menu change was not saved (${String(err.message).replace(/\.$/, "")}).`, "drawer-error");
+    tableStillHere();
+    return false;
+  }
+}
+
+async function saveMenuItem(form) {
+  const adding = form.id === "menu-add-form";
+  const prefix = adding ? "menu-add" : "menu-change";
+  const id = menuEditing;
+  const body = { name: $(`${prefix}-name`).value, price: $(`${prefix}-price`).value, otherNames: $(`${prefix}-others`).value };
+  const { readItem } = await menuRules;
+  const { error } = readItem(body, menuItems.filter((item) => adding || item.id !== id));
+  if (error) {
+    savedNote("");
+    showError(`That item was not saved (${error.replace(/\.$/, "")}).`, "drawer-error");
+    $(`${prefix}-${/price/i.test(error) && !/name/i.test(error) ? "price" : /other name/i.test(error) ? "others" : "name"}`)?.focus();
+    return;
+  }
+  const saved = await sendMenu(adding ? "POST" : "PUT", adding ? "/api/menu/items" : `/api/menu/items/${encodeURIComponent(id)}`, body, () => {
+    if (adding) {
+      menuDraft = { name: "", price: "", otherNames: "" };
+      $("menu-add-form")?.reset(); // or the redraw would keep what was typed
+    }
+    else {
+      menuEditing = null;
+      editDraft = null;
+    }
+  });
+  if (saved) (adding ? $("menu-add-name") : $(`menu-edit-${id}`))?.focus();
+}
+
+function changeMenuItem(id) {
+  const item = menuItems.find((it) => it.id === id);
+  if (!item) return;
+  menuEditing = id;
+  editDraft = { name: item.name, price: item.price, otherNames: otherNamesOf(item).join(", ") };
+  hideError("drawer-error");
+  renderDrawer();
+  $("menu-change-name").focus();
+}
+
+async function removeMenuItem(id) {
+  const item = menuItems.find((it) => it.id === id);
+  if (!item) return;
+  const buyers = new Set([...rowsById.values()].filter((row) => row.orderStatus === "active" && row.itemId === id).map((row) => String(row.buyer).trim().toLowerCase()));
+  const note = buyers.size ? ` ${plural(buyers.size, "order")} with it will need a check.` : "";
+  if (!window.confirm(`Remove ${item.name} from your menu?${note}`)) return;
+  if (await sendMenu("DELETE", `/api/menu/items/${encodeURIComponent(id)}`, null, () => {})) ($("menu-add-name") ?? $("drawer-close")).focus();
+}
+
 function closeDrawer() {
   openGroupId = null;
   kitchenOpen = false;
   pairOpen = false;
+  menuOpen = false;
+  menuEditing = null;
+  editDraft = null;
   pairRun++;
   clearTimeout(pairTimer);
   $("drawer").classList.remove("is-open");
@@ -1293,6 +1484,11 @@ function createOrdersGrid() {
 
 // The rows, totals, cards and chats, from /api/state or from a new parse (same shape).
 function showOrders(state) {
+  if (state.menu) {
+    currency = state.menu.currency;
+    menuItems = state.menu.items;
+    menuIsDemo = state.menuIsDemo !== false;
+  }
   totals = state.totals;
   summary = state.summary;
   source = state.source;
@@ -1315,7 +1511,7 @@ function showOrders(state) {
   }
   showSendButtons();
   showNext();
-  if (openGroupId || kitchenOpen) renderDrawer();
+  if (openGroupId || kitchenOpen || menuOpen) renderDrawer();
 }
 
 async function loadState() {
@@ -1323,8 +1519,6 @@ async function loadState() {
     const res = await fetch("/api/state");
     const state = await res.json();
     if (!res.ok) throw new Error(state.error ?? `HTTP ${res.status}`);
-    currency = state.menu.currency;
-    menuItems = state.menu.items;
     paypalReady = state.paypalConfigured;
     setup = state;
     showCallsLeft(state.aiCallsLeft);
@@ -2072,6 +2266,14 @@ async function loadDemo() {
     const reply = await res.json();
     if (!res.ok) throw new Error(reply.error ?? `HTTP ${res.status}`);
     if (reply.notice) return say(reply.notice);
+    // The demo chats are about the demo bakery's items: its menu comes back too, after asking ("My menu", 7 Nov).
+    if (!menuIsDemo) {
+      if (!window.confirm(`Load the demo? ${DEMO_MENU_ASK}`)) return false;
+      const menuRes = await fetch("/api/menu/demo", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const menuReply = await menuRes.json();
+      if (!menuRes.ok) throw new Error(menuReply.error ?? `HTTP ${menuRes.status}`);
+      showOrders(menuReply);
+    }
     $("chat").value = reply.text;
     $("chat-date").value = reply.chatDate;
     $("read-without-ai").hidden = true;
@@ -2094,7 +2296,8 @@ async function tryDemo() {
 // "Reset demo": the server empties this visitor's table so their demo can start over.
 // Only this visitor's table. Nothing in PayPal is deleted or cancelled; sent invoices stay in the visitor's file.
 async function resetDemo() {
-  if (!window.confirm("Reset the demo? The table empties so you can start over. Nothing in PayPal is deleted or cancelled.")) return;
+  const menuWords = menuIsDemo ? "" : ` ${DEMO_MENU_ASK}`; // Reset brings back the demo menu too ("My menu", 7 Nov)
+  if (!window.confirm(`Reset the demo? The table empties so you can start over. Nothing in PayPal is deleted or cancelled.${menuWords}`)) return;
   hideError();
   try {
     const res = await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -2212,6 +2415,7 @@ $("filter-clear").addEventListener("click", () => {
 $("search").addEventListener("input", (event) => grid?.setGridOption("quickFilterText", event.target.value));
 $("export-csv").addEventListener("click", exportCsv);
 $("kitchen-list").addEventListener("click", openKitchen);
+$("my-menu").addEventListener("click", openMenu);
 $("open-on-phone").addEventListener("click", openPairing);
 $("page-prev").addEventListener("click", () => grid?.paginationGoToPreviousPage());
 $("page-next").addEventListener("click", () => grid?.paginationGoToNextPage());
@@ -2230,6 +2434,21 @@ $("drawer-body").addEventListener("click", (event) => {
   if (event.target.closest("#undo-collected")) undoCollected(event.target.closest("#undo-collected"));
   if (event.target.closest("#save-qr")) saveQr(event.target.closest("#save-qr"));
   if (event.target.closest("#pair-new")) newPairLink();
+  if (event.target.closest(".menu-edit")) changeMenuItem(event.target.closest(".menu-edit").dataset.item);
+  if (event.target.closest(".menu-remove")) removeMenuItem(event.target.closest(".menu-remove").dataset.item);
+  if (event.target.closest("#menu-cancel")) {
+    const id = menuEditing;
+    menuEditing = null;
+    editDraft = null;
+    hideError("drawer-error");
+    renderDrawer();
+    $(`menu-edit-${id}`)?.focus();
+  }
+});
+// My menu's Add and Change cards are forms: the button or Enter saves.
+$("drawer-body").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (event.target.closest("#menu-add-form, #menu-change-form")) saveMenuItem(event.target);
 });
 $("drawer-body").addEventListener("change", (event) => {
   if (event.target.dataset.field) saveField(event.target);

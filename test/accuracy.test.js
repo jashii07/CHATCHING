@@ -59,8 +59,10 @@ test("accuracy: an unreadable reply is a clear error, never a score", () => {
 });
 
 test("accuracy: the demo chats find the saved demo reply; unknown chats find none", () => {
-  assert.match(savedReplyFor({ text: CHATS, chatDate: EXPECTED.chatDate }), /demo-parse\.json$/);
-  assert.equal(savedReplyFor({ text: CHATS, chatDate: "2026-10-29" }), null); // another day is another question
+  assert.match(savedReplyFor({ text: CHATS, chatDate: EXPECTED.chatDate, menu: MENU }), /demo-parse\.json$/);
+  assert.equal(savedReplyFor({ text: CHATS, chatDate: "2026-10-29", menu: MENU }), null); // another day is another question
+  const withPizza = { ...MENU, items: [...MENU.items, { id: "pizza", name: "Pizza", price: "25.00", aliases: ["pizza"] }] };
+  assert.equal(savedReplyFor({ text: CHATS, chatDate: EXPECTED.chatDate, menu: withPizza }), null); // another menu too (7 Nov)
   assert.equal(savedReplyFor({ text: CHATS, chatDate: "2026-10-28", reply: "x.json" }), "x.json");
 });
 

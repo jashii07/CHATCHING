@@ -13,6 +13,7 @@ import { testVisitor } from "../scripts/test-visitor.mjs";
 
 const CHAT = "2026-10-28";
 const DEMO = readFileSync(new URL("../data/demo-chats.txt", import.meta.url), "utf8");
+const MENU = JSON.parse(readFileSync(new URL("../data/menu.json", import.meta.url), "utf8")); // a new visitor reads with the demo menu
 const FIXTURE = readFileSync(new URL("./fixtures/made-up-order-no-timestamp.txt", import.meta.url), "utf8");
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const tempDir = () => mkdtempSync(join(tmpdir(), "chatching-"));
@@ -42,7 +43,7 @@ function aiWith(replies) {
   Object.entries(replies).forEach(([text, raw], i) => {
     const file = join(dir, `reply-${i}.json`);
     writeFileSync(file, raw);
-    map.set(parseKey(text, CHAT), file);
+    map.set(parseKey(text, CHAT, MENU), file);
   });
   return createAi({ mode: "mock", replies: map });
 }

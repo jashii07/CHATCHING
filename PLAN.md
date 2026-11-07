@@ -312,6 +312,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 13b. ✅ (done Fri 6 Nov, before the freeze; Jasper with his advisor) **The buyer's "Your order" page.** Copy message and the reminder now send each buyer a private link to their own order page: items, quantities, the total from the menu, the day, pickup or delivery, their own messages marked as in the drawer, **Looks right** / **Something's wrong** (+ a note of up to 200 characters), PayPal's Pay button, live status (Not paid / Paid / Collected) and the pickup QR once paid. The seller's table and drawer show "Confirmed by buyer" or the amber note; a flag never changes money. `src/order-links.js`, `src/order-page.js`, `public/order.html`, `npm run ui-order`; version 1.8.0. Details in DECISIONS.md.
 13c. ✅ (done Fri 6 Nov; Jasper with his advisor, after my friend's user test of 1.8.0) **User-test fixes.** (1) One line under the steps always says the next action (`public/next-step.js`: try the demo, fix the amber rows, send invoices, send each buyer their message, watch for Paid, pickup), with **Show me**; the steps can be tapped. (2) A banner right after sending: send each buyer their message. (3) The drawer shows **Saved** after every change and has a **Done** button. (4) A loading card while Read orders waits: the message count, the server's stage, the seconds. (5) AG Grid and Lucide served from our own server; the CSP allows no other site. `npm run ui-guide`; version 1.9.0. Details in DECISIONS.md.
 14. Feature freeze: fixes from the user test, design polish, stretch only if all green; video; submit.
+14b. (Sat 7 Nov, stretch; Jasper with his advisor) **"My menu" editor**, built on the branch `feature/my-menu`: each visitor's own menu (name, price, other names; 1-50 items), the demo menu back on Load/Reset demo, locked while a batch has an invoice, everything (AI prompt + schema, checks, prices, no-AI reader, kitchen list, texts, invoices, buyer page, AI cache key) on the visitor's menu. `src/menu.js`, `public/menu-rules.js`, `npm run ui-menu`; version 1.10.0. Details in DECISIONS.md.
 
 ## 8. Cut list (we will NOT build)
 
@@ -323,7 +324,7 @@ Order in time (dates in Section 9): 1 → 3 → 2 → 3b → 4 → 5 → … Ste
 - No AG Grid Enterprise features (no row grouping, no Excel `.xlsx` export, no Side Bar).
 - No live (real-money) PayPal: sandbox only.
 - No sending emails; no PayPal `remind` endpoint (stretch goal only).
-- No menu editor in the UI (edit `data/menu.json`).
+- ~~No menu editor in the UI (edit `data/menu.json`).~~ **Changed 7 Nov:** "My menu" built as a stretch feature (Step 14b).
 - No images, voice notes or stickers in chats: text only.
 - No inventory, delivery routing or multi-seller support.
 - No chat-style "ask the agent" box: every question would burn AI quota.

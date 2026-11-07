@@ -34,11 +34,11 @@ export function scoreReply({ raw, expected, menu, text, chatDate }) {
   };
 }
 
-// The saved reply for these chats: the one asked for, else the demo reply that ships with the app,
+// The saved reply for these chats (read with this menu: the key holds it, 7 Nov): the one asked for, else the demo reply that ships with the app,
 // else the app's own cache of earlier real replies (data/runtime/ai-cache/). null if there is none.
-export function savedReplyFor({ text, chatDate, reply = null }) {
+export function savedReplyFor({ text, chatDate, menu, reply = null }) {
   if (reply) return reply;
-  const key = parseKey(text, chatDate);
+  const key = parseKey(text, chatDate, menu);
   const demo = demoReplies().get(key);
   if (demo) return demo;
   const cached = join(RUNTIME_CACHE, `parse-${key}.json`);
@@ -64,7 +64,7 @@ export async function liveParse({ text, chatDate, menu, apiKey, cacheDir, oneCal
   const result = await ai.parse({ text, chatDate, menu });
   const seconds = Number(((performance.now() - start) / 1000).toFixed(1));
   if (result.notice) return { notice: result.notice, seconds, calls };
-  const replyPath = join(cacheDir, `parse-${parseKey(text, chatDate)}.json`);
+  const replyPath = join(cacheDir, `parse-${parseKey(text, chatDate, menu)}.json`);
   return { raw: readFileSync(replyPath, "utf8"), model: result.from, seconds, calls, replyPath };
 }
 

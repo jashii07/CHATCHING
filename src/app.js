@@ -1,9 +1,11 @@
 // Builds the Express app: middleware, API routes and the static page.
 // server.js starts it; the tests start it on a free port.
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { buyerGroups, checkEdit, checkMenu, keepEarlierInvoice, markEarlierInvoices, recalcRow, summary, toRows, totals } from "./orders.js";
+import { buyerGroups, checkEdit, keepEarlierInvoice, markEarlierInvoices, recalcRow, repriceRows, summary, toRows, totals } from "./orders.js";
+import { MENU_LOCKED, addMenuItem, editMenuItem, loadDemoMenu, removeMenuItem } from "./menu.js";
 import { createStore, demoSource } from "./store.js";
 import { MAX_AGE_MS, VISITOR_COOKIE, createVisitors, newVisitorId, visitorIdFrom } from "./visitors.js";
 import { createAi } from "./ai.js";
@@ -33,25 +35,16 @@ const NO_ANSWER = "PayPal didn't answer, so this buyer's invoice may already exi
 const CANCELLED = "This order is cancelled, so it can't be changed.";
 export const ORDER_GONE = "This order is no longer in your table.";
 
-const MENU_FILE = new URL("../data/menu.json", import.meta.url);
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const PUBLIC_DIR = fileURLToPath(new URL("../public", import.meta.url));
 // Each visitor's rows live here (git-ignored). Tests pass their own temporary folder.
 const VISITORS_DIR = fileURLToPath(new URL("../data/runtime/visitors/", import.meta.url));
 
 const pathOf = (req) => req.originalUrl.split("?")[0];
-
-function loadMenu() {
-  let menu;
-  try {
-    menu = JSON.parse(readFileSync(MENU_FILE, "utf8"));
-  } catch (err) {
-    throw new Error(`Could not read data/menu.json: ${err.message}`);
-  }
-  const problems = checkMenu(menu);
-  if (problems.length) throw new Error(`data/menu.json has problems: ${problems.join(" ")}`);
-  return menu;
-}
+const deepFreeze = (value) => {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) Object.values(Object.freeze(value)).forEach(deepFreeze);
+  return value;
+};
 
 // ONE error handler: every error becomes JSON { error } with a fitting status code.
 // 4xx = the request was wrong, so we say why. 5xx = our problem, so the reply stays
@@ -80,14 +73,18 @@ export function createApp(config, {
   now = Date.now, // the clock for the status cache (tests pass their own)
   limiter = createRateLimiter({ now }), // per-visitor limits on the Gemini / PayPal routes (src/rate-limit.js)
 } = {}) {
-  const menu = loadMenu();
+  // The demo bakery menu (data/menu.json), checked once: a bad file stops the server with a clear message. Each
+  // visitor starts with it and can change their own copy ("My menu", 7 Nov); req.visitor.store.menu() is the one
+  // to use, everywhere. Frozen, so no visitor's change can ever reach this shared copy.
+  const demoMenu = deepFreeze(loadDemoMenu());
   // One visitor's table and everything that guards it. The AI, its daily counter, PayPal and the rate limits
   // are shared by all visitors; the rows, the locks and the batch rule are not (src/visitors.js has the why).
   const visitors = createVisitors({
     dir: visitorsDir,
     now,
     open({ file, onNewFile }) {
-      const store = createStore({ file, log, onNewFile });
+      const store = createStore({ file, log, onNewFile, demoMenu });
+      const menu = () => store.menu(); // the visitor's menu as it is now, never the one at the start
       const invoicer = createInvoicer({ store, paypal, menu, log });
       const status = createStatusChecker({ store, paypal, now, log });
       const payments = createPaymentRecorder({ store, paypal, menu, now });
@@ -131,15 +128,20 @@ export function createApp(config, {
   const textsOf = (req) => {
     const pages = pagesOf(req);
     const { store } = req.visitor;
-    return buyerMessages(store.rows(), store.source(), menu, pages);
+    return buyerMessages(store.rows(), store.source(), store.menu(), pages);
   };
 
-  // What the table, cards, slim bar, kitchen list and ready-to-send texts need: the same shape after every change.
+  // What the table, cards, slim bar, kitchen list, ready-to-send texts and My menu need: the same shape after
+  // every change. The menu comes along every time, so a Reset demo or a second device's change reaches the page.
   const table = (req) => {
     const texts = textsOf(req); // first: it may add the link hashes to the rows
     const { store } = req.visitor;
     const rows = store.rows();
-    return { orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts, source: store.source(), batch: store.batch() };
+    const menu = store.menu();
+    return {
+      orders: rows, totals: totals(rows), summary: summary(rows), groups: buyerGroups(rows), kitchen: kitchenList(rows, menu), texts, source: store.source(), batch: store.batch(),
+      menu, menuIsDemo: store.menuIsDemo(), menuLocked: store.hasInvoices(),
+    };
   };
   const app = express();
   app.disable("x-powered-by"); // don't advertise which server software we run
@@ -237,7 +239,7 @@ export function createApp(config, {
         qr = { notice: "Your QR code couldn't be loaded just now. Please open this page again in a minute." };
       }
     }
-    return { order: orderView(found.rows(), visitor.store.source(), menu, { qr, checkFailed }) };
+    return { order: orderView(found.rows(), visitor.store.source(), visitor.store.menu(), { qr, checkFailed }) };
   }
   const tokenIn = (req, res) => {
     res.set("Cache-Control", "no-store");
@@ -286,7 +288,6 @@ export function createApp(config, {
   app.get("/api/state", (req, res) => {
     req.visitor.store.touch();
     res.json({
-      menu,
       ...table(req),
       aiMode: config.aiMode,
       aiCallsLeft: callsLeft(), // real calls left today, all models together (src/usage.js)
@@ -312,7 +313,7 @@ export function createApp(config, {
   // Adding or removing an item is the seller's fix of the whole order: every active row of that buyer is
   // checked again (recalcRow), so the AI's (or the no-AI reader's) "please check" goes, while our own
   // checks stay (no item, a bad quantity, a price still to check).
-  const recheckBuyer = (rows, row) => rows.map((other) => (sameBuyer(other, row) && other.orderStatus === "active" ? recalcRow(other, menu) : other));
+  const recheckBuyer = (rows, row, menu) => rows.map((other) => (sameBuyer(other, row) && other.orderStatus === "active" ? recalcRow(other, menu) : other));
 
   // Save one edited cell (item, qty or date). The server recalculates the price, total and
   // unclear flag, so the page never does money maths. Bad input -> 400 with the reason.
@@ -321,6 +322,7 @@ export function createApp(config, {
     const row = store.find(req.params.id);
     const refused = refuseChange(req.visitor, row, req.params.id);
     if (refused) return refuse(res, refused);
+    const menu = store.menu();
     const { changes, problems } = checkEdit(req.body, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
     const { keepMenuPrice, ...fields } = changes;
@@ -350,6 +352,7 @@ export function createApp(config, {
     const extra = Object.keys(body).filter((field) => field !== "itemId" && field !== "qty");
     if (extra.length) return res.status(400).json({ error: `"${extra[0]}" can't be set: send only itemId and qty. Prices come from the menu.` });
     if (body.itemId === undefined || body.qty === undefined) return res.status(400).json({ error: 'Send { "itemId": "a menu item", "qty": 1 }.' });
+    const menu = store.menu();
     const { problems } = checkEdit({ itemId: body.itemId, qty: body.qty }, menu);
     if (problems.length) return res.status(400).json({ error: problems.join(" ") });
 
@@ -366,7 +369,7 @@ export function createApp(config, {
       invoiceId: null, invoiceNumber: null, payerLink: null, invoiceStatus: "Draft",
     }, menu);
     const at = rows.findLastIndex((other) => sameBuyer(other, row)) + 1;
-    store.setRows(recheckBuyer([...rows.slice(0, at), added, ...rows.slice(at)], row));
+    store.setRows(recheckBuyer([...rows.slice(0, at), added, ...rows.slice(at)], row, menu));
     res.json(table(req));
   });
 
@@ -381,7 +384,7 @@ export function createApp(config, {
     if (rows.filter((other) => sameBuyer(other, row) && other.orderStatus === "active").length === 1) {
       return res.status(409).json({ error: `This is ${row.buyer}'s last item. Cancel the order instead.`, lastItem: true });
     }
-    store.setRows(recheckBuyer(rows.filter((other) => other.id !== row.id), row));
+    store.setRows(recheckBuyer(rows.filter((other) => other.id !== row.id), row, store.menu()));
     res.json(table(req));
   });
 
@@ -411,7 +414,8 @@ export function createApp(config, {
   });
 
   // Every read, with or without the AI: our checks, the rows, and the double-invoice guard between batches.
-  const readRows = (store, orders, messages, chatDate) => markEarlierInvoices(toRows(checkOrders(orders, messages, menu), menu), store.batches(), chatDate, menu);
+  // The menu is the visitor's, taken once when the read starts (the menu can't change while a read runs).
+  const readRows = (store, menu, orders, messages, chatDate) => markEarlierInvoices(toRows(checkOrders(orders, messages, menu), menu), store.batches(), chatDate, menu);
 
   // Chat text + Chat date -> new order rows (they replace the current ones). Every AI reply goes through
   // our checks and toRows(), so bad AI data becomes unclear rows, never dropped (PLAN.md Section 5).
@@ -434,8 +438,9 @@ export function createApp(config, {
     if (store.hasInvoices()) return res.json({ notice: INVOICED });
     const { messages, notice } = readPaste(text, chatDate);
     if (notice) return res.json({ notice });
+    const menu = store.menu();
     if (withoutAi) {
-      const rows = readRows(store, fallbackParse(messages, menu), messages, chatDate);
+      const rows = readRows(store, menu, fallbackParse(messages, menu), messages, chatDate);
       store.setAll(rows, { text, chatDate, messages: messages.length, reader: "fallback" });
       return res.json(table(req));
     }
@@ -445,10 +450,10 @@ export function createApp(config, {
     visitor.readingMessages = messages.length;
     let rows;
     try {
-      const validate = (orders) => readRows(store, orders, messages, chatDate);
+      const validate = (orders) => readRows(store, menu, orders, messages, chatDate);
       const reply = await ai.parse({ text, chatDate, messages, menu, validate, onStage: (stage) => (visitor.readingStage = stage) });
       if (reply.notice) return res.json({ notice: reply.notice, readWithoutAi: true });
-      rows = readRows(store, reply.orders, messages, chatDate);
+      rows = readRows(store, menu, reply.orders, messages, chatDate);
     } catch (err) {
       log(`Warning: the AI reply could not be read (${err.message}).`);
       return res.json({ notice: UNREADABLE, readWithoutAi: true });
@@ -553,7 +558,7 @@ export function createApp(config, {
     if (!row) return res.json({ notice: ORDER_GONE });
     const rows = store.rows().filter((other) => other.buyer.trim().toLowerCase() === row.buyer.trim().toLowerCase());
     const sent = rows.find((other) => other.invoiceId && other.payerLink && other.invoiceStatus !== "Draft");
-    res.json({ ...buyerPanel(rows, store.source(), menu), qrInvoiceId: sent?.invoiceId ?? null });
+    res.json({ ...buyerPanel(rows, store.source(), store.menu()), qrInvoiceId: sent?.invoiceId ?? null });
   });
 
   // The invoice's QR code from PayPal (#3b), as Base64 PNG in JSON so the page can show it (and a PayPal
@@ -573,6 +578,63 @@ export function createApp(config, {
       if (!(err instanceof PayPalError)) throw err;
       res.json({ notice: `The QR code could not be loaded (${err.message})` });
     }
+  });
+
+  // ---- My menu (7 Nov): the visitor's own items, names and prices (src/menu.js has the checks) ----
+  // Refused while this batch has an invoice (or a send with no answer): the invoice, the buyer's page and the
+  // table must keep matching the menu they were made from, so the seller starts a New batch first. Also never
+  // while a read runs (it uses the menu it started with) or while invoices or a payment are on their way.
+  // The page locks its buttons too, but the server is the guard.
+  function menuRefused(req, res) {
+    const { store, invoicer, payments, reading } = req.visitor;
+    const refused = store.hasInvoices() ? { error: MENU_LOCKED, locked: true }
+      : reading ? { error: READING }
+      : invoicer.isBusy() || payments.isBusy() ? { error: SENDING } : null;
+    if (refused) res.status(409).json(refused);
+    return Boolean(refused);
+  }
+  // The new menu, and every row not yet invoiced re-priced from it, saved together. The reply is the whole table.
+  function saveMenu(req, res, menu) {
+    const { store } = req.visitor;
+    store.setMenu(menu, repriceRows(store.rows(), menu));
+    res.json(table(req));
+  }
+  const noItem = (res, id) => res.status(404).json({ error: `No item ${JSON.stringify(id)} on your menu.` });
+  // A random id, never one the menu had: a row of a removed item can't pick up a new item later.
+  const newItemId = (menu) => () => {
+    let id;
+    do id = `item_${randomBytes(4).toString("hex")}`; while (menu.items.some((item) => item.id === id));
+    return id;
+  };
+
+  app.post("/api/menu/items", (req, res) => {
+    if (menuRefused(req, res)) return;
+    const current = req.visitor.store.menu();
+    const { menu, error } = addMenuItem(current, req.body, { newId: newItemId(current) });
+    if (error) return res.status(400).json({ error });
+    saveMenu(req, res, menu);
+  });
+
+  app.put("/api/menu/items/:id", (req, res) => {
+    if (menuRefused(req, res)) return;
+    const { menu, error, missing } = editMenuItem(req.visitor.store.menu(), req.params.id, req.body);
+    if (missing) return noItem(res, req.params.id);
+    if (error) return res.status(400).json({ error });
+    saveMenu(req, res, menu);
+  });
+
+  app.delete("/api/menu/items/:id", (req, res) => {
+    if (menuRefused(req, res)) return;
+    const { menu, error, missing } = removeMenuItem(req.visitor.store.menu(), req.params.id);
+    if (missing) return noItem(res, req.params.id);
+    if (error) return res.status(400).json({ error });
+    saveMenu(req, res, menu);
+  });
+
+  // Load demo / Try the demo (after "This replaces your menu with the demo bakery menu." when it was changed).
+  app.post("/api/menu/demo", (req, res) => {
+    if (menuRefused(req, res)) return;
+    saveMenu(req, res, demoMenu);
   });
 
   // Load demo (stretch #2): the demo chats + their Chat date, to fill the chat box. It does NOT read them:

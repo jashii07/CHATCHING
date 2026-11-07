@@ -119,7 +119,7 @@ async function main() {
     }, null, 2)}\n`);
     console.log(`reply kept (unchanged): ${facts.reply}\n`);
   } else {
-    const replyPath = savedReplyFor({ text, chatDate, reply: o.reply ? resolve(o.reply) : null });
+    const replyPath = savedReplyFor({ text, chatDate, menu, reply: o.reply ? resolve(o.reply) : null });
     if (!replyPath) throw new Stop(`No saved reply for ${facts.chats} with chat date ${chatDate}. Pass --reply <file>, or run --live once.`);
     raw = read(replyPath, "saved reply");
     let meta = {};

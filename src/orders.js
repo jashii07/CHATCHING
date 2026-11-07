@@ -163,6 +163,25 @@ export function recalcRow(row, menu) {
   };
 }
 
+// The seller changed their menu ("My menu", 7 Nov): every row not yet invoiced follows it at once, so prices only
+// ever come from the menu as it is now. Unlike recalcRow, no check is dropped (a menu change is not the seller's
+// fix of an order). A row whose item left the menu has no price and needs a check, said once. The menu is locked
+// while an invoice exists, so invoiced rows never change here.
+export function repriceRows(rows, menu) {
+  return rows.map((row) => {
+    if (row.invoiceId || row.itemId == null || row.itemId === "") return row;
+    const item = findItem(menu, row.itemId);
+    if (!item) {
+      const gone = `${String(row.itemName ?? "This item").replace(/\s*\(.*\)\s*$/, "")} is no longer on your menu.`;
+      if (row.unitPrice === null && row.reason.includes(gone)) return row;
+      const reason = row.orderStatus === "active" ? [row.reason, gone].filter(Boolean).join(" ") : row.reason;
+      return { ...row, unitPrice: null, lineTotal: null, unclear: row.orderStatus === "active" || row.unclear, reason };
+    }
+    const qtyOk = Number.isInteger(row.qty) && row.qty >= 1 && row.qty <= 99;
+    return { ...row, itemName: item.name, unitPrice: item.price, lineTotal: qtyOk ? fromSen(toSen(item.price) * row.qty) : null };
+  });
+}
+
 // The fields the seller can edit in the table, and the checks for each.
 const EDITS = {
   itemId: (value, menu) => (findItem(menu, value) ? "" : `Unknown menu item ${JSON.stringify(value)}.`),

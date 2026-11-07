@@ -17,7 +17,9 @@ const BATCH_FULL = "A batch holds up to 99 buyers. Send these, then start a New 
 
 // spend(): asked just before each buyer goes to PayPal, so the rate limit counts buyers sent, not requests.
 // -> null to go ahead, or how many ms until the next one is allowed.
+// menu: the menu, or a function giving the visitor's menu as it is now ("My menu", 7 Nov).
 export function createInvoicer({ store, paypal, menu, log = console.log }) {
+  const menuNow = typeof menu === "function" ? menu : () => menu;
   const busy = new Set(); // buyers whose invoice is being made right now
 
   // One buyer: -> { sent } or { skipped } or { failed }. Never throws for PayPal problems.
@@ -33,7 +35,7 @@ export function createInvoicer({ store, paypal, menu, log = console.log }) {
     const saved = rows.find((row) => row.invoiceId);
     try {
       const number = saved?.invoiceNumber ?? invoiceNumber(batch, nn);
-      const result = await paypal.invoiceBuyer({ buyer, rows, menu, number, invoiceId: saved?.invoiceId ?? null });
+      const result = await paypal.invoiceBuyer({ buyer, rows, menu: menuNow(), number, invoiceId: saved?.invoiceId ?? null });
       if (store.batch() !== batch) throw new Error("the batch changed while invoicing"); // can't happen: routes wait
       store.replaceMany(rows.map(({ sendUnknown, ...row }) => ({
         ...row, invoiceId: result.invoiceId, invoiceNumber: result.invoiceNumber,

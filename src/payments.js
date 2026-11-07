@@ -9,7 +9,9 @@ import { toSen } from "./money.js";
 export const METHODS = { CASH: "Cash", BANK_TRANSFER: "Bank transfer" };
 const refuse = (status, message) => Object.assign(new Error(message), { status });
 
-export function createPaymentRecorder({ store, paypal, menu, now = Date.now }) {
+// menu: the menu, or a function giving the visitor's menu as it is now ("My menu", 7 Nov).
+export function createPaymentRecorder({ store, paypal, menu: menuOf, now = Date.now }) {
+  const menuNow = typeof menuOf === "function" ? menuOf : () => menuOf;
   const busy = new Set(); // invoice ids whose payment is being recorded right now
 
   // -> { buyer, method, amount } once PayPal says MARKED_AS_PAID; refusals throw with a 4xx status.
@@ -28,6 +30,7 @@ export function createPaymentRecorder({ store, paypal, menu, now = Date.now }) {
       if (store.batch() !== batch) return; // New batch or Reset while we waited
       store.replaceMany(store.rows().filter((row) => row.invoiceId === invoiceId).map((row) => ({ ...row, invoiceStatus: status })));
     };
+    const menu = menuNow();
     try {
       // PayPal's saved invoice is the source of the amount, and of the truth about its status.
       const invoice = await paypal.getInvoice(invoiceId);

@@ -17,8 +17,9 @@ No login is needed. Each judge gets their own table, so nobody else can see or c
 6. Click **Kitchen list** to see how many of each item to make, per day.
 7. Click **Pickup scan** and type or scan a buyer's invoice number: green means paid, amber means not paid yet.
 8. Have a phone? Click **Open on my phone** and scan the QR with the phone's camera. The phone opens the same table, so you can try Pickup scan there on a buyer's QR. The QR works once, for 10 minutes.
+9. **Want to try your own food?** Open **My menu**, add your items, then paste chats that use them. For example: add Pizza at 25.00, click **New batch** if invoices were sent, paste `[06/11 10:00 AM] Amir: 2 pizzas pls` with the chat date 6 Nov, and click **Read orders**: 2 x Pizza, RM 50.00. New chats need a real AI read (one of the day's free calls); if the AI is busy or used up, **Read without AI** reads simple orders like this one with no AI call.
 
-**Reset demo** at the bottom clears your own table so you can start again. The free server also clears tables when it sleeps (after 15 minutes without visitors). If that happens, the page says so: click Load demo, then Read orders. Invoices already sent stay safe in PayPal.
+**Reset demo** at the bottom clears your own table (and brings back the demo bakery menu) so you can start again. The free server also clears tables when it sleeps (after 15 minutes without visitors). If that happens, the page says so: click Load demo, then Read orders. Invoices already sent stay safe in PayPal.
 
 ## Judge test accounts
 
@@ -39,6 +40,8 @@ To pay: open a buyer's order page (the link in **Copy message**) and click **Pay
 4. **Invoice (no AI):** one click creates and sends one PayPal invoice per buyer. Each buyer gets a ready-to-send message to paste into the chat, with a link to their own private order page.
 5. **Confirm (the buyer):** the order page shows the buyer what ChatChing understood: items, quantities, the total from the menu, the day, pickup or delivery, and their own messages with the parts that mattered marked. They tap **Looks right** or **Something's wrong** (with an optional note of up to 200 characters), pay with PayPal's own Pay button, and see the live status (Not paid, Paid, Collected) and their pickup QR once paid. The buyer can never change items, quantities or prices. The seller's table shows "Confirmed by buyer", or the buyer's note in amber; a note never changes the money, the seller decides.
 6. **Track:** the status moves from Not sent to Sent to Paid. The page asks PayPal every 20 seconds while it is open. The seller can record cash or bank payments, and check a buyer's invoice QR at pickup.
+
+**My menu:** each seller (each browser) has their own menu, starting with the demo bakery's 5 items. **My menu** adds, changes and removes items: a name (up to 60 characters), a price (more than 0, at most 10,000.00, at most 2 decimals) and up to 10 "other names", the words buyers use in chats ("pz", "pepperoni"); simple plurals like "pizzas" are matched by themselves. 1 to 50 items. Everything follows the seller's own menu: the AI's prompt and its list of allowed items, the checks, the prices and totals, Read without AI, the Kitchen list, the Copy texts, the invoices and the buyer's page. Once this batch has a sent invoice the menu is locked ("Start a New batch to change your menu"), so an invoice always matches the menu it was made from; the server refuses changes too, not only the page. **Load demo** and **Reset demo** bring back the demo bakery menu, asking first if the seller changed it.
 
 **What to do next:** one line under the three steps always tells the seller the next action, worked out from the table: try the demo or paste chats, fix the amber rows (Copy question asks the buyer), send invoices, send each buyer their message, watch for Paid or record cash, then Pickup scan and Collected. **Show me** scrolls to the button for it, and each step can be tapped to jump to its part of the page. Right after sending, a banner says in plain words to send each buyer their message. While the AI reads, a card over the table shows how many messages it is reading, what the server is doing and the seconds so far. In a buyer's panel each change saves at once, shows **Saved**, and **Done** closes it.
 
@@ -69,7 +72,7 @@ PayPal is the seller's record of every order and payment. ChatChing uses the Pay
 
 **Gemini reads the chats.** One call reads a whole day of messages and returns the final order per buyer: items, quantities, delivery date, pickup or delivery, cancelled or not, and a one-line note on what it did ("Changed from 2 to 3 boxes in message 4.").
 
-**The golden rule: the AI never sets a price.** Prices come only from the seller's menu (`data/menu.json`). Money is counted in sen (whole cents), so totals are exact.
+**The golden rule: the AI never sets a price.** Prices come only from the seller's menu: the demo bakery menu (`data/menu.json`) or the seller's own one in **My menu**. Money is counted in sen (whole cents), so totals are exact. Saved AI replies are kept per chats, chat date **and menu**, so a reply made for the demo menu is never used with another menu.
 
 **Every reply is checked before it is used:**
 
@@ -108,6 +111,7 @@ How well the AI reads chats, scored item by item: buyers, cancellations, items, 
 ## Security and safety
 
 - **Per-visitor tables:** each browser gets its own table through a cookie, with no login. One visitor can't see or reset another's orders. A phone joins a table only through a one-time QR (10 minutes, works once).
+- **Menu names are untrusted text:** hidden characters and line breaks are removed (so a name can't add a line to the AI's instructions), every page shows them as plain text, never HTML, and the CSV export's formula guard covers them like every other cell. The currency can't be changed by a visitor.
 - **Private buyer links:** each sent invoice gets its own order page link with a 256-bit key after the `#` (browsers never send that part to a server, so it stays out of logs). The server keeps only a SHA-256 hash of it; the link is rebuilt from a server-only key when the seller copies it. It opens that one buyer's order and nothing else (no visitor id, no other buyer), sets no cookie, loads nothing from other sites, and stops working when the batch is reset or replaced. A buyer's note is shown as plain text everywhere.
 - **Rate limits** on reading chats, sending invoices, recording payments, status checks, pickup checks, phone pairing and the buyer's order page, plus the daily AI counter. Over a limit, the page shows friendly words instead of an error.
 - **Security headers** on every reply, including a Content-Security-Policy that only allows the app's own scripts. AG Grid and Lucide are served by the app too, so no page loads anything from another site.
@@ -127,6 +131,7 @@ Express server (server.js, src/app.js)
    |-- src/validate.js              checks every AI reply
    |-- src/fallback-parse.js        Read without AI
    |-- src/orders.js, src/money.js  prices from the menu, totals in sen
+   |-- src/menu.js, public/menu-rules.js   My menu: each visitor's own menu and its checks (shared with the page)
    |-- src/paypal.js, src/invoices.js   PayPal Invoicing API + double-invoice guard
    |-- src/store.js, src/visitors.js    one JSON file per visitor's table
    |-- src/order-links.js, src/order-page.js   the buyer's private "Your order" page (public/order.html)
@@ -166,12 +171,12 @@ This runs every test, scores the saved demo reply, and checks that `.env` is not
 - **No undo** for a recorded cash payment.
 - **A buyer's order page has no login:** anyone the buyer forwards the link to can see that one order and answer for it. A buyer's answer reaches the seller's table on Refresh status or the next automatic check.
 - **Pickup scan and Open on my phone** were tested mostly in test browsers with a fake camera, not across many real phones.
-- **No menu editor:** the menu is edited in `data/menu.json`.
+- **My menu is per browser and doesn't last:** it lives with the table, so a sleep or restart of the free server brings back the demo menu. The currency is the server's setting (`data/menu.json`), not editable in the app. Other names match whole words and simple plurals only, and Read without AI only matches letters a to z and digits.
+- **Changing the menu after reading** re-prices the unsent orders at once, but doesn't read the chats again: an order the menu didn't have when it was read stays amber until it is fixed or the chats are read again.
 - The full list, with the reasons, is in [DECISIONS.md](DECISIONS.md) under "Known weaknesses".
 
 ## What's next
 
-- A menu editor in the app
 - Voice notes and chat screenshots as input
 - Daily stock limits ("only 10 boxes on Saturday")
 - More payment methods
