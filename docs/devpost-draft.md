@@ -56,6 +56,7 @@ I am a first-year student. I directed the project and made the decisions; the co
 - **PayPal is central:** invoices, payments, status and the pickup QR all go through the PayPal Invoicing API.
 - **A full review before submitting:** a bug hunt and security audit found 18 issues (none critical). Each was fixed with a test written first; one rare Windows test-runner crash is worked around, not fixed.
 - **It works end to end on the live site,** with real sandbox invoices.
+- **A real user test:** a friend who tested ChatChing on 6 Nov said it is "more convenient than Excel".
 
 ## What we learned
 

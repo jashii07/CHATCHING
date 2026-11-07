@@ -567,32 +567,34 @@ Drafted by Jasper on Wed 28 Oct; **table replaced on Thu 29 Oct** (signature mom
 
 | # | Time | On screen | Caption | Moment the app must have | Built in step |
 |---|---|---|---|---|---|
-| 1 | 0:00-0:12 | Messy order chats (our own plain text, no app logos) | "Small sellers take orders by chat, then copy them into Excel by hand." | The messier `data/demo-chats.txt` shown as plain text | Step 7b (messier chats) |
-| 2 | 0:12-0:25 | Paste the chats, Chat date | "ChatChing: paste a day of chats." | Chat box + Chat date (+ Load demo) | ✅ Step 4 |
-| 3 | 0:25-0:55 | Read orders: a change of quantity, "same as Lina", a cancellation, the price mismatch in amber | "AI reads the language. The code supplies the facts." | Real Gemini reply cached; amber "Check: buyer mentioned RM 15.00, menu says RM 18.00." | Step 7 (7a + 7b) |
-| 4 | 0:55-1:10 | Priya amber -> Copy question | "Unclear? Ask the buyer in one tap." | "Copy question" with names, items and prices filled by the code | Step 10 |
-| 5 | 1:10-1:35 | Send invoices with the progress bar, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, progress bar, "All invoices sent", double-invoice guard | ✅ Step 5 |
-| 6 | 1:35-1:55 | Lina opens her order page from the message, taps Looks right, pays in the sandbox, sees Paid; the seller's row turns green (changed 6 Nov) | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | Sun 8 Nov polish |
-| 7 | 1:55-2:10 | Kitchen list | "Know what to bake, per day." | Kitchen list per date + Copy | Step 10b |
-| 8 | 2:10-2:30 | Phone scans the buyer's QR -> Paid -> Collected | "Hand over only when paid." | Pickup scan on the Render URL (HTTPS) | Step 10c |
-| 9 | 2:30-2:45 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |
-| 10 | 2:45-2:50 | Logo | "ChatChing: from chat to cha-ching." | The logo mark | ✅ Step 2 |
+| 1 | 0:00-0:14 | Messy order chats (our own plain text, no app logos) | "Small sellers take orders by chat, then copy them into Excel by hand." | The messier `data/demo-chats.txt` shown as plain text | Step 7b (messier chats) |
+| 2 | 0:14-0:25.5 | Paste the chats, Chat date | "ChatChing: paste a day of chats." | Chat box + Chat date (+ Load demo) | ✅ Step 4 |
+| 3 | 0:25.5-0:55.5 | Read orders: a change of quantity, "same as Lina", a cancellation, the price mismatch in amber | "AI reads the language. The code supplies the facts." | Real Gemini reply cached; amber "Check: buyer mentioned RM 15.00, menu says RM 18.00." | Step 7 (7a + 7b) |
+| 4 | 0:55.5-1:10 | Priya amber -> Copy question | "Unclear? Ask the buyer in one tap." | "Copy question" with names, items and prices filled by the code | Step 10 |
+| 5 | 1:10-1:27 | Send invoices with the progress bar, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, progress bar, "All invoices sent", double-invoice guard | ✅ Step 5 |
+| 6 | 1:27-1:59.5 | Lina opens her order page from the message, taps Looks right, pays in the sandbox, sees Paid; the seller's row turns green (changed 6 Nov) | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | Sun 8 Nov polish |
+| 7 | 1:59.5-2:08.5 | Kitchen list | "Know what to bake, per day." | Kitchen list per date + Copy | Step 10b |
+| 8 | 2:08.5-2:26.5 | Phone scans the buyer's QR -> Paid -> Collected | "Hand over only when paid." | Pickup scan on the Render URL (HTTPS) | Step 10c |
+| 9 | 2:26.5-2:47 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |
+| 10 | 2:47-2:51.5 | Logo | "ChatChing: from chat to cha-ching." | The logo mark | ✅ Step 2 |
 
-Notes (Claude): the scenes add up to 2:50, leaving 10 s of margin under 3:00. Scene 6 needs a sandbox buyer login (the judge accounts, Sat 7 Nov) and English payment pages (Mon 9 Nov); its sound must be our own Web Audio tone (no copyrighted audio). Scene 8 needs a real phone on the Render URL. **If Step 10c is dropped,** scene 8 shows the pickup QR in the buyer panel + "Record cash" instead (both already planned or built). Scene 1 shows our own plain-text chats, never a chat app's screen.
+Notes (Claude): **times rebalanced on Sat 7 Nov** (Jasper, with his advisor) to fit the recorded voice lines instead of cutting words: scene 1 gets 14 s (its line needs 13.53 s, so 13.5 was just short) and scene 9 20.5 s, taken mostly from scenes 5 (25 to 17 s) and 7 (15 to 9 s), plus half a second to 2 s from scenes 2 (13 to 11.5 s), 4, 8 and 10. Scene 6 goes from 20 to 32.5 s, its recorded length (the buyer's page and the PayPal payment; 20 s was never enough). Every slot is at least as long as what the scene shows (its recorded clip: scene 5's 15.8 s has the whole progress bar and the second click) and as its voice line plus 1.05 s (0.25 s before it, 0.8 s of quiet after). The scenes add up to 2:51.5; with the 3 s title card that is 2:54.5, the render's limit (under 2:55). Scene 6 will be recorded again through the buyer's page on Mon 9 Nov: if it runs over 32.5 s, the phone clip (scene 8) must be that much shorter. Scene 6 needs a sandbox buyer login (the judge accounts, Sat 7 Nov) and English payment pages (Mon 9 Nov); its sound must be our own Web Audio tone (no copyrighted audio). Scene 8 needs a real phone on the Render URL. **If Step 10c is dropped,** scene 8 shows the pickup QR in the buyer panel + "Record cash" instead (both already planned or built). Scene 1 shows our own plain-text chats, never a chat app's screen.
 
-## 14. Video script (Jasper, 4 Nov)
+## 14. Video script (Jasper, recorded 7 Nov)
 
-The words for the Section 13 storyboard (which stays as the scene plan). Times match the storyboard's scenes 1-10, ending at 2:50. Facts checked against the app on 4 Nov; the three flagged lines (scenes 2, 6 and 9) use the safer wording Jasper chose the same day.
+The words Jasper recorded on Sat 7 Nov, with the connectors ("Meet my friend...", "So I built ChatChing...", "Watch this..."). They replace the 4 Nov script. The Section 13 storyboard stays the scene plan, and its captions are unchanged. Times match Section 13 (rebalanced 7 Nov). Facts checked against the app on 7 Nov: 7 orders ready worth RM 366.00 (the demo chats), 717 automated tests ("over 650"), 73/74 on the real cafe orders (docs/accuracy.md). The scene 9 quote is from the friend who tested ChatChing on 6 Nov (permission given, no name).
 
 | # | Time | Words |
 |---|---|---|
-| 1 | 0:00-0:12 | "Small sellers like my friend take orders by chat. Every evening they scroll back through the messages and copy each order into Excel by hand." |
-| 2 | 0:12-0:25 | "ChatChing turns that chat into PayPal invoices. I paste a day of chats." |
-| 3 | 0:25-0:55 | "Gemini reads the whole conversation and finds each buyer's final order: changed quantities, 'same as Lina', even a cancellation. But the AI never sets a price. Prices come from the menu. When Jun Wei mentions a wrong price, ChatChing doesn't guess. It marks the order to check." |
-| 4 | 0:55-1:10 | "Priya didn't say which brownies. One tap copies a question to send her." |
-| 5 | 1:10-1:35 | "Seven orders are ready: RM 366. One click sends one PayPal invoice per buyer. Click again, and nobody is billed twice." |
-| 6 | 1:35-1:55 | "Lina opens her order page from the chat. She taps Looks right, pays with PayPal, and sees Paid. So does the seller." (changed 6 Nov, the buyer's order page; the recorder in `video/` still records the old Open invoice path, see DECISIONS.md) |
-| 7 | 1:55-2:10 | "The kitchen list shows what to bake each day, counted by code." |
-| 8 | 2:10-2:30 | "At pickup, I scan the buyer's invoice QR with my phone. Paid? Then it's collected." |
-| 9 | 2:30-2:45 | "Built with the PayPal Invoicing API, Google Gemini and AG Grid. Over 650 automated tests, and 73 of 74 checks right on real cafe orders it was never tuned on." |
-| 10 | 2:45-2:50 | "ChatChing. From chat to cha-ching." |
+| 1 | 0:00-0:14 | "Meet my friend. Like many small sellers, they take orders through chat. And every night? They scroll back through dozens of messages, copying each order into Excel by hand." |
+| 2 | 0:14-0:25.5 | "So I built ChatChing. Instead of copying, you just paste the whole day of chats, and let it do the work." |
+| 3 | 0:25.5-0:55.5 | "Watch this. Gemini reads every conversation and works out each buyer's final order. Lina changed her mind? Updated. Aisyah said 'same as Lina'? Understood. Danish cancelled? Removed. But here's the important part: the AI never sets a price. Prices always come from the menu. So when Jun Wei quotes the wrong price, ChatChing doesn't guess. It flags the order for me to check." |
+| 4 | 0:55.5-1:10 | "And when an order is unclear, like Priya's 'brownies'... which kind? One tap copies a friendly question I can send her right away." |
+| 5 | 1:10-1:27 | "Now, seven orders are ready, worth RM 366. One click, and every buyer gets their own PayPal invoice. And if I click again by accident? Nothing happens. Nobody ever gets billed twice." |
+| 6 | 1:27-1:59.5 | "Next, each buyer gets a private order page. Lina checks her order, taps 'Looks right', and pays with PayPal. A moment later, ChatChing shows her as Paid. Cha-ching!" |
+| 7 | 1:59.5-2:08.5 | "Meanwhile, the kitchen list tells me exactly what to bake each day, counted by code, not guessed." |
+| 8 | 2:08.5-2:26.5 | "Then at pickup, I simply scan the buyer's QR code with my phone. Paid? Great, it's collected. Not paid yet? I'll know before handing anything over." |
+| 9 | 2:26.5-2:47 | "Under the hood: PayPal's Invoicing API, Google Gemini and AG Grid, with over 650 automated tests, and 73 of 74 checks right on real cafe orders. And when a friend tested it? 'More convenient than Excel.'" |
+| 10 | 2:47-2:51.5 | "ChatChing. From chat... to cha-ching." |
+
+Scene 6 (changed 6 Nov, the buyer's order page): the recorder in `video/` still records the old Open invoice path, see DECISIONS.md.

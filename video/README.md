@@ -40,7 +40,7 @@ Check the timing any time: `node scripts/timeline.mjs` prints every scene's leng
 
 1. On your phone, open https://chatching.onrender.com/ through **Open on my phone** (or Load demo, Read orders, Send invoices on the phone itself).
 2. Turn on Do Not Disturb, so no messages pop up while you film.
-3. Film the phone's screen: **Pickup scan** → scan a buyer's invoice QR → the result shows Paid → tap **Collected**. Hold the phone upright. Aim for 15 to 20 seconds.
+3. Film the phone's screen: **Pickup scan** → scan a buyer's invoice QR → the result shows Paid → tap **Collected**. Hold the phone upright. Aim for 15 to 18 seconds (scene 8's time in PLAN.md Section 13; a longer clip makes the whole video longer).
 4. Copy the video to the laptop (USB cable, Google Drive or email to yourself) and save it as **`video\public\phone\pickup.mp4`**. A `.mov` from an iPhone also works (`pickup.mov`): the render turns it into a normal MP4 by itself and drops the phone's sound.
 
 Until the clip is there, the draft shows a "Phone clip goes here" card in its place.
