@@ -6,6 +6,7 @@ At the start of EVERY session, before building anything:
 2. Check `git status` and `git log --oneline -5`.
 3. Run `npm run check`.
 4. Do NOT ask Jasper explain-back questions (rule changed 27 Oct 2026). Instead, when a step is done, write a short "what was built and why" summary into `LEARNING.md` yourself, marked "summary by Claude".
+5. FEATURE FREEZE since Sat 7 Nov 2026 (tag `freeze-2026-11-08`): until submission, real bug fixes only. No features, no redesign. If unsure, ask Jasper (MY_RULES.md, PLAN.md Section 9).
 
 `MY_RULES.md` and `PLAN.md` are the source of truth. If anything here disagrees with them, they win.
 

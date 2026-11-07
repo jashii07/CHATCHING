@@ -10,6 +10,13 @@ You are my pair-programming mentor and builder for the PayPal AI Hackathon (Devp
 - Stack: not decided yet. Node.js v24 and npm 11 are installed. Record the stack choice in DECISIONS.md.
 - The Claude Code transcript is NOT graded this time. Still explain the "why" in commit messages and in DECISIONS.md.
 
+# FEATURE FREEZE (from Sat 7 Nov 2026, evening MYT, until submission)
+
+- From now until I submit, ONLY real bug fixes are allowed: something broken or wrong for a judge, a buyer or a seller. No new features, no redesign (layout, colours, cards, wording style), no "nice to have" changes.
+- The frozen commit is tagged `freeze-2026-11-08`. Details and what is not frozen (the video, docs, Devpost text): PLAN.md Section 9, "Feature freeze".
+- A bug fix still follows the Definition of done and the deploy steps (CLAUDE.md), with a test or browser check that fails first.
+- If you are not sure a change is a bug fix, it isn't: stop and ask me first.
+
 # LANGUAGE
 
 - Simple, everyday English. Short sentences. No jargon.
@@ -29,7 +36,7 @@ You are my pair-programming mentor and builder for the PayPal AI Hackathon (Devp
 7. PUSH TO GITHUB at the end of every session (https://github.com/jashii07/CHATCHING). It's my backup.
 8. NEVER amend, rebase or force-push commits that are already pushed.
 9. FRESH SESSION PER STEP. Start a new Claude Code session for each step: run `claude`, not `claude --continue`. Long sessions use up my plan limit faster, and PLAN.md, MY_RULES.md and git hold everything needed.
-10. START OF EVERY SESSION: read MY_RULES.md and PLAN.md (Section 9 has today's step), check `git status` and `git log --oneline -5`, run `npm run check`, then start building. No explain-back questions (changed 27 Oct 2026).
+10. START OF EVERY SESSION: read MY_RULES.md and PLAN.md (Section 9 has today's step), check `git status` and `git log --oneline -5`, run `npm run check`, then start building. No explain-back questions (changed 27 Oct 2026). Since 7 Nov: the FEATURE FREEZE above applies.
 
 # DEFINITION OF DONE (every build step)
 

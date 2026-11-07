@@ -32,6 +32,11 @@
   --shadow-lift: 0 8px 32px rgba(0, 0, 0, 0.07);
   --gutter: 16px;
   --topbar-height: 64px;
+  /* Motion (polish day, 8 Nov): short and purposeful, 150-300 ms, and none at all with reduced motion.
+     ease-out = fast start, soft landing: things that appear, and presses. The drawer travels far (480 px), so it
+     gets a gentler ease-out (cubic): a visible glide that still lands softly, not a jump. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 
 * {
@@ -42,6 +47,12 @@ html {
   scroll-padding-top: calc(var(--topbar-height) + 16px);
 }
 
+/* Placeholders in the readable secondary grey (Chrome's default grey is 2.3:1 on white). */
+::placeholder {
+  color: var(--ink-2);
+  opacity: 1;
+}
+
 body {
   margin: 0;
   background: var(--page);
@@ -50,8 +61,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* While the drawer is open the page can't scroll. Where the scrollbar takes room (Windows), its width becomes
+   padding (app.js measures it), so the table behind doesn't jump sideways as the drawer opens or closes. */
 body.drawer-open {
   overflow: hidden;
+  padding-right: var(--scrollbar-width, 0px);
 }
 
 /* Soft colour shapes behind the cards (CSS only). Colours are never darker than the page, so no text
@@ -112,6 +126,14 @@ body.drawer-open {
 :focus-visible {
   outline: 3px solid var(--blue);
   outline-offset: 2px;
+}
+
+/* A table cell reached with the keyboard (AG Grid moves cell by cell) gets the same 3 px ring as everything else,
+   drawn inside the cell so the cell can't clip it (AG Grid alone gives a 1 px line). Not on a mouse click. */
+#grid .ag-cell:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: -3px;
+  border-radius: 12px;
 }
 
 [hidden] {
@@ -367,7 +389,13 @@ h2 {
   border-radius: 24px;
   background: var(--white);
   box-shadow: var(--shadow);
-  transition: transform 220ms ease, box-shadow 220ms ease;
+  /* The colour change (green once money arrives, amber when something needs a check) fades instead of snapping. */
+  transition: transform 220ms ease, box-shadow 220ms ease, background-color 300ms ease;
+}
+
+.stat h2,
+.stat .caption {
+  transition: color 300ms ease;
 }
 
 .stat > .icon-circle {
@@ -476,6 +504,23 @@ h2 {
   color: var(--green-ink);
 }
 
+/* The payment sound's mute toggle (8 Nov): a quiet round button in the Paid card's top corner, level with the
+   card's icon (its centre lines up), so the card's layout doesn't move. 44 px: a full tap target. */
+button.round.sound-toggle {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+.sound-toggle .lucide {
+  width: 20px;
+  height: 20px;
+}
+
 /* The Needs check card is a button (it filters the table): it keeps the card look, and a blue
    "Show only these" cue says it is clickable (blue = clickable). */
 button.stat {
@@ -550,6 +595,11 @@ button.stat.is-active {
   button.stat:disabled:hover {
     transform: none;
     box-shadow: var(--shadow);
+  }
+
+  /* The Needs check card is big: it presses in only a touch (the lift above would otherwise hide the press). */
+  button.stat:not(:disabled):active {
+    transform: scale(0.985);
   }
 }
 
@@ -668,7 +718,7 @@ button {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: background-color 180ms ease, box-shadow 180ms ease, transform 160ms var(--ease-out);
 }
 
 button:hover {
@@ -676,8 +726,9 @@ button:hover {
   box-shadow: 0 4px 14px rgba(58, 91, 199, 0.28);
 }
 
+/* Pressing a button gives at once: a small press-in, released softly. */
 button:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 /* Quiet secondary button: blue text (clickable) on a soft tint. */
@@ -712,8 +763,16 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   button,
   .stat,
-  .drawer {
+  .stat h2,
+  .stat .caption,
+  .drawer,
+  .scrim {
     transition: none !important;
+  }
+
+  button:active,
+  a.button-link:active {
+    transform: none;
   }
 }
 
@@ -815,6 +874,61 @@ button:disabled {
 .panel.orders.is-reading .pager {
   opacity: 0.35;
   pointer-events: none;
+}
+
+/* After Read orders (8 Nov polish): the new buyer rows (cards on phones) and the summary figures come in gently,
+   a short rise and fade, one after another 35 ms apart. Only for the read itself (app.js adds is-entering for
+   700 ms), never on a status check or an edit. `translate`, not `transform`: AG Grid places rows with transform. */
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+#grid.is-entering .ag-row,
+.summary.is-entering [data-figure],
+.summary.is-entering [data-caption] {
+  animation: enter-up 260ms var(--ease-out) both;
+}
+
+#grid.is-entering .ag-row:nth-child(2),
+.summary.is-entering .stat:nth-child(2) :is([data-figure], [data-caption]) { animation-delay: 35ms; }
+#grid.is-entering .ag-row:nth-child(3),
+.summary.is-entering .stat:nth-child(3) :is([data-figure], [data-caption]) { animation-delay: 70ms; }
+#grid.is-entering .ag-row:nth-child(4),
+.summary.is-entering .stat:nth-child(4) :is([data-figure], [data-caption]) { animation-delay: 105ms; }
+#grid.is-entering .ag-row:nth-child(5) { animation-delay: 140ms; }
+#grid.is-entering .ag-row:nth-child(n + 6),
+#grid.is-entering .ag-floating-bottom .ag-row { animation-delay: 175ms; }
+
+/* A buyer turns Paid: their tag pops in once, with a soft green ring that fades (calm: a 4% overshoot, 320 ms).
+   Next to it the cell's green flash (AG Grid), the Paid card counting up and the cha-ching (app.js). */
+@keyframes paid-pop {
+  0% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(30, 91, 53, 0.3);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: none;
+    box-shadow: 0 0 0 8px rgba(30, 91, 53, 0);
+  }
+}
+
+.badge.is-new-paid {
+  animation: paid-pop 320ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #grid.is-entering .ag-row,
+  .summary.is-entering [data-figure],
+  .summary.is-entering [data-caption],
+  .badge.is-new-paid {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1243,11 +1357,24 @@ button.ghost.small {
 }
 
 /* ---- The drawer: from the right on laptop and iPad, full screen on phones ---- */
+/* The drawer slides all the way in from the right (280 ms) while the page behind dims with it (same curve and
+   time: they move as one). Closing is quicker (200 ms): the slide back out. Reduced motion: it simply appears. */
 .scrim {
   position: fixed;
   inset: 0;
   z-index: 20;
   background: rgba(29, 29, 31, 0.32);
+  opacity: 0;
+  transition: opacity 280ms var(--ease-drawer);
+}
+
+.scrim.is-open {
+  opacity: 1;
+}
+
+.scrim:not(.is-open) {
+  pointer-events: none; /* while it fades out, a click already reaches the page */
+  transition-duration: 200ms;
 }
 
 .drawer {
@@ -1263,14 +1390,13 @@ button.ghost.small {
   padding: 28px;
   background: var(--page);
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.12);
-  transform: translateX(24px);
-  opacity: 0;
-  transition: transform 240ms ease, opacity 240ms ease;
+  transform: translateX(100%);
+  transition: transform 200ms var(--ease-drawer);
 }
 
 .drawer.is-open {
   transform: none;
-  opacity: 1;
+  transition-duration: 280ms;
 }
 
 .drawer-head {
@@ -1430,14 +1556,24 @@ button.ghost.small {
   margin-top: 16px;
 }
 
-.footer ul {
+.footer .about {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
   padding: 20px 0 0;
   border-top: 1px solid var(--rule);
-  list-style: none;
+}
+
+.footer .about .lucide {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.footer .about strong {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .phone-total {
@@ -1572,6 +1708,11 @@ button.ghost.small {
   .stat:not(.stat-hero) .icon-circle .lucide {
     width: 18px;
     height: 18px;
+  }
+
+  button.round.sound-toggle {
+    top: 12px; /* the phone card's 36 px icon sits 16 px down: same centre */
+    right: 8px;
   }
 
   .stat h2,
@@ -2216,7 +2357,22 @@ a.button-link {
   color: var(--white);
   font-weight: 600;
   text-decoration: none;
-  transition: background-color 180ms ease, box-shadow 180ms ease;
+  transition: background-color 180ms ease, box-shadow 180ms ease, transform 160ms var(--ease-out);
+}
+
+a.button-link:active {
+  transform: scale(0.97);
+}
+
+/* Before the buyer has said the order looks right, Pay is the pale second button (still blue = clickable). */
+a.button-link.is-quiet {
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+a.button-link.is-quiet:hover {
+  background: #e3e8f7;
+  box-shadow: none;
 }
 
 a.button-link:hover {

@@ -49,6 +49,8 @@ const check = (ok, label) => {
   if (!ok) failed++;
 };
 const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-break space after "RM"
+// Closed: the drawer slides out (200 ms, 8 Nov polish) and is hidden once the slide is over.
+const drawerClosed = (page) => page.waitForSelector("#drawer", { state: "hidden", timeout: 2000 }).then(() => true, () => false);
 
 // A fresh server: every new visitor starts EMPTY (no rows, no chats), as for a seller on their first day.
 async function startServer() {
@@ -393,6 +395,8 @@ try {
     check((await statusOf("Hafiz")) === "Paid", `the 20-second poll turned Hafiz Paid by itself ("${await statusOf("Hafiz")}")`);
     const flashing = (buyer) => page.locator(ROWS, { hasText: buyer }).locator(".ag-cell-data-changed, .ag-cell-data-changed-animation").count();
     check((await flashing("Hafiz")) > 0, "Hafiz's status flashes green once");
+    // The figure counts up for 300 ms (8 Nov polish): read it once the count has landed.
+    await page.waitForFunction(() => /45\.00/.test(document.querySelector("#stat-paid [data-figure]").textContent), null, { timeout: 3000 }).catch(() => {});
     const paidCard = plain(await page.$eval("#stat-paid", (el) => el.innerText));
     check(paidCard.includes("RM 45.00") && await page.$eval("#stat-paid", (el) => el.classList.contains("is-paid")), `the Paid card turned green: "${paidCard}"`);
     const paidTag = await page.locator(ROWS, { hasText: "Hafiz" }).locator(".badge").evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -435,7 +439,7 @@ try {
     page.once("dialog", (dialog) => dialog.accept());
     await page.click("#record-payment");
     await page.waitForFunction(() => document.getElementById("status-message").textContent.startsWith("Recorded: Lina"), null, { timeout: 5000 }).catch(() => {});
-    check(await page.$eval("#drawer", (el) => el.hidden), "after recording, the drawer closes so the row is seen");
+    check(await drawerClosed(page), "after recording, the drawer closes so the row is seen");
     check((await statusOf("Lina")) === "Paid (cash/bank)" && (await flashing("Lina")) > 0, `Lina turns "Paid (cash/bank)" and flashes green (${await statusOf("Lina")})`);
     const linaId = await idOf("Lina");
     const cashCall = fake.calls.find((c) => c.kind === "payment");
@@ -616,7 +620,7 @@ try {
       && kitchenText.includes("\n+2 orders still to check\n"), `Copy puts the kitchen list on the clipboard as plain text${kitchenText === kitchenWant ? "" : `: ${JSON.stringify(kitchenText)}`}`);
     check(plain(await page.$eval("#copy-kitchen", (el) => el.innerText)) === "Copied", "the button says Copied");
     await page.keyboard.press("Escape");
-    check(await page.$eval("#drawer", (el) => el.hidden), "Escape closes the kitchen list");
+    check(await drawerClosed(page), "Escape closes the kitchen list");
 
     // ---- Add / remove items in the drawer: Read without AI -> fix Hafiz -> send -> his items are locked ----
     // The demo chats on another Chat date: mock mode doesn't know them, so the notice offers Read without AI.

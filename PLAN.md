@@ -354,7 +354,7 @@ Weekend days have 6 h available (2 h + 4 h extra). The plan uses 5 h; the 6th ho
 | Thu 5 Nov (2 h) | ✅ **Step 11 DONE early (Fri 30 Oct)**: live at https://chatching.onrender.com/, `npm run ui-live` at 1280 + 390 px. Step 11: deploy to Render | **Full flow works on the hosted URL** |
 | Fri 6 Nov (2 h) | ✅ **User test DONE (6 Nov, on 1.8.0)**: "clean UI, cool QR code, would use it because it's more convenient than Excel"; four confusions fixed the same day (Step 13c, version 1.9.0). 7 PM: **user test with your friend (10 min)** → LEARNING.md; then Step 12: ~~non-AI fallback parser~~ (done early in Step 10, 30 Oct) | Test notes saved; app works with `AI_MODE=off` (Read without AI) |
 | Sat 7 Nov (5 h) | Edge-case tests; **holdout accuracy run (once)**; README (features, setup, testing logins = the 2 judge accounts); **video script draft** (from the Section 13 storyboard); **save a Devpost draft**: fill in the Devpost text and Built with tags from `docs/devpost-draft.md`. ~~**You: create 2 sandbox buyer accounts just for judges**~~ ✅ **done early (4 Nov)**: judge1 + judge2 in the README and the Devpost testing instructions; judge1 paid an invoice on the live site and the row turned green (if one gets locked or its password changed, judges use the other) | Holdout score recorded as-is; fresh clone runs from README alone; Devpost draft saved; both judge logins work |
-| Sun 8 Nov (5 h) | **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green. **Polish (added 29 Oct): a soft "cha-ching" when a payment arrives**, made in code with the Web Audio API (no sound file, no copyright), **plus the Paid total counting up**. Only after the seller has clicked something on the page (browsers block sound before that), with a mute toggle; with reduced motion, no count-up animation (the number just changes) | All RULES.md build items ticked; a sandbox payment plays the sound once; mute silences it; reduced motion shows no animation |
+| Sun 8 Nov (5 h) | ✅ **Polish DONE early (Sat 7 Nov evening), version 1.11.0, then FEATURE FREEZE** (tag `freeze-2026-11-08`, see "Feature freeze" below): drawer slide, button press, rows and figures coming in after Read orders, the Paid pop + count-up + Web Audio cha-ching with a mute toggle, the buyer page's one main button and "What you wrote" under the order, "Waking up the server..." with automatic retries, the "Paid (cash/bank)" break at 820 px, the About this demo line, audit fixes; `npm run ui-polish`. Original plan: **Feature freeze.** Fixes from the user test, design polish, buffer; stretch only if all green. **Polish (added 29 Oct): a soft "cha-ching" when a payment arrives**, made in code with the Web Audio API (no sound file, no copyright), **plus the Paid total counting up**. Only after the seller has clicked something on the page (browsers block sound before that), with a mute toggle; with reduced motion, no count-up animation (the number just changes) | All RULES.md build items ticked; a sandbox payment plays the sound once; mute silences it; reduced motion shows no animation |
 | Mon 9 Nov (2 h) | **First: test paying with an English-language sandbox buyer account** (one of the judge accounts), then record the video (voice lines + phone clip first, then `cd video` and `npm run final`; steps in `video/README.md`); run `npm run gallery` (after the design polish), check the 6 images and upload them to the Devpost gallery | Payment page in English; video under 3 min, no copyrighted music/logos |
 | Tue 10 Nov (2 h) | Video upload, GitHub public + MIT in About, Devpost details; add the GitHub link to Devpost's Try it out once the repo is public | All links work in a private window |
 | Wed 11 Nov (2 h) | "final check", then **submit (evening)** | Devpost shows Submitted |
@@ -364,6 +364,16 @@ Hard deadline: 13 Nov 2026, 4:00 AM MYT. Hosted demo and sandbox logins must kee
 **Tightest part:** Mon 2 – Fri 6 Nov has ~11 h of work in 10 h, and Fri 6 Nov has two jobs. If it slips, it spills into the buffer hour on 7 or 8 Nov. If that isn't enough, cut in this order: 3 first, then 2, then 1, keeping 5 and 4.
 
 **Added 29 Oct:** Steps 10b and 10c go into the evenings freed by finishing Steps 5-6 early (Fri 30 Oct, Sat 31 Oct), so the Mon-Fri crunch doesn't grow. Step 7 also grew (price mismatch, messier chats); Sun 1 Nov's buffer hour covers it. If anything slips, **Step 10c (Pickup scan) is dropped first**, before the Top 5 cuts above. Feature freeze stays Sun 8 Nov.
+
+### Feature freeze (from Sat 7 Nov 2026, evening MYT, until submission)
+
+Decided by Jasper, with the advisor's help, on Sat 7 Nov, right after the polish step. The frozen commit is tagged `freeze-2026-11-08`.
+
+- **Only real bug fixes are allowed**: something that is broken or wrong for a judge, a buyer or a seller (a crash, a wrong number, a broken link, a console error, a check that fails, a login that stopped working, a layout that cuts something off).
+- **No features, no redesign**: no new buttons, pages, settings or animations; no changes to the layout, colours, cards or wording style. "It would be nicer if..." is not a bug.
+- Every fix still follows the Definition of done (MY_RULES.md) and the deploy steps (CLAUDE.md): a test or browser check that fails first, `npm run check`, version raised, both version checks after the deploy.
+- Not code, so not frozen: the video (Mon 9 Nov), the gallery images, the README and Devpost text (facts only), and PLAN.md / DECISIONS.md / LEARNING.md / PROMPT_LOG.md.
+- If it is unclear whether something is a bug fix, it is not: ask Jasper first.
 
 ### After submission (12 Nov – 16 Dec)
 
@@ -460,6 +470,8 @@ In suggested order:
 
 ## 12. UI spec (filled in Mon 26 Oct)
 
+> **FROZEN FOR GOOD since the polish step (Sat 7 Nov evening, version 1.11.0): feature freeze until submission, real bug fixes only** (Section 9, "Feature freeze"). The polish refined motion, sound and small details inside this spec; see "Polish step" at the end of this section.
+>
 > **DESIGN FROZEN (Tue 27 Oct, again after the browser-test fixes) until Sun 8 Nov** (the planned polish day). Round 3 + the browser-test fixes were the last design changes: no visual changes before 8 Nov except bug fixes and what new features need (e.g. the Send invoices button in Step 5), following these rules.
 
 **Every UI step must follow this spec** (Steps 2, 4, 5, 6, 7 and 10), **and must be checked at laptop, iPad and phone widths** (1280 px, 820 px and 390 px, with `npm run ui-check` AND by looking at the screenshots). If a step needs something the spec doesn't cover, Claude asks before inventing it.
@@ -524,7 +536,7 @@ Goal (Jasper): clean but informative, warm, and working on every type of device.
 - Tap targets are at least 44 × 44 px on every device.
 - Breakpoints 640 / 1024 px (Claude's choice). A landscape iPad (1180 px) gets the laptop layout. Side gutters 16 px.
 - **Slim chat bar:** after "Read orders" the chat box folds into a bar "15 messages read from 28 Oct" + an "Edit" button (blue text = clickable) that opens the chats again, filled with the messages that were read; "Hide chats" folds it back. The server remembers the chats with the rows (`source` in the store).
-- **Footer:** setup details (menu, AI mode, PayPal/Gemini keys) sit in a small quiet footer, not in the seller's way. A friendly warning appears only when it matters, next to the action it blocks (Step 5: "Send invoices" while the PayPal keys are missing).
+- **Footer:** ~~setup details (menu, AI mode, PayPal/Gemini keys) sit in a small quiet footer, not in the seller's way.~~ **Changed 7 Nov (polish step):** one small friendly line, "About this demo: it uses the PayPal sandbox only, so no real money moves. Test buyer logins are in the README." (plain text: no page names another site), then Reset demo. A friendly warning appears only when it matters, next to the action it blocks (Step 5: "Send invoices" while the PayPal keys are missing).
 
 ### 3-step guide
 - At the top: **1 Paste → 2 Review → 3 Get paid**, each with a Lucide icon in a white circle. The current step is a filled charcoal circle and bold text; the others are secondary grey. ~~Not blue, because the steps aren't buttons.~~ **Changed 6 Nov (user test):** each step is a button that scrolls to its part of the page; it keeps this look, with the pale blue tint on hover and the blue focus ring (blue = clickable).
@@ -559,6 +571,14 @@ Jasper's reasons: round 1 "the original design is too simple"; round 2 "no perso
 ### Errors (decided Mon 26 Oct)
 - Errors (for example "PayPal is not working right now") use the **amber tint `#FCEFD6` + the word "Error:"** in charcoal, so the colour rule stays: amber = check this. No red anywhere. Jasper's reason: "because its clearer".
 
+### Polish step (Sat 7 Nov evening, for the Sun 8 Nov plan; version 1.11.0)
+Rules from Jasper (with the advisor): refine, don't redesign (same layout, colours, cards and wording style); no new pages or features; every animation short (about 150-300 ms), purposeful, and off with reduced motion. Checked by `npm run ui-polish`.
+- **Motion:** the drawer slides all the way in from the right in 280 ms (ease-out cubic) while the page dims with it, and slides back out in 200 ms (already out of reach for the keyboard while it goes). Buttons press in to 97% at once (160 ms). After Read orders, the buyer rows (cards on phones) and the summary figures rise 6 px and fade in, 35 ms apart (260 ms each, once). The colour change of a summary card fades (300 ms).
+- **Paid moment:** the tag pops once (320 ms, a 4% overshoot and a soft green ring), the row flashes green as before, the Paid figure counts up (300 ms), and a soft two-note coin sound plays (Web Audio, no file). Sound only after a click or key press on the page; a mute toggle (speaker icon) in the Paid card's corner, remembered in this browser. Reduced motion: no slide, entrance, pop, count-up or sound, and no toggle.
+- **Buyer page:** "What you wrote" sits right under "What you ordered" (the Paid card, once paid, comes between them). Before the buyer answers, Looks right is the filled button and Pay is pale; after Looks right, Pay is the filled one. Paying works either way.
+- **Waking up:** if the first request fails (no answer, or 502/503/504 while Render wakes or switches versions), the page says "Waking up the server..." and tries again after 2, 3, 5, 8 and 12 s; then plain words to reload. Send invoices starts disabled and the AI counter stays hidden until the table has loaded. The buyer's page waits the same way.
+- **Details:** the Status column took 12 px from Date (laptop) and Total (iPad), so "(cash/bank)" never breaks inside a word; placeholders in the secondary grey; a table cell reached with Tab shows the 3 px blue ring; the page doesn't jump sideways when the drawer locks scrolling.
+
 ## 13. Video storyboard (Jasper, 28 Oct)
 
 Drafted by Jasper on Wed 28 Oct; **table replaced on Thu 29 Oct** (signature moments: changes and price mismatch, Copy question, cha-ching, Kitchen list, Pickup scan). The words come later: video script on Sat 7 Nov, recording on Mon 9 Nov.
@@ -572,7 +592,7 @@ Drafted by Jasper on Wed 28 Oct; **table replaced on Thu 29 Oct** (signature mom
 | 3 | 0:25.5-0:55.5 | Read orders: a change of quantity, "same as Lina", a cancellation, the price mismatch in amber | "AI reads the language. The code supplies the facts." | Real Gemini reply cached; amber "Check: buyer mentioned RM 15.00, menu says RM 18.00." | Step 7 (7a + 7b) |
 | 4 | 0:55.5-1:10 | Priya amber -> Copy question | "Unclear? Ask the buyer in one tap." | "Copy question" with names, items and prices filled by the code | Step 10 |
 | 5 | 1:10-1:27 | Send invoices with the progress bar, click again -> nothing new | "One click: one PayPal invoice per buyer. Never twice." | Send invoices, progress bar, "All invoices sent", double-invoice guard | ✅ Step 5 |
-| 6 | 1:27-1:59.5 | Lina opens her order page from the message, taps Looks right, pays in the sandbox, sees Paid; the seller's row turns green (changed 6 Nov) | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | Sun 8 Nov polish |
+| 6 | 1:27-1:59.5 | Lina opens her order page from the message, taps Looks right, pays in the sandbox, sees Paid; the seller's row turns green (changed 6 Nov) | "See who paid, live." | Polling + Paid flash ✅ Step 6; cha-ching + Paid total counting up | ✅ polish step (7 Nov, 1.11.0) |
 | 7 | 1:59.5-2:08.5 | Kitchen list | "Know what to bake, per day." | Kitchen list per date + Copy | Step 10b |
 | 8 | 2:08.5-2:26.5 | Phone scans the buyer's QR -> Paid -> Collected | "Hand over only when paid." | Pickup scan on the Render URL (HTTPS) | Step 10c |
 | 9 | 2:26.5-2:47 | Tech view: PayPal Invoicing API, Gemini, AG Grid, tests | "Built on PayPal, Gemini and AG Grid." | `npm run check` output; architecture picture from the README | Step 13 (README) |

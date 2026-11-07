@@ -58,7 +58,9 @@ async function startServer() {
 const drawerOpen = (page) => page.$eval("#drawer", (el) => !el.hidden);
 const menuNames = (page) => page.$$eval("#drawer-body .menu-card .menu-name", (els) => els.map((el) => el.textContent));
 const drawerError = (page) => page.$eval("#drawer-error", (el) => (el.hidden ? "" : el.textContent));
-const footer = (page) => page.$eval("#setup", (el) => el.textContent);
+// The menu as the server holds it for this visitor (the page's footer showed this until the 8 Nov polish).
+const footer = (page) => page.evaluate(() => fetch("/api/state").then((r) => r.json())
+  .then((s) => `Menu: ${s.menu.items.length} items in ${s.menu.currency}${s.menuIsDemo === false ? " (yours)" : ""}`));
 const noSideways = (page) => page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth);
 const waitSaved = (page) => page.waitForFunction(() => document.getElementById("saved-note").textContent.includes("Saved"), null, { timeout: 5000 }).catch(() => {});
 
@@ -137,7 +139,7 @@ try {
     check(await noSideways(page), "no sideways scroll");
     await page.$eval("#drawer-body", (el) => el.scrollTo(0, el.scrollHeight));
     await shot("menu-pizza");
-    check((await footer(page)).includes("Menu: 6 items in MYR (yours)"), "the footer counts the seller's own menu");
+    check((await footer(page)).includes("Menu: 6 items in MYR (yours)"), "the menu is the seller's own: 6 items");
 
     // ---- Edit: another item's Edit shows that item's own values (not what was typed before); Enter saves ----
     await page.click("#menu-edit-classic_brownies");

@@ -20,9 +20,20 @@ let pollStarted = Date.now();
 let timer = null;
 let sending = false;
 
+// The free host sleeps when nobody uses it, and answers 502/503/504 (or not at all) for a moment while it wakes up
+// or a new version starts. The page's FIRST request then waits and tries again by itself, about 30 s in all, and
+// says so (8 Nov polish). Later checks just keep the order on screen and try again at the next one.
+const WAKE_WAITS_MS = [2000, 3000, 5000, 8000, 12000];
+const WAKING = "Waking up the server... It sleeps when nobody is using it, so this can take up to a minute.";
+const NO_SERVER = "Couldn't reach ChatChing. Please check your connection, then reload this page.";
+const busy = (reply) => !reply || [502, 503, 504].includes(reply.status);
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// -> { ok, status, body }. A reply that isn't JSON (a host's own error page) has an empty body.
 async function post(path, body) {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, ...body }) });
-  return { ok: res.ok, body: await res.json() };
+  const json = (res.headers.get("Content-Type") ?? "").includes("application/json");
+  return { ok: res.ok, status: res.status, body: json ? await res.json() : {} };
 }
 
 function say(words) {
@@ -85,6 +96,10 @@ function renderAnswer(o) {
   if (o.answer?.answer === "wrong") said.textContent = o.answer.note ? `You told the seller something's wrong: "${o.answer.note}"` : "You told the seller something's wrong.";
   said.classList.toggle("is-wrong", o.answer?.answer === "wrong");
   $("answer-ok").textContent = o.answer?.answer === "ok" ? "Looks right (sent)" : "Looks right";
+  // One main (filled) button at a time (8 Nov polish): Looks right until the buyer answers; once they say it looks
+  // right, Pay. After "Something's wrong" both stay pale: the seller has to fix the order first. Pay always works.
+  $("answer-ok").classList.toggle("ghost", Boolean(o.answer));
+  $("pay-link").classList.toggle("is-quiet", o.answer?.answer !== "ok");
 }
 
 function renderMessages(o) {
@@ -113,11 +128,18 @@ function showReply(body) {
 
 async function load() {
   if (!token) return gone("This link is missing its key. Please open the link the seller sent you again.");
-  try {
-    const { body } = await post("/api/order/view", {});
-    showReply(body);
-  } catch {
-    if (!order) say("Couldn't reach ChatChing. Check your connection; trying again in 20 seconds.");
+  for (let attempt = 0; ; attempt++) {
+    let reply = null;
+    try {
+      reply = await post("/api/order/view", {});
+    } catch {
+      // no answer at all: the server is asleep, starting, or the connection dropped
+    }
+    if (!busy(reply)) return showReply(reply.body);
+    if (order) return; // a later check: the order stays as it is, the next check tries again
+    if (attempt >= WAKE_WAITS_MS.length) return say(NO_SERVER);
+    say(WAKING);
+    await pause(WAKE_WAITS_MS[attempt]);
   }
 }
 

@@ -38,6 +38,8 @@ const check = (ok, label) => {
   if (!ok) failed++;
 };
 const plain = (text) => text.replace(/\s+/g, " ").trim(); // Intl uses a no-break space after "RM"
+// Closed: the drawer slides out (200 ms, 8 Nov polish) and is hidden once the slide is over.
+const drawerClosed = (page) => page.waitForSelector("#drawer", { state: "hidden", timeout: 2000 }).then(() => true, () => false);
 
 // Priya's order row id, from the server (her buyer row in the table uses the same id).
 const state = await (await visitor.fetch(`${base}/api/state`)).json();
@@ -125,8 +127,11 @@ try {
     await page.evaluate(() => scrollTo(0, 0));
     const bar = plain(await page.$eval("#chat-bar", (el) => (el.hidden ? "" : el.innerText)));
     check(bar.startsWith("18 messages read") && bar.endsWith("Edit"), `chats folded into a slim bar: "${bar}"`);
-    const setup = plain(await page.$eval("footer", (el) => el.innerText));
-    check(setup.includes("PayPal keys: missing"), `setup details in the quiet footer: "${setup}"`);
+    // 8 Nov polish: one friendly About line instead of the developer's setup details; missing keys are said where
+    // they matter, next to Send invoices.
+    const about = plain(await page.$eval("footer", (el) => el.innerText));
+    check(about.startsWith("About this demo: it uses the PayPal sandbox only") && about.includes("README") && !/AI mode|keys/i.test(about), `the About line in the quiet footer: "${about}"`);
+    check(!(await page.$eval("#send-warning", (el) => el.hidden)), "missing PayPal keys are said next to Send invoices");
 
     // One row per buyer, 6 per page; a buyer is never split.
     const page1 = await bodyRows(page);
@@ -276,7 +281,7 @@ try {
       check(drawerWidth === viewport.width, `phone: the drawer is full screen (${drawerWidth} px)`);
       await page.screenshot({ path: `${OUT}${viewport.width}-${viewport.name}-drawer.png` });
       await page.keyboard.press("Escape");
-      check(await page.$eval("#drawer", (el) => el.hidden), "Escape closes the drawer");
+      check(await drawerClosed(page), "Escape closes the drawer");
     }
     await page.close();
   }

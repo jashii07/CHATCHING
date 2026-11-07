@@ -45,12 +45,22 @@
         <p id="order-check-failed" class="hint" hidden>Couldn't check with PayPal just now, so this is the last status we know.</p>
       </section>
 
+      <!-- Once paid, the thank-you and the pickup QR come straight after the order: what the buyer needs then. -->
       <section id="order-paid" class="panel order-card is-paid" hidden aria-labelledby="paid-title">
         <h2 id="paid-title">Paid. Thank you!</h2>
         <div id="order-qr"></div>
       </section>
 
-      <!-- Check first, then pay: "Is this right?" comes before Pay. -->
+      <!-- The buyer's own words, right under the order (8 Nov polish), so the two can be compared before answering. -->
+      <section id="order-chat" class="panel order-card" hidden aria-labelledby="chat-title">
+        <h2 id="chat-title">What you wrote</h2>
+        <p class="hint">The messages your order was read from. The parts that mattered are marked.</p>
+        <ol id="order-messages" class="chat-list"></ol>
+      </section>
+
+      <!-- Check first, then pay: "Is this right?" comes before Pay. Until the buyer answers, Looks right is the
+           main (filled) button and Pay is pale; once they say it looks right, Pay becomes the main button.
+           Paying works either way (order.js). -->
       <section class="panel order-card" aria-labelledby="answer-title">
         <h2 id="answer-title">Is this right?</h2>
         <p id="answer-said" class="answer-said" hidden></p>
@@ -77,12 +87,6 @@
         <h2 id="pay-title">Pay</h2>
         <a id="pay-link" class="button-link" target="_blank" rel="noopener noreferrer">Pay with PayPal</a>
         <p class="hint">Opens PayPal's own page in a new tab. Come back here afterwards to see Paid.</p>
-      </section>
-
-      <section id="order-chat" class="panel order-card" hidden aria-labelledby="chat-title">
-        <h2 id="chat-title">What you wrote</h2>
-        <p class="hint">The messages your order was read from. The parts that mattered are marked.</p>
-        <ol id="order-messages" class="chat-list"></ol>
       </section>
 
       <p class="hint order-foot">This page is private to you: only people with this link can open it.</p>

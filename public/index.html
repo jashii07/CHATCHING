@@ -35,8 +35,9 @@
         </svg>
         ChatChing
       </span>
-      <span class="ai-calls" id="ai-calls" title="Free AI reads left today, shared by everyone using the demo">
-        <i data-lucide="bot" aria-hidden="true"></i><span id="ai-calls-text">AI calls left today: …</span>
+      <!-- Hidden until the server says how many (no "..." while it wakes up). -->
+      <span class="ai-calls" id="ai-calls" title="Free AI reads left today, shared by everyone using the demo" hidden>
+        <i data-lucide="bot" aria-hidden="true"></i><span id="ai-calls-text">AI calls left today</span>
       </span>
     </div>
   </header>
@@ -80,6 +81,8 @@
       </article>
       <article class="stat" id="stat-paid">
         <span class="icon-circle"><i data-lucide="circle-check" aria-hidden="true"></i></span>
+        <!-- The cha-ching when a buyer pays (8 Nov): on unless muted here; this browser remembers it (app.js). -->
+        <button type="button" class="ghost round sound-toggle" id="sound-toggle" aria-label="Payment sound" aria-pressed="true" hidden><i data-lucide="volume-2" aria-hidden="true"></i></button>
         <h2>Paid</h2>
         <p class="figure money" data-figure>—</p>
         <p class="caption" data-caption></p>
@@ -149,8 +152,9 @@
           <button type="button" class="ghost" id="open-on-phone" aria-controls="drawer">
             <i data-lucide="smartphone" aria-hidden="true"></i>Open on my phone
           </button>
-          <!-- One PayPal sandbox invoice per clear buyer. On phones this button sits in the sticky total bar. -->
-          <button type="button" id="send-invoices" data-send-invoices>Send invoices</button>
+          <!-- One PayPal sandbox invoice per clear buyer. On phones this button sits in the sticky total bar.
+               Disabled until the table has loaded (8 Nov polish: never an active Send on a failed load). -->
+          <button type="button" id="send-invoices" data-send-invoices disabled>Send invoices</button>
           <!-- Asks PayPal who has paid (the page also checks by itself every 20 s while invoices are open). -->
           <button type="button" class="ghost" id="refresh-status" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh status</button>
           <!-- Step 10c: scan the buyer's PayPal QR at pickup. On phones this button sits in the sticky total bar.
@@ -203,9 +207,10 @@
     </main>
   </div>
 
-  <!-- Setup details for the developer and judges: quiet, out of the seller's way. -->
+  <!-- About this demo (8 Nov polish): one small friendly line for judges, instead of the developer's setup details
+       (AI mode, keys). A missing PayPal key still shows next to Send invoices, where it matters. -->
   <footer class="footer">
-    <ul id="setup" aria-label="Setup"></ul>
+    <p class="about" id="about"><i data-lucide="info" aria-hidden="true"></i><span><strong>About this demo:</strong> it uses the PayPal sandbox only, so no real money moves. Test buyer logins are in the README.</span></p>
     <!-- Start the demo over: empties the table. Nothing in PayPal is deleted or cancelled. -->
     <button type="button" class="ghost small" id="reset-demo">Reset demo</button>
   </footer>
@@ -262,7 +267,7 @@
   <div class="phone-total" id="phone-total">
     <span class="phone-sum" id="phone-sum" aria-live="polite"></span>
     <button type="button" data-pickup-scan hidden><i data-lucide="scan-qr-code" aria-hidden="true"></i>Pickup scan</button>
-    <button type="button" data-send-invoices>Send invoices</button>
+    <button type="button" data-send-invoices disabled>Send invoices</button>
   </div>
 </body>
 </html>
