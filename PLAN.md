@@ -377,7 +377,7 @@ Decided by Jasper, with the advisor's help, on Sat 7 Nov, right after the polish
 
 ### After submission (12 Nov – 16 Dec)
 
-Judging runs until 16 Dec, and judges need free access the whole time.
+Judging runs until 16 Dec, and judges need free access the whole time. Since 8 Nov a free UptimeRobot monitor (Jasper's) calls `/api/health` every 5 minutes: it keeps the free instance awake and emails Jasper if the site goes down.
 
 **Frozen after the deadline** (official rules, Section 5: "Once the Submission Period has ended, you may not make any changes or alterations to your Submission."):
 - [ ] Right after submitting: tag the submitted commit and push the tag: `git tag submission`, then `git push origin submission`. From then on `main` is frozen.
@@ -386,10 +386,11 @@ Judging runs until 16 Dec, and judges need free access the whole time.
 
 **Every 2–3 days:**
 - [ ] The hosted URL loads (a slow first load can be Render waking the free service up).
+- [ ] **If the site doesn't load within 90 s** (or UptimeRobot emails that it's down): on the service's page in the Render dashboard, click **Manual Deploy > Deploy latest commit**. Then check that `/api/health` shows the same version as before, twice, a few minutes apart (CLAUDE.md). `main` is frozen, so this starts the same code again: it counts as restarting Render (allowed maintenance). Like every deploy, it empties every visitor's table. (Added 8 Nov: the free instance got stuck waking up; DECISIONS.md, Known weaknesses.)
 - [ ] Both judge sandbox logins (README "Judge test accounts") still work: log in to each at https://www.sandbox.paypal.com. Keep checking every 2-3 days until judging ends (16 Dec). If one fails, set its password back to the one in the README in the PayPal developer dashboard (fixing judge logins is allowed maintenance; the README itself stays frozen).
 - [ ] The PayPal sandbox app still works: `node --env-file=.env scripts/smoke-paypal.mjs` → "token OK: yes" (same keys as on Render).
 - [ ] The Gemini key still works and the model still exists (models get retired): `node --env-file=.env scripts/smoke-gemini.mjs` (1 call).
-- [ ] Render hasn't paused or suspended the service (the dashboard shows it live).
+- [ ] Render hasn't paused or suspended the service (the dashboard shows it live). Kept awake, it uses about 744 of the 750 free hours a month, so start no other free Render service in this workspace before 16 Dec: running out suspends all of them until the next month.
 - [ ] Write the date and results in the log below. Fix anything that fails the same day (maintenance only, see "Frozen after the deadline" above).
 
 | Date | URL loads | Judge login 1 | Judge login 2 | PayPal | Gemini | Render live | Notes |
