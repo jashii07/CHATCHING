@@ -1,6 +1,6 @@
 // The demo video: title card, scenes 1-10 from PLAN.md Section 13, a caption on every scene, gentle zooms
 // on each recorded scene's key moment, a voice slot per scene and the closing logo. No music.
-import { AbsoluteFill, Audio, Easing, Freeze, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Easing, Freeze, Img, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 
 const C = {
   page: "#F7F5F2", white: "#FFFFFF", charcoal: "#1D1D1F", grey: "#6E6E73", indigo: "#26307A", indigo2: "#33409A",
@@ -22,11 +22,16 @@ export const Demo = ({ timeline }) => {
     parts.push(
       <Sequence key={scene.n} from={from} durationInFrames={frames} name={`Scene ${scene.n}`}>
         <Scene scene={scene} timeline={timeline} />
-        {scene.voice && (
-          <Sequence from={Math.round(scene.voiceDelay * fps)} name={`Voice ${scene.n}`}>
-            <Audio src={staticFile(scene.voice)} />
+        {scene.voiceParts.map((part, i) => (
+          <Sequence key={`v${i}`} from={Math.round(part.at * fps)} name={`Voice ${scene.n}${scene.voiceParts.length > 1 ? `.${i + 1}` : ""}`}>
+            <Audio src={staticFile(part.file)} />
           </Sequence>
-        )}
+        ))}
+        {scene.sounds.map((sound, i) => (
+          <Sequence key={`s${i}`} from={Math.round(sound.at * fps)} name="Cha-ching">
+            <Audio src={staticFile(sound.file)} />
+          </Sequence>
+        ))}
         {scene.kind !== "logo" && <Caption text={scene.caption} frames={frames} />}
       </Sequence>,
     );
@@ -43,7 +48,7 @@ export const Demo = ({ timeline }) => {
 function Scene({ scene, timeline }) {
   if (scene.kind === "clip") return scene.clip ? <ClipScene scene={scene} /> : <Missing text={`Scene ${scene.n}: no clip yet (npm run record)`} />;
   if (scene.kind === "chats") return <ChatsScene chats={timeline.chats} />;
-  if (scene.kind === "phone") return <PhoneScene phone={timeline.phone} />;
+  if (scene.kind === "phone") return <PhoneScene phone={timeline.phone} leadIn={scene.leadIn} />;
   if (scene.kind === "tech") return <TechScene check={timeline.check} realScore={timeline.realScore} />;
   return <LogoScene caption={scene.caption} />;
 }
@@ -104,6 +109,11 @@ function ClipScene({ scene }) {
             <Freeze frame={clipFrames - 1}><OffthreadVideo src={src} muted style={{ width: W, height: H }} /></Freeze>
           </Sequence>
         )}
+        {(clip.masks ?? []).map((m, i) => ( // Chrome's own "Debugger paused" strip on PayPal's dimmed page (clips.mjs)
+          <Sequence key={`m${i}`} from={Math.round(m.from * fps)} durationInFrames={Math.max(1, Math.round(m.to * fps) - Math.round(m.from * fps))} layout="none">
+            <div style={{ position: "absolute", left: m.box.x, top: m.box.y, width: m.box.width, height: m.box.height, background: m.color }} />
+          </Sequence>
+        ))}
         {clip.popup && (
           <Sequence from={Math.round(clip.popup.from * fps)} durationInFrames={Math.max(1, Math.floor(clip.popup.duration * fps) - 1)}>
             <PopupWindow popup={clip.popup} />
@@ -206,8 +216,33 @@ function ChatsScene({ chats }) {
   );
 }
 
-// ---- scene 8: Jasper's phone clip (pickup scan), or a placeholder until it exists ----
-function PhoneScene({ phone }) {
+// ---- scene 8: the buyer's paid order page (a 1.5 s still), then Jasper's phone clip (pickup scan) ----
+const PHONE_H = 900;
+const phoneFrame = { height: PHONE_H, borderRadius: 36, overflow: "hidden", boxShadow: "0 24px 60px rgba(27,35,64,0.25)", background: "#000" };
+
+// The buyer's side: their order page on a phone, "Paid. Thank you!" and the pickup QR, with a label.
+function LeadIn({ leadIn }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const end = Math.round(leadIn.seconds * fps);
+  const label = useFadeUp(2);
+  const out = interpolate(frame, [end - 5, end], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const zoom = interpolate(frame, [0, end], [1, 1.03]);
+  return (
+    <AbsoluteFill style={{ background: C.page, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 72, paddingBottom: 60, opacity: out }}>
+      <div style={{ ...label, width: 560, fontSize: 56, fontWeight: 700, lineHeight: 1.2, color: C.charcoal, letterSpacing: "-0.01em" }}>
+        {leadIn.buyer} shows the QR from her order page
+      </div>
+      <div style={{ ...phoneFrame, transform: `scale(${zoom})`, background: C.white }}>
+        <Img src={staticFile(leadIn.file)} style={{ height: PHONE_H }} />
+      </div>
+      <div style={{ width: 560 }} />
+    </AbsoluteFill>
+  );
+}
+
+function PhoneScene({ phone, leadIn }) {
+  const { fps } = useVideoConfig();
   if (!phone) {
     return (
       <AbsoluteFill style={{ background: C.page, justifyContent: "center", alignItems: "center" }}>
@@ -219,10 +254,27 @@ function PhoneScene({ phone }) {
       </AbsoluteFill>
     );
   }
+  const lead = leadIn ? Math.round(leadIn.seconds * fps) : 0;
   return (
-    <AbsoluteFill style={{ background: C.page, justifyContent: "center", alignItems: "center", paddingBottom: 60 }}>
-      <div style={{ height: 900, borderRadius: 36, overflow: "hidden", boxShadow: "0 24px 60px rgba(27,35,64,0.25)", background: "#000" }}>
-        <OffthreadVideo src={staticFile(phone.file)} muted style={{ height: 900 }} />
+    <AbsoluteFill style={{ background: C.page }}>
+      {leadIn && <Sequence durationInFrames={lead} name="Lead-in: buyer's QR"><LeadIn leadIn={leadIn} /></Sequence>}
+      <Sequence from={lead} name="Phone clip"><PhoneClip phone={phone} /></Sequence>
+    </AbsoluteFill>
+  );
+}
+
+// The seller's side: Jasper's phone, Pickup scan. It plays once, then holds its last frame.
+function PhoneClip({ phone }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const fadeIn = interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" });
+  const playFrames = Math.max(1, Math.floor(phone.duration * fps) - 1);
+  const video = (props) => <OffthreadVideo src={staticFile(phone.file)} muted style={{ height: PHONE_H }} {...props} />;
+  return (
+    <AbsoluteFill style={{ background: C.page, justifyContent: "center", alignItems: "center", paddingBottom: 60, opacity: fadeIn }}>
+      <div style={phoneFrame}>
+        <Sequence durationInFrames={playFrames} layout="none">{video()}</Sequence>
+        <Sequence from={playFrames} layout="none"><Freeze frame={playFrames - 1}>{video()}</Freeze></Sequence>
       </div>
     </AbsoluteFill>
   );

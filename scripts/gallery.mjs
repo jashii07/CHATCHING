@@ -74,6 +74,8 @@ try {
   await page.click("#refresh-status");
   await page.waitForFunction(() => document.getElementById("stat-paid").classList.contains("is-paid"), null, { timeout: 10000 });
   // The search box (AG Grid's quick filter) shows only Hafiz, so his green row fits under the green Paid card.
+  // Got it closes the "Invoices sent" banner (since 1.11.0 it pushed his row below the bottom edge).
+  await page.click("#sent-banner-close");
   await page.fill("#search", "Hafiz");
   await page.waitForFunction((sel) => document.querySelectorAll(sel).length === 1, ROWS);
   await frameAt(".summary");

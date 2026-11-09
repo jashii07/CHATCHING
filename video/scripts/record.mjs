@@ -5,8 +5,16 @@
 //   3  Read orders: the totals, Lina's change (her AI note), "same as Lina", Danish's cancellation, Jun Wei's amber price check
 //   4  Priya: open her row, Copy question
 //   5  Send invoices with the progress bar, then click again: nothing new
-//   6  Lina's payer link: pay in the PayPal sandbox with the judge1 login from the README, back, Refresh status: Paid
+//   6  Copy message on Lina's row -> her order page: Looks right -> Pay with PayPal (judge1 login, blurred) ->
+//      Payment successful -> her page shows Paid -> back to ChatChing: the Paid moment (pop, flash, count-up)
 //   7  Kitchen list
+//   8  (lead-in still) Aisyah pays by Record cash; her order page on a phone-sized window shows Paid + the pickup QR
+//      (if PayPal gives no QR for a cash-paid invoice, Lina's page is used instead and the video's label says so)
+//
+// Waits (page loads, typing the login) are sped up, not cut, so the scene stays quick and still reads as one
+// flow. Each scene 6 key moment (Looks right, Pay, Paid) is saved as a cue, so the edit can put the matching
+// words of the voice line and the cha-ching there (the screen recording has no sound).
+// PayPal's pages are asked for in English: locale en-US, Accept-Language "en-US,en", Chrome's --lang=en-US.
 //
 // It sends 7 REAL sandbox invoices (fictional buyers, fake money, no emails) and pays Lina's with judge1.
 // No Gemini call: every POST /api/parse is stopped unless it is exactly the demo chats and date (the server
@@ -18,7 +26,7 @@
 // Run: npm run record            (or: npm run record -- https://another-url)
 //      --judge=2         pay with the README's "Judge buyer 2" login instead of judge 1
 //      --strict-version  stop unless the live version is the one in the app's package.json (npm run final uses this)
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { Stream } from "./lib/stream.mjs";
@@ -44,7 +52,7 @@ const [JUDGE_EMAIL, JUDGE_PASSWORD] = [login[1], login[2]];
 // ---- markers: scenes, cut-outs (waiting), zoom moments, the PayPal popup ----
 const t0 = performance.now();
 const now = () => (performance.now() - t0) / 1000;
-const marks = { scenes: [], skips: [], zooms: [], popups: [] };
+const marks = { scenes: [], skips: [], fast: [], fastAtLeast: [], zooms: [], popups: [], cues: [], leadIn: null };
 let scene = null;
 const startScene = (n) => {
   if (scene) scene.end = now();
@@ -55,6 +63,13 @@ const startScene = (n) => {
 // Cuts the dull middle of a wait, keeping `keep` seconds at each end so the change still reads.
 const skip = (a, b, keep = 0.35) => { if (b - a > 2 * keep + 0.3) marks.skips.push([a + keep, b - keep]); };
 const waitCut = async (promise, keep) => { const a = now(); const value = await promise; skip(a, now(), keep); return value; };
+// Speeds up a dull stretch (a page loading, the login being typed) so it plays in about `shown` seconds.
+const fast = (a, b, shown = 0.6) => { if (b - a > shown + 0.15) marks.fast.push([a, b, (b - a) / shown]); };
+// Plays a whole stretch at least `speed` times faster (the PayPal login: clicks and all), on top of fast().
+const fastAtLeast = (a, b, speed) => { if (b > a) marks.fastAtLeast.push([a, b, speed]); };
+const waitFast = async (promise, shown) => { const a = now(); const value = await promise; fast(a, now(), shown); return value; };
+// A named moment in the current scene (clip time in the manifest), for the voice parts and the sound.
+const cue = (name, extra = {}) => marks.cues.push({ scene: scene.n, name, t: now(), ...extra });
 const union = (boxes) => {
   const x = Math.min(...boxes.map((b) => b.x));
   const y = Math.min(...boxes.map((b) => b.y));
@@ -86,8 +101,9 @@ if (args.includes("--strict-version") && health.version !== appVersion) {
 }
 
 mkdirSync(RAW, { recursive: true });
-const browser = await chromium.launch({ channel: "chrome", headless: true });
-const context = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 1, locale: "en-US", permissions: ["clipboard-read", "clipboard-write"] });
+const ENGLISH = { locale: "en-US", extraHTTPHeaders: { "Accept-Language": "en-US,en" } };
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--lang=en-US"] });
+const context = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 1, ...ENGLISH, permissions: ["clipboard-read", "clipboard-write"] });
 await context.addInitScript(INIT_SCRIPT);
 const main = new Stream("main", RAW, now, SIZE);
 let popupStream = null;
@@ -201,33 +217,71 @@ try {
   const again = (await state()).orders.filter((r) => r.invoiceId);
   if (new Set(again.map((r) => r.invoiceId)).size !== new Set(sent.map((r) => r.invoiceId)).size) throw new Error("A second click made new invoices.");
 
-  // ---------------- Scene 6: Lina pays in the PayPal sandbox ----------------
+  // ---------------- Scene 6: Lina's order page, Looks right, pay with PayPal, Paid ----------------
   startScene(6);
-  if (await page.locator("#page-prev").isEnabled().catch(() => false)) await human.click("#page-prev", { after: 700 });
-  await human.scrollPageTo(186, 700);
-  const payer = row("Lina").locator(".pay-link a");
-  await human.hover(payer, 500);
-  const tabOpened = context.waitForEvent("page");
-  await human.click(payer, { after: 0 });
-  const tab = await tabOpened;
-  const tabHuman = makeHuman(tab, human.pos);
+  // The order page links, read now: once a buyer is paid, their message (and its link) is gone from the table.
+  const linkIn = (text) => String(text ?? "").match(/https?:\/\/\S+?\/order#[A-Za-z0-9_-]+/)?.[0] ?? null;
+  const textsBefore = (await state()).texts;
+  const linkOf = (buyer) => linkIn(textsBefore.find((t) => t.buyer === buyer)?.message);
+  if (await page.locator("#page-prev").isEnabled().catch(() => false)) await human.click("#page-prev", { after: 500 });
+  await human.reveal(row("Lina"), { block: "center", ms: 800 });
+  await human.click(row("Lina").locator('.copy-text[data-kind="message"]'), { after: 650 }); // "Copied"
+  const linaLink = linkIn(await page.evaluate(() => navigator.clipboard.readText()).catch(() => "")) ?? linkOf("Lina");
+  if (!linaLink) throw new Error("Lina's Copy message had no order page link.");
+  // Lina opens the link from her chat: a new tab. The seller's tab goes to the back.
+  await page.evaluate(() => window.__setHidden?.(true));
+  const openAt = now();
+  const buyerTab = await context.newPage();
+  buyerTab.on("pageerror", (err) => errors.push(`order page: ${err.message}`));
+  buyerTab.on("console", (msg) => msg.type() === "error" && errors.push(`order page: ${msg.text()}`));
+  await buyerTab.goto(linaLink, { waitUntil: "load" });
+  await buyerTab.waitForSelector("#order-content:not([hidden])", { timeout: SLOW });
+  await buyerTab.evaluate(() => document.fonts.ready);
+  await sleep(300);
+  await main.attach(buyerTab);
+  const bh = makeHuman(buyerTab, { x: 1300, y: 300 });
+  await bh.show();
+  fast(openAt, now() - 0.1, 0.4);
+  // Off camera: the seller's tab is set up for the return, with the Paid card at the top and Lina's row below.
+  await page.evaluate(() => {
+    const top = document.getElementById("stat-paid").getBoundingClientRect().top + scrollY;
+    scrollTo({ top: Math.max(0, top - 84), behavior: "instant" });
+  });
+  await sleep(250);
+  await bh.hover("#order-items", 800); // Lina checks her order
+  await bh.reveal("#answer-ok", { block: "center", ms: 800 }); // the caption would cover it lower down
+  await bh.click("#answer-ok", { after: 0 });
+  cue("looks");
+  await buyerTab.waitForFunction(() => /sent/.test(document.getElementById("answer-ok").textContent), null, { timeout: SLOW });
+  await sleep(550);
+  const ppOpened = context.waitForEvent("page");
+  await bh.click("#pay-link", { after: 0 });
+  cue("pay");
+  const tab = await ppOpened;
+  await buyerTab.evaluate(() => window.__setHidden?.(true));
+  const tabHuman = makeHuman(tab, bh.pos);
   const loadStart = now();
   await tab.waitForLoadState("load");
   const ppButtonFrame = tab.frameLocator('iframe[title*="PayPal"]').first();
   const ppButton = ppButtonFrame.locator('[data-funding-source="paypal"], div[role=link], [role=button]').first();
   await ppButton.waitFor({ state: "visible", timeout: SLOW });
-  await tab.locator("#bannerCloseButton").click({ timeout: 3000 }).catch(() => {}); // PayPal's cookie banner
+  // PayPal's cookie banner (a throwaway sandbox browser): close it, or accept it if there is no close button.
+  await tab.locator("#bannerCloseButton").click({ timeout: 2000 }).catch(() => tab.getByRole("button", { name: /Yes, I accept|Accept/i }).first().click({ timeout: 2000 }).catch(() => {}));
   await sleep(800);
   await main.attach(tab);
   await tabHuman.show();
+  await sleep(200);
+  fast(loadStart, now() - 0.1, 0.5);
+  const invoiceShown = now();
   await sleep(300);
-  skip(loadStart, now(), 0.1);
-  await sleep(700);
-  await tabHuman.hover('text="Amount due"', 600);
+  const amountDue = tab.getByText("Amount due").first();
+  if (await amountDue.isVisible().catch(() => false)) await tabHuman.hover(amountDue, 350);
+  else console.log("  PayPal's invoice page has no \"Amount due\" (not in English?)");
   const popupOpened = context.waitForEvent("page");
   await tabHuman.click(ppButton, { reveal: false, after: 0 });
   const popup = await popupOpened;
   const popStart = now();
+  fastAtLeast(invoiceShown, popStart, 1.6); // PayPal's invoice page: to its PayPal button
   await tabHuman.hide();
   popupStream = new Stream("popup", RAW, now, popup.viewportSize() ?? { width: 568, height: 750 });
   await popupStream.attach(popup);
@@ -249,66 +303,114 @@ try {
     }
   };
   const ph = makeHuman(popup, { x: 284, y: 520 });
-  await waitCut(popup.waitForSelector("#email", { state: "visible", timeout: SLOW }), 0.4);
+  await waitFast(popup.waitForSelector("#email", { state: "visible", timeout: SLOW }), 0.5);
   await ph.show();
   await sleep(300);
-  await ph.click("#email", { after: 150 });
+  // A login field can slide in: wait until it stops moving, click it, and make sure it has the focus before typing.
+  const ready = async (sel) => {
+    const field = popup.locator(sel).first();
+    let last = null;
+    for (let i = 0; i < 20; i++) {
+      const b = await field.boundingBox();
+      if (b && last && Math.abs(b.x - last.x) < 0.5 && Math.abs(b.y - last.y) < 0.5) break;
+      last = b;
+      await sleep(120);
+    }
+    await ph.click(field, { after: 150 });
+    if (!(await field.evaluate((el) => el === document.activeElement))) await field.focus();
+    await field.fill("");
+  };
+  // Typed characters are counted, never printed: the login stays out of the logs too.
+  const typedRight = async (sel, text) => (await popup.locator(sel).first().inputValue()).length === text.length;
+  await ready("#email");
   let typing = now();
   await typeSecret(JUDGE_EMAIL, 40);
-  skip(typing + 0.5, now() - 0.2, 0);
+  if (!(await typedRight("#email", JUDGE_EMAIL))) throw new Error("The judge email did not go into PayPal's email field.");
+  fast(typing + 0.2, now(), 0.5); // the (blurred) email typed fast
   await sleep(300);
   await ph.click("#btnNext", { after: 0 });
-  await waitCut(popup.waitForSelector("#password", { state: "visible", timeout: SLOW }), 0.4);
-  await sleep(250);
-  await ph.click("#password", { after: 150 });
+  await waitFast(popup.waitForSelector("#password", { state: "visible", timeout: SLOW }), 0.5);
+  await ready("#password");
   typing = now();
   await typeSecret(JUDGE_PASSWORD, 50);
-  skip(typing + 0.5, now() - 0.2, 0);
+  if (!(await typedRight("#password", JUDGE_PASSWORD))) throw new Error("The judge password did not go into PayPal's password field.");
+  fast(typing + 0.2, now(), 0.4);
   await sleep(300);
   await ph.click("#btnLogin", { after: 0 });
   const submit = popup.locator("[data-testid=submit-button-initial], #payment-submit-btn").first();
-  await waitCut(submit.waitFor({ state: "visible", timeout: SLOW }), 0.5);
-  await sleep(1000);
+  await waitFast(submit.waitFor({ state: "visible", timeout: SLOW }), 0.7);
+  fastAtLeast(popStart + 0.4, now(), 3); // the whole login, clicks included, at 3x or faster
+  const reviewShown = now();
+  await sleep(700);
   await ph.show();
-  await ph.hover(submit, 600);
+  await ph.hover(submit, 500);
   const payAt = now();
   await ph.click(submit, { after: 0 });
   await popup.waitForEvent("close", { timeout: SLOW });
   clearInterval(guard);
   console.log(leaks.length ? `  login guard: ${leaks.length} unblurred moment(s) found and cut out` : "  login guard: the login stayed blurred the whole time");
-  marks.popups.push({ scene: 6, start: popStart, end: now() });
   await popupStream.close();
+  // The popup's very last frame is black (the window closing): the popup ends with its last real frame.
+  const lastReal = popupStream.frames.findLast((fr) => existsSync(fr.file) && statSync(fr.file).size > 4000);
+  marks.popups.push({ scene: 6, start: popStart, end: Math.min(now(), (lastReal?.t ?? now()) + 0.1) });
   await tab.getByText("Payment successful", { exact: false }).first().waitFor({ timeout: SLOW });
-  skip(payAt + 1.2, now() - 0.3, 0);
+  fast(payAt + 0.8, now() - 0.2, 0.7);
+  fastAtLeast(reviewShown, payAt + 0.8, 2); // PayPal's review page, to Complete Purchase
   await tabHuman.show();
-  await sleep(1700);
-  // Back to ChatChing: the PayPal tab closes, the app's tab is still there.
+  await sleep(1100);
+  // Lina closes PayPal's tab: her order page is in front again and checks at once (order.js, visibilitychange).
   await tab.close();
+  await buyerTab.bringToFront();
+  await main.attach(buyerTab);
+  await bh.show();
+  const backAt = now();
+  let buyerPaid = false;
+  for (let attempt = 0; attempt < 6 && !buyerPaid; attempt++) {
+    if (attempt) { // PayPal can take a moment; the server keeps a status for 10 s
+      await buyerTab.evaluate(() => window.__setHidden?.(true));
+      await sleep(11_000);
+    }
+    await buyerTab.evaluate(() => window.__setHidden?.(false));
+    buyerPaid = await buyerTab.waitForSelector("#order-paid:not([hidden])", { timeout: 8000 }).then(() => true, () => false);
+  }
+  if (!buyerPaid) throw new Error("Lina's order page never showed Paid.");
+  await buyerTab.waitForFunction(() => document.getElementById("order-qr-image")?.complete, null, { timeout: 15_000 }).catch(() => {});
+  fast(backAt + 0.2, now() - 0.1, 0.5);
+  await bh.reveal("#order-paid", { block: "center", ms: 600 });
+  await bh.moveTo(1400, 700, 400);
+  await sleep(1100); // "Paid. Thank you!" + the QR (scene 8 shows this page big, on a phone)
+  // Back to ChatChing: the seller's tab comes to the front and catches the payment: the Paid moment.
+  await buyerTab.evaluate(() => window.__setHidden?.(true));
   await page.bringToFront();
   await main.attach(page);
+  const paidCard = await page.locator("#stat-paid").boundingBox();
+  await human.moveTo(paidCard.x + paidCard.width + 70, paidCard.y + paidCard.height + 60, 10);
   await human.show();
-  await unfocus(page);
-  await sleep(500);
-  const paidWait = now();
-  let paid = false;
-  for (let attempt = 0; attempt < 6 && !paid; attempt++) {
-    if (attempt) await sleep(11_000); // the server keeps a status for 10 s
+  await sleep(450);
+  const linaPaid = () => page.waitForFunction((sel) => {
+    const lina = [...document.querySelectorAll(sel)].find((r) => r.innerText.includes("Lina"));
+    return lina && /^\s*Paid\s*$/m.test(lina.querySelector(".badge")?.innerText ?? "");
+  }, ROWS, { timeout: 12_000, polling: "raf" }).then(() => true, () => false);
+  await page.evaluate(() => window.__setHidden?.(false));
+  let paid = await linaPaid();
+  for (let attempt = 0; attempt < 4 && !paid; attempt++) { // only if the tab's own check missed it
+    const waitFrom = now();
+    await sleep(11_000);
     await human.click("#refresh-status", { after: 0 });
-    paid = await page.waitForFunction((sel) => {
-      const lina = [...document.querySelectorAll(sel)].find((r) => r.innerText.includes("Lina"));
-      return lina && /^\s*Paid\s*$/m.test(lina.querySelector(".badge")?.innerText ?? "");
-    }, ROWS, { timeout: 8000 }).then(() => true, () => false);
+    paid = await linaPaid();
+    skip(waitFrom + 0.2, now() - 1.2, 0);
   }
-  if (!paid) throw new Error("Lina never showed as Paid after Refresh status.");
-  skip(paidWait + 1.0, now() - 0.6, 0);
-  await sleep(600);
-  await human.reveal(row("Lina"), { block: "center", ms: 800 });
+  if (!paid) throw new Error("Lina never showed as Paid on the seller's page.");
+  cue("paid", { onScreen: true }); // the tag pops, the row flashes, the Paid card counts up: the cha-ching goes here in the edit
+  await sleep(1000);
+  // Her row is low on the screen (the Paid card had to be in view too): bring it up so the caption can't cover it.
+  await human.reveal(row("Lina"), { block: "center", ms: 700 });
   const linaRow = await human.boxOf(row("Lina"));
   const linaTag = await human.boxOf(row("Lina").locator(".badge"));
-  await human.moveTo(linaTag.x + linaTag.width + 60, linaRow.y + linaRow.height + 60); // off the row
-  await sleep(300);
-  // Her name, total and the green Paid tag.
-  await zoom({ x: linaRow.x, y: linaRow.y, width: linaTag.x + linaTag.width + 30 - linaRow.x, height: linaRow.height }, 2.4, 1.35);
+  await human.moveTo(linaTag.x + linaTag.width + 60, Math.min(1040, linaRow.y + linaRow.height + 40)); // off the row
+  await sleep(200);
+  // Her name, "Confirmed by buyer", the total and the green Paid tag.
+  await zoom({ x: linaRow.x, y: linaRow.y, width: linaTag.x + linaTag.width + 30 - linaRow.x, height: linaRow.height }, 1.5, 1.35);
 
   // ---------------- Scene 7: Kitchen list ----------------
   startScene(7);
@@ -322,13 +424,48 @@ try {
   await zoom(union(dayBoxes), 2.6);
   await sleep(800);
   scene.end = now();
+  await main.close();
+
+  // ---------------- Scene 8 lead-in (a still, off camera) ----------------
+  // Aisyah pays by Record cash (same route as the drawer's button), then her order page opens in a phone-sized
+  // window: "Paid. Thank you!" and the pickup QR. If PayPal gives no QR for her cash-paid invoice, Lina's page
+  // (paid through PayPal above) is used instead, and the edit's label names her.
+  const aisyah = (await state()).orders.find((r) => r.buyer === "Aisyah");
+  const cash = await page.evaluate(async (id) => {
+    const res = await fetch(`/api/invoices/${id}/payment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ method: "CASH" }) });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  }, aisyah?.invoiceId);
+  console.log(`  Aisyah: Record cash -> HTTP ${cash.status}${cash.body.error ? ` (${cash.body.error})` : ""}${cash.body.failed ? ` (${cash.body.failed})` : ""}`);
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, ...ENGLISH });
+  try {
+    for (const [buyer, link, paidBy] of [["Aisyah", linkOf("Aisyah"), "Record cash"], ["Lina", linaLink, "PayPal"]]) {
+      if (!link || (buyer === "Aisyah" && cash.status !== 200)) continue;
+      const p = await phone.newPage();
+      await p.goto(link, { waitUntil: "load" });
+      const shown = await p.waitForSelector("#order-paid:not([hidden])", { timeout: 30_000 }).then(() => true, () => false);
+      const qr = shown && await p.waitForFunction(() => {
+        const img = document.getElementById("order-qr-image");
+        return img && img.complete && img.naturalWidth > 50;
+      }, null, { timeout: 20_000 }).then(() => true, () => false);
+      const notice = await p.locator("#order-qr .hint").first().textContent({ timeout: 500 }).catch(() => "");
+      console.log(`  ${buyer}'s order page (paid by ${paidBy}): ${!shown ? "not shown as Paid" : qr ? "Paid. Thank you! + the pickup QR" : `Paid but NO pickup QR${notice ? `: "${notice}"` : ""}`}`);
+      if (!qr) continue;
+      await p.evaluate(() => document.fonts.ready);
+      await sleep(600);
+      await p.screenshot({ path: `${RAW}lead-in.png` });
+      marks.leadIn = { buyer, paidBy, file: "lead-in.png" };
+      break;
+    }
+  } finally {
+    await phone.close();
+  }
+  if (!marks.leadIn) console.log("  WARNING: no paid order page with a QR for the scene 8 lead-in; the video goes straight to the phone clip.");
 
   // Checks after the last frame.
   const aiAfter = (await state()).aiCallsLeft;
   console.log(`Gemini: ${demoReads} demo read(s) from the saved reply; AI calls left ${aiBefore} -> ${aiAfter}`);
   if (aiAfter !== aiBefore) { failed = true; console.log("FAIL: AI calls left changed."); }
 
-  await main.close();
   // Tidy up: Reset demo clears this visitor's table (the invoices stay in the sandbox).
   page.once("dialog", (dialog) => dialog.accept());
   await page.click("#reset-demo").catch(() => {});
@@ -353,7 +490,7 @@ if (failed) {
 await buildClips();
 
 async function waitForSite() {
-  const until = Date.now() + 150_000;
+  const until = Date.now() + 90_000; // the 90 s rule (PLAN.md Section 9): longer means it is stuck, not asleep
   for (;;) {
     try {
       const res = await fetch(`${BASE}/api/health`);

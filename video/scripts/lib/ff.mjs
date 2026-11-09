@@ -12,16 +12,19 @@ function pick(tool) {
 }
 const tools = {};
 
-function exec(tool, args) {
+function exec(tool, args, encoding = "utf8") {
   tools[tool] ??= pick(tool);
   const { cmd, pre, shell } = tools[tool];
   const quoted = shell ? args.map((a) => (/[\s"&|<>^;,=\[\]]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)) : args;
-  const res = spawnSync(cmd, [...pre, ...quoted], { cwd: VIDEO_DIR, shell, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const res = spawnSync(cmd, [...pre, ...quoted], { cwd: VIDEO_DIR, shell, encoding, maxBuffer: 512 * 1024 * 1024 });
   if (res.status !== 0) {
-    throw new Error(`${tool} failed (exit ${res.status}):\n${(res.stderr || "").split("\n").slice(-15).join("\n")}`);
+    throw new Error(`${tool} failed (exit ${res.status}):\n${String(res.stderr || "").split("\n").slice(-15).join("\n")}`);
   }
   return res;
 }
+
+// The tool's output as raw bytes (e.g. video pixels from ffmpeg's rawvideo).
+export const runRaw = (tool, args) => exec(tool, args, "buffer").stdout;
 
 export function run(tool, args, { quiet = true } = {}) {
   const res = exec(tool, args);

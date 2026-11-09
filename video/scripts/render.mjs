@@ -7,10 +7,10 @@
 //                      --no-record  reuse the clips from the last recording
 //                      --judge=2    pay with the README's second judge login
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { mediaSeconds } from "./lib/ff.mjs";
-import { buildTimeline, findVoice, fmt, printTimeline } from "./timeline.mjs";
+import { buildTimeline, findPhone, findVoice, fmt, printTimeline } from "./timeline.mjs";
 
 const draft = process.argv.includes("--draft");
 const VIDEO_DIR = fileURLToPath(new URL("../", import.meta.url));
@@ -18,13 +18,12 @@ const out = `out/chatching-${draft ? "draft" : "final"}.mp4`;
 
 if (!draft) {
   // Fail fast, before a 4-minute recording: Jasper's own files must be in place.
-  const has = (dir, base, exts) => exts.some((e) => existsSync(`${VIDEO_DIR}public/${dir}/${base}.${e}`));
   const noVoice = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((n) => !findVoice(n));
-  const noPhone = !has("phone", "pickup", ["mp4", "mov", "m4v", "webm", "MP4", "MOV"]);
+  const noPhone = !findPhone();
   if (noVoice.length || noPhone) {
     console.log("Stopped, nothing recorded yet:");
     if (noVoice.length) console.log(`- voice line(s) missing for scene(s) ${noVoice.join(", ")}: put the recordings in public/voice/, then run npm run voice`);
-    if (noPhone) console.log("- the phone clip is missing: public/phone/pickup.mp4");
+    if (noPhone) console.log("- the phone clip is missing: put it in public/phone/ (pickup.mp4, or any .mp4/.mov)");
     process.exit(1);
   }
   if (!process.argv.includes("--no-record")) {

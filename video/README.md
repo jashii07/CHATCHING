@@ -4,8 +4,8 @@ This folder makes the 3-minute demo video. It is separate from the app: it has i
 
 How it works, in two halves:
 
-1. **Recording** (`npm run record`): a Playwright script drives the **live site** at 1920 × 1080 and follows the storyboard (PLAN.md Section 13), with a visible cursor and short pauses. It saves one clip per scene in `public/clips/`. It sends 7 real sandbox invoices and pays Lina's with the judge 1 login from the main README. That login is blurred on PayPal's pages, and a guard cuts any moment where it isn't. It makes **no Gemini call**: only the demo chats can reach the app's AI route (the server answers them from its saved reply), and the run fails if "AI calls left" changes.
-2. **Editing** (`npm run draft` / `npm run final`): Remotion builds the video. It adds the title card, the chats scene, the recorded scenes with gentle zooms on each key moment, your phone clip, the tech scene and the closing logo. Every scene has its caption, read straight from PLAN.md Section 13, plus your voice line. There is no music.
+1. **Recording** (`npm run record`): a Playwright script drives the **live site** at 1920 × 1080 and follows the storyboard (PLAN.md Section 13), with a visible cursor and short pauses. It saves one clip per scene in `public/clips/`. It sends 7 real sandbox invoices. In scene 6 it copies Lina's message, opens her order page from it, taps **Looks right**, pays with the judge 1 login from the main README, and comes back to ChatChing for the Paid moment (the tag pops, the row flashes, the Paid card counts up). The login is blurred on PayPal's pages, and a guard cuts any moment where it isn't. Page loads and the login are **sped up**, not cut, so scene 6 stays quick. After scene 7 it records a cash payment for Aisyah and takes a still of her paid order page in a phone-sized window, for scene 8. It makes **no Gemini call**: only the demo chats can reach the app's AI route (the server answers them from its saved reply), and the run fails if "AI calls left" changes.
+2. **Editing** (`npm run draft` / `npm run final`): Remotion builds the video. It adds the title card, the chats scene, the recorded scenes with gentle zooms on each key moment, your phone clip, the tech scene and the closing logo. Every scene has its caption, read straight from PLAN.md Section 13, plus your voice line. There is no music. The screen recording has no sound, so the edit adds the app's own cha-ching (the same two Web Audio notes, `scripts/lib/chime.mjs`) at the moment Lina turns Paid. Voice lines 6 and 8 are split at a pause, so each part plays over its moment ("taps Looks right" on the click, "Paid?" when the phone shows Paid).
 
 ## Setup (once)
 
@@ -41,7 +41,9 @@ Check the timing any time: `node scripts/timeline.mjs` prints every scene's leng
 1. On your phone, open https://chatching.onrender.com/ through **Open on my phone** (or Load demo, Read orders, Send invoices on the phone itself).
 2. Turn on Do Not Disturb, so no messages pop up while you film.
 3. Film the phone's screen: **Pickup scan** → scan a buyer's invoice QR → the result shows Paid → tap **Collected**. Hold the phone upright. Aim for 15 to 18 seconds (scene 8's time in PLAN.md Section 13; a longer clip makes the whole video longer).
-4. Copy the video to the laptop (USB cable, Google Drive or email to yourself) and save it as **`video\public\phone\pickup.mp4`**. A `.mov` from an iPhone also works (`pickup.mov`): the render turns it into a normal MP4 by itself and drops the phone's sound.
+4. Copy the video to the laptop (USB cable, Google Drive or email to yourself) and save it in **`video\public\phone\`**. The phone's own file name works (the newest video there is used; `pickup.mp4` wins if it exists). A `.mov` from an iPhone also works: the render turns it into a normal MP4 by itself and drops the phone's sound.
+
+The 9 Nov clip is a 12.7 s screen recording (576 x 1280). The render crops off the phone's status bar (notification icons), Chrome's address bar and the navigation bar, so only ChatChing shows. Before it, scene 8 shows a 1.5 s still of the paid buyer's order page ("Aisyah shows the QR from her order page"). If you film a new clip, update `PHONE_PAID_AT` (when it shows Paid) and `PHONE_CROPS` in `scripts/timeline.mjs`.
 
 Until the clip is there, the draft shows a "Phone clip goes here" card in its place.
 
@@ -66,7 +68,7 @@ Options:
 - `npm run final -- --no-record` reuses the last recording, for when you only changed a voice line.
 - `npm run final -- --judge=2` pays with the README's second judge login.
 
-**The PayPal pages' language.** Judge 1's sandbox account is set to Malay, so PayPal's checkout page shows Malay text (the PayPal login and "Payment successful" pages are in English). PLAN.md has "test paying with an English-language sandbox buyer account" for Mon 9. Change judge 1's language in that sandbox account's settings, or use `--judge=2` if judge 2 is in English.
+**The PayPal pages' language.** The recorder asks for English (locale en-US, `Accept-Language: en-US,en`, Chrome's `--lang=en-US`). Checked on Mon 9 Nov: with that, every PayPal page in the recording is in English with judge 1 (it was Malay on 4 Nov without the header).
 
 ## Other commands
 
@@ -86,7 +88,8 @@ Options:
 | `scripts/record.mjs` | The live-site recording (the storyboard steps, the Gemini guard, the login guard) |
 | `scripts/lib/human.mjs` | Slow, human-like mouse moves, the cursor highlight, the blur on PayPal's login |
 | `scripts/lib/stream.mjs` | Sharp frames straight from Chrome (no browser bars) |
-| `scripts/clips.mjs` | Frames → one 30 fps clip per scene, with the waits cut out |
+| `scripts/lib/chime.mjs` | The app's cha-ching as a WAV file, for the edit |
+| `scripts/clips.mjs` | Frames → one 30 fps clip per scene, waits cut out or sped up |
 | `scripts/voice.mjs` | Your recordings → trimmed, equally loud copies, and the voice report |
 | `scripts/timeline.mjs` | Captions from PLAN.md, voice lengths, scene lengths, the 2:55 check |
 | `src/Demo.jsx` | The video itself (Remotion) |

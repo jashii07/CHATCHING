@@ -53,6 +53,21 @@ export const INIT_SCRIPT = `(() => {
     ready(() => { if (pos) window.__cursor(pos[0], pos[1]); });
   }
 
+  // Tabs: in headless Chrome every tab counts as visible, so the recorder says when one goes to the back or
+  // comes to the front, as a real browser does (document.hidden + a visibilitychange event). Without this the
+  // seller's 20-second check would catch Lina's payment while the camera is on PayPal, and the Paid moment
+  // would happen off screen. ChatChing's own pages only; PayPal's pages are left alone.
+  if (!onPayPal && window.top === window) {
+    let hidden = false;
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    window.__setHidden = (value) => {
+      if (hidden === value) return;
+      hidden = value;
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+  }
+
   if (onPayPal) {
     // A stylesheet rule (with !important) that the page's own re-renders can't wipe, plus inline styles
     // re-applied on every change, including attribute changes (React rewrites the style attribute).
