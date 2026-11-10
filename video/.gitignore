@@ -13,3 +13,4 @@ public/phone/*
 *.wav
 *.webm
 public/voice-ready/
+public/voice-ready-*/

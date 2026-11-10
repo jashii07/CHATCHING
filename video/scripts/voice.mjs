@@ -1,10 +1,12 @@
 // Prepares Jasper's voice lines for the video (7 Nov). Run: npm run voice
-// Reads the originals in public/voice/ exactly as recorded on the phone ("scene 1.m4a" ... "scene 10.m4a"; scene 3 is
-// two files: "scene 3.m4a" = part 1, "scene 3 second part*.m4a" = part 2; scene 1 is "scene 1 hook.mp3" since 10 Nov,
-// see HOOK below) and NEVER changes them. It writes processed
+// Reads the originals in public/voice/ and NEVER changes them. Since 10 Nov (afternoon) every scene's line comes from
+// "scene 1 hook.mp3", Jasper's read-through of the whole new script, cut into the 10 scenes at the pauses between
+// them (READ_THROUGH below). `npm run voice -- --7nov` uses the 7 Nov lines instead, as recorded on the phone
+// ("scene 1.m4a" ... "scene 10.m4a"; scene 3 is two files: "scene 3.m4a" = part 1, "scene 3 second part*.m4a" =
+// part 2; scene 1 is then the read-through's hook only). It writes processed
 // copies to public/voice-ready/scene1.wav ... scene10.wav (git-ignored), which timeline.mjs uses first:
 //   - silence at the start and end trimmed, keeping 0.2 s on each side (speech found with silencedetect at -45 dB)
-//   - scene 3: part 1, a 0.3 s pause, part 2
+//   - --7nov, scene 3: part 1, a 0.3 s pause, part 2
 //   - every line made equally loud: EBU R128 loudnorm in two passes (measure, then a straight gain), -16 LUFS
 //     (normal speech level for online video), true peak at most -1.5 dBTP, so nothing clips
 //   - 48 kHz mono 16-bit WAV (lossless; the render compresses it once, at the end)
@@ -31,18 +33,35 @@ const LONG_GAP = 1.2; // a pause longer than this inside a line is reported
 const VOICE_DELAY = 0.25; // timeline.mjs: a line starts this long after its scene...
 const VOICE_PAD = 0.8; // ...and the scene keeps this much quiet after it
 
-// Scene 1's new hook (Tue 10 Nov): "scene 1 hook.mp3" is used instead of "scene 1.m4a". That file is a read-through
-// of the whole new script (107 s), so only its start is the hook: "11 PM. ... every single night." ends at 12.8 s,
-// followed by 0.3 s of digital silence (where the takes were joined) and then "So I built ChatChing...". `until`
-// cuts the file inside that silence; the trim below then finds the end of the speech as usual.
-const HOOK = { n: 1, name: /^scene ?1 hook\.(m4a|mp3|wav|aac)$/i, until: 12.95 };
+// Jasper's read-through (Tue 10 Nov): "scene 1 hook.mp3" is one take of the WHOLE new script (107 s), and since the
+// afternoon of 10 Nov it gives every scene its line. CUTS are one point inside the pause between each two scenes, in
+// that file's seconds: where each scene starts was found with Windows' speech recognizer against PLAN.md Section 14,
+// and each cut sits in a stretch quieter than -45 dB (the shortest is 0.13 s, between "...do the work." and "Watch
+// this."). Each scene's line is the stretch between two cuts, trimmed to its speech like the other recordings.
+// The 7 Nov lines (one file per scene) are the fallback: npm run voice -- --7nov makes those again (scene 1 then
+// uses only the hook, the file's first 12.95 s, as in the 2:49.3 cut). The processed copies used in that cut are
+// kept in public/voice-ready-7nov/.
+const READ_THROUGH = {
+  name: /^scene ?1 hook\.(m4a|mp3|wav|aac)$/i,
+  seconds: 107.31, // the file's length when the cuts were measured: a different file needs new cuts
+  cuts: [12.95, 19.18, 43.52, 51.0, 63.33, 74.47, 80.4, 89.78, 104.31],
+};
+const HOOK = { n: 1, until: 12.95 }; // --7nov: scene 1 is the read-through's first 12.95 s (the hook)
+const OLD_LINES = process.argv.includes("--7nov");
+const EDGE_SILENCE = 0.1; // read-through: a pause this long at a cut counts (its pauses are 0.13 to 0.47 s)
 
-// The original file(s) of each scene, part 1 first. -> { n, files, until }
+// The original file(s) of each scene, part 1 first. -> { n, files, from, until, readThrough }
 function sources() {
   const names = existsSync(SOURCE) ? readdirSync(SOURCE).filter((name) => /\.(m4a|mp3|wav|aac)$/i.test(name)) : [];
   const scenes = [];
+  const whole = names.find((name) => READ_THROUGH.name.test(name));
+  if (whole && !OLD_LINES) {
+    const points = [0, ...READ_THROUGH.cuts, Infinity];
+    for (let n = 1; n <= 10; n++) scenes.push({ n, files: [whole], from: points[n - 1], until: points[n], readThrough: true });
+    return { names, scenes, whole };
+  }
   for (let n = 1; n <= 10; n++) {
-    const hook = n === HOOK.n ? names.find((name) => HOOK.name.test(name)) : null;
+    const hook = n === HOOK.n ? whole : null;
     if (hook) {
       scenes.push({ n, files: [hook], until: HOOK.until });
       continue;
@@ -90,6 +109,37 @@ function speech(file, until) {
   const end = tail ? tail.start : duration;
   const gaps = quiet.filter((q) => q !== lead && q !== tail && q.end - q.start > LONG_GAP).map((q) => ({ at: q.start - start, seconds: q.end - q.start }));
   return { file, duration, start, end, length: Math.max(0, end - start), gaps };
+}
+
+// The read-through's quiet stretches, once for the whole file: -45 dB like the others, but EDGE_SILENCE long (its
+// pauses are short). The pad at the end lets silencedetect see the quiet after the last word. -> [{ start, end }]
+function readThroughQuiet(file) {
+  const duration = mediaSeconds(file);
+  const log = runLog("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", `apad=pad_dur=0.5,silencedetect=noise=${THRESHOLD}:d=${EDGE_SILENCE}`, "-f", "null", "-"]);
+  const quiet = [];
+  for (const line of log.split(/\r?\n/)) {
+    const start = line.match(/silence_start: (-?[\d.]+)/);
+    const end = line.match(/silence_end: ([\d.]+)/);
+    if (start) quiet.push({ start: Math.max(0, Number(start[1])), end: duration });
+    if (end && quiet.length) quiet.at(-1).end = Math.min(duration, Number(end[1]));
+  }
+  return { duration, quiet };
+}
+
+// One scene of the read-through: its speech starts where the pause around `from` ends and ends where the pause
+// around `until` starts (the file's own start and end count as cuts). A cut that is not in a pause is reported.
+function readThroughSpeech(file, from, until, { duration, quiet }, warnings, n) {
+  const end = Math.min(until, duration);
+  const around = (t) => quiet.find((q) => q.start <= t + 0.001 && q.end >= t - 0.001);
+  const lead = around(from);
+  const tail = around(end);
+  for (const [t, q] of [[from, lead], [end, tail]]) {
+    if (!q && t > 0 && t < duration) warnings.push(`scene ${n}: the cut at ${t} s is not in a pause, so a word may be cut (a new recording? measure READ_THROUGH.cuts again)`);
+  }
+  const start = lead ? lead.end : from;
+  const stop = tail ? tail.start : end;
+  const gaps = quiet.filter((q) => q.start > start && q.end < stop && q.end - q.start > LONG_GAP).map((q) => ({ at: q.start - start, seconds: q.end - q.start }));
+  return { file, duration: end - from, start, end: stop, length: Math.max(0, stop - start), gaps };
 }
 
 // The filter graph: each part trimmed to its speech, mono 48 kHz; scene 3's parts joined with a short pause; then
@@ -145,13 +195,18 @@ function scriptWords() {
 }
 
 const f1 = (s) => s.toFixed(1);
-const { names, scenes } = sources();
+const { names, scenes, whole } = sources();
 mkdirSync(READY, { recursive: true });
+const readThrough = scenes[0]?.readThrough ? readThroughQuiet(`${SOURCE}${whole}`) : null;
 const board = storyboard();
 const { words, connectors } = scriptWords();
 const rows = [];
 const warnings = [];
+if (readThrough && Math.abs(readThrough.duration - READ_THROUGH.seconds) > 0.05) {
+  warnings.push(`"${whole}" is ${readThrough.duration.toFixed(2)} s long, not ${READ_THROUGH.seconds} s as when the scenes were found in it: a new take needs new READ_THROUGH.cuts`);
+}
 
+if (readThrough) console.log(`Using the read-through "${whole}" for all 10 scenes (npm run voice -- --7nov uses the 7 Nov lines).`);
 console.log(`Originals in public/voice/: ${names.length ? names.join(", ") : "none"}\n`);
 for (const scene of scenes) {
   const out = `${READY}scene${scene.n}.wav`;
@@ -161,8 +216,10 @@ for (const scene of scenes) {
     rows.push({ n: scene.n, missing: true, planned });
     continue;
   }
-  if (scene.n === 3 && scene.files.length !== 2) warnings.push("scene 3: expected 2 parts (\"scene 3.m4a\" and \"scene 3 second part...\"), found " + scene.files.length + ".");
-  const parts = scene.files.map((name) => speech(`${SOURCE}${name}`, scene.until));
+  if (scene.n === 3 && !scene.readThrough && scene.files.length !== 2) warnings.push("scene 3: expected 2 parts (\"scene 3.m4a\" and \"scene 3 second part...\"), found " + scene.files.length + ".");
+  const parts = scene.readThrough
+    ? [readThroughSpeech(`${SOURCE}${scene.files[0]}`, scene.from, scene.until, readThrough, warnings, scene.n)]
+    : scene.files.map((name) => speech(`${SOURCE}${name}`, scene.until));
   const spoken = parts.reduce((sum, p) => sum + p.length, 0);
   if (spoken < 0.5) {
     warnings.push(`scene ${scene.n}: no speech found (empty or silent file).`);
@@ -181,7 +238,7 @@ for (const scene of scenes) {
   for (const p of parts) for (const g of p.gaps) problems.push(`a ${f1(g.seconds)} s pause ${f1(g.at)} s into ${p.file.split("/").pop()}`);
   // Natural speech is about 2 to 3 words a second; well outside that, the recording and the written line differ.
   if (wps !== null && (wps < 1.0 || wps > 3.8)) problems.push(`${f1(wps)} words a second for the ${words[scene.n].count} words in Section 14: the recording may not match that line`);
-  rows.push({ n: scene.n, files: scene.files.map((name) => (scene.until ? `${name} (first ${scene.until} s)` : name)), original: parts.reduce((s, p) => s + p.duration, 0), seconds, planned, needs, room: planned - needs, wps, before, after, mode, problems });
+  rows.push({ n: scene.n, files: scene.files.map((name) => (scene.readThrough ? `${name} (${parts[0].start.toFixed(2)}-${parts[0].end.toFixed(2)} s)` : scene.until ? `${name} (first ${scene.until} s)` : name)), original: parts.reduce((s, p) => s + p.duration, 0), seconds, planned, needs, room: planned - needs, wps, before, after, mode, problems });
 }
 
 // ---- The report ----

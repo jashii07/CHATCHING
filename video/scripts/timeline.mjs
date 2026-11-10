@@ -29,23 +29,26 @@ const VOICE_PAD = 0.8; // seconds of quiet after each voice line
 const VOICE_DELAY = 0.25; // each voice line starts this long after its scene
 
 // Voice lines split at a pause, so each part plays over its moment (Mon 9 Nov; scenes 3 and 8 on Tue 10 Nov).
-// `splits` are points inside a pause of Jasper's recording (checked below: if one isn't silent, the line plays
-// whole, as before). A part with an anchor starts at that cue (from the recording), minus how far into the part
-// its key word is; a part without one follows the part before it (the pause is inside the split), plus `extra`.
+// `splits` are points inside a pause of Jasper's recording (checked below: if one isn't quiet, or the line is not
+// the one measured, it plays whole, as before). A part with an anchor starts at that cue (from the recording), minus
+// how far into the part its key word is; a part without one follows the part before it (the pause is inside the
+// split), plus `extra`. Measured on the lines cut from the read-through (10 Nov afternoon, voice.mjs READ_THROUGH):
 //   3: "Watch this. ... each buyer's final order." | "Lina changed her mind? Updated." | "Aisyah said 'same as Lina'?
 //      Understood." | "Danish cancelled? Removed." | "But here's the important part: the AI never sets a price. Prices
 //      always come from the menu." | "So when Jun Wei quotes the wrong price, ... for me to check." The picture
 //      follows these parts (EDITS below); 0.3 s more before "But here's the important part", where it cuts to the totals.
-//   6: "Next, each buyer gets a private order page. Lina checks her order, taps 'Looks right'," (taps at 6.1 s)
-//      | "and pays with PayPal." | "A moment later, | ChatChing shows her as Paid. Cha-ching!" (the pause at 1.15 s:
-//      the cha-ching sound lands there, just before "ChatChing shows her as Paid")
-//   8: "Then at pickup, I simply scan the buyer's QR code with my phone." ("scan" 2.26 s in, as the phone's scanner
-//      opens) | "Paid? Great," ("Paid?" right after the phone shows Paid) | "it's collected. Not paid yet? I'll know
-//      before handing anything over." ("collected" starts 0.41 s in: 0.3 s before the tap on Collected)
+//   6: "Next, each buyer gets a private order page. Lina checks her order, taps 'Looks right'," ("taps" 4.14 s in, on
+//      the tap) | "and pays with PayPal." | "A moment later, | ChatChing shows her as Paid. Cha-ching!" (the short pause
+//      0.92 s in: the cha-ching sound lands there, just before "ChatChing shows her as Paid")
+//   8: "Then at pickup, I simply scan the buyer's QR code with my phone." ("scan" 1.72 s in, as the phone's scanner
+//      opens) | "Paid?" (right as the phone shows Paid) | "Great, it's collected. Not paid yet? I'll know before
+//      handing anything over." ("collected" starts 0.69 s in: 0.3 s before the tap on Collected). The new take says
+//      "Paid? Great, it's collected." in 1.2 s and the phone takes 3.1 s from Paid to the tap, so the wait goes
+//      after "Paid?" (the old take paused after "Great,", which this one barely does).
 const VOICE_PARTS = {
-  3: { splits: [5.95, 8.4, 11.4, 13.44, 19.85], extra: [0, 0, 0, 0, 0.3, 0] },
-  6: { splits: [7.43, 8.88], anchors: [["looks", 6.1], ["pay", 0.2], ["paid", 1.15]] },
-  8: { splits: [5.03, 7.11], anchors: [["scan", 2.26], ["paid", 0.1], ["collected", 0.71]] },
+  3: { splits: [5.4, 7.72, 10.6, 12.85, 18.83], extra: [0, 0, 0, 0, 0.3, 0] },
+  6: { splits: [5.33, 6.61], anchors: [["looks", 4.14], ["pay", 0.2], ["paid", 0.92]] },
+  8: { splits: [4.05, 4.75], anchors: [["scan", 1.72], ["paid", 0], ["collected", 0.99]] },
 };
 
 // Scene 8: a 1.5 s still of the paid buyer's order page (record.mjs) before the phone clip.
@@ -60,16 +63,18 @@ const PHONE_CROPS = { "576x1280": { top: 152, height: 1054 } };
 
 // ---- Sync (Tue 10 Nov): the picture shows what the voice says, within about 0.3 s ----
 // Where each key word starts was measured on the processed voice lines (Windows' own speech recognizer for the
-// words, the loudness for the exact starts), and where each moment is in the 9 Nov recording on its frames. So
-// these edits belong to that recording and those voice lines: if either changes, the edit switches off with a
-// warning and the scene plays as before (the clip straight through, the voice whole).
+// words, the loudness in 20 ms steps for the exact starts), and where each moment is in the 9 Nov recording on its
+// frames. So these edits belong to that recording and those voice lines: if either changes, the edit switches off
+// with a warning and the scene plays as before (the clip straight through, the voice whole). The voice lines are
+// the ones cut from Jasper's read-through on 10 Nov (afternoon); the 7 Nov lines' times are in git (commit 280a584).
 const SYNCED_RECORDING = "2026-11-09T10:35:26.680Z";
-const SYNCED_VOICE = { 1: 13.161, 3: 27.267, 4: 8.638, 5: 15.146, 9: 19.199 }; // seconds, public/voice-ready/sceneN.wav
+const SYNCED_VOICE = { 1: 13.037, 3: 24.492, 4: 7.525, 5: 12.316, 6: 11.146, 8: 9.39, 9: 14.559 }; // seconds, public/voice-ready/sceneN.wav
 
-// Scene 1 (the 10 Nov hook): when each question starts in the voice line, and "My friend sorts this out...".
-const HOOK = { questions: [["Who wants what?", 3.95], ["Who changed their mind?", 5.63], ["Who actually paid?", 6.98]], friend: 8.62 };
-// Scene 9: when each thing is named ("Under the hood" 0.23 s, "PayPal's" 1.34 s ...), so it appears then.
-const TECH = { hood: 0.23, paypal: 1.34, gemini: 3.58, aggrid: 4.66, tests: 6.17, real: 9.3, quote: 16.63 };
+// Scene 1 (the hook): when each question starts in the voice line, and "My friend sorts this out...".
+const HOOK = { questions: [["Who wants what?", 3.83], ["Who changed their mind?", 5.51], ["Who actually paid?", 6.86]], friend: 8.5 };
+// Scene 9: when each thing is named ("Under the hood" 0.2 s, "PayPal's" 1.19 s, "Google Gemini" 3.05 s, "AG Grid"
+// 3.98 s, "over 650" 5.26 s, "and 73 of 74" 7.38 s, "More convenient than Excel" 12.89 s), so it appears then.
+const TECH = { hood: 0.2, paypal: 1.19, gemini: 3.05, aggrid: 3.98, tests: 5.26, real: 7.38, quote: 12.89 };
 
 // Boxes on the 1920 x 1080 recording, measured on its frames: the rows of the table and the cards named in the voice.
 const BOX = {
@@ -91,7 +96,7 @@ const EDITS = {
   // items, 17.6-18.9 s on Aisyah's, 22.4-23.4 s page 2 on Danish's, 25.6 s on: Jun Wei's amber row, cursor below it).
   3: (v) => {
     const [, b, c, d, e, f] = v.map((p) => p.at);
-    const lina = b + 0.37, aisyah = c + 0.28, danish = d + 0.24, ai = e + 2.11, junWei = f + 0.64, price = f + 2.0;
+    const lina = b + 0.21, aisyah = c + 0.21, danish = d + 0.21, ai = e + 1.83, junWei = f + 0.47, price = f + 1.24;
     return {
       shots: [
         { at: 0, from: 0, to: 2.7 }, // "Watch this. Gemini reads every conversation...": Read orders, the rows come in
@@ -116,9 +121,9 @@ const EDITS = {
     };
   },
   // Scene 4 (clip: 3.85 s Priya's row clicked, 5.5 s her panel shows the question, 12.25 s Copy question -> Copied,
-  // 13.5 s the panel closes). Voice: "Priya's" 2.03 s, "tap" 4.45 s.
+  // 13.5 s the panel closes). Voice: "Priya's" 1.82 s, "tap" 4.57 s.
   4: (v) => {
-    const priya = v[0].at + 2.03, tap = v[0].at + 4.45;
+    const priya = v[0].at + 1.82, tap = v[0].at + 4.57;
     return {
       shots: [
         { at: 0, from: 3.85 - (priya + 0.1), to: 5.75 }, // page 1, Priya's amber row clicked on "Priya's"
@@ -129,10 +134,10 @@ const EDITS = {
     };
   },
   // Scene 5 (clip: 1.8 s cursor on Send 7 invoices, 3.35 s the click, 3.6-8.6 s the bar fills, 8.5 s "Invoices
-  // sent", 13.5 s cursor to the button again, 14.0 s the second click: nothing). Voice: "click" 5.05 s, "click
-  // again" 9.42 s, "Nothing happens" 11.25 s.
+  // sent", 13.5 s cursor to the button again, 14.0 s the second click: nothing). Voice: "click" 4.1 s, "click
+  // again" 7.6 s, "Nothing happens" 9.21 s.
   5: (v) => {
-    const click = v[0].at + 5.05, again = v[0].at + 9.42, nothing = v[0].at + 11.25;
+    const click = v[0].at + 4.1, again = v[0].at + 7.6, nothing = v[0].at + 9.21;
     return {
       shots: [
         { at: 0, from: 0, to: 1.85 }, // "Now, seven orders are ready, worth RM 366.": the totals, cursor on the button
@@ -147,9 +152,9 @@ const EDITS = {
   },
 };
 
-// Seconds added to a scene on top of what its clip and voice need: the time scene 6 (sped-up waits) and scene 8
-// (a 12.7 s phone clip) saved, given to the scenes with the least quiet after their line.
-const EXTRA = { 7: 0.3, 9: 0.5, 10: 0.3 };
+// Seconds added to a scene on top of what its clip and voice need, for the scenes with the least quiet after their
+// line (scene 7 had 0.3 s too until the 10 Nov read-through, whose shorter line leaves it 2.5 s of quiet).
+const EXTRA = { 9: 0.5, 10: 0.3 };
 // The cha-ching's loudest sample in the video (0..1). The voice lines peak at -1.5 dBTP; the chime is a short,
 // bright sound, so it sits well below them.
 const CHIME_PEAK = 0.4;
@@ -244,8 +249,11 @@ function phoneClip() {
 
 // Splits a voice line at the given points (inside pauses) into generated/voiceN-1.wav, -2.wav ...
 // -> [{ file, seconds }], or null if a split point is not in a pause (then the line plays whole).
+// A split counts as quiet below -30 dB for 0.1 s: some of the read-through's pauses are soft (scene 6's after "Looks
+// right," sits at -35 to -39 dB), and speech is -10 to -15 dB. Each part fades in and out over 10 ms, so a cut in a
+// soft pause can't click.
 function splitVoice(n, voiceFile, splits) {
-  const log = runLog("ffmpeg", ["-hide_banner", "-nostats", "-i", voiceFile, "-af", "silencedetect=noise=-35dB:d=0.1", "-f", "null", "-"]);
+  const log = runLog("ffmpeg", ["-hide_banner", "-nostats", "-i", voiceFile, "-af", "silencedetect=noise=-30dB:d=0.1", "-f", "null", "-"]);
   const starts = [...log.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
   const ends = [...log.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
   const quiet = (t) => starts.some((s, i) => s <= t && t <= (ends[i] ?? Infinity));
@@ -257,7 +265,8 @@ function splitVoice(n, voiceFile, splits) {
   const points = [0, ...splits, mediaSeconds(voiceFile)];
   return points.slice(1).map((end, i) => {
     const file = `${GENERATED}voice${n}-${i + 1}.wav`;
-    run("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", voiceFile, "-ss", points[i].toFixed(3), "-to", end.toFixed(3), "-c:a", "pcm_s16le", file]);
+    run("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", voiceFile, "-ss", points[i].toFixed(3), "-to", end.toFixed(3),
+      "-af", "afade=t=in:d=0.01,areverse,afade=t=in:d=0.01,areverse", "-c:a", "pcm_s16le", file]);
     return { file: file.slice(PUBLIC.length), seconds: mediaSeconds(file) };
   });
 }
@@ -269,6 +278,10 @@ function placeVoice(n, voiceFile, voiceSeconds, cues) {
   const whole = [{ file: voiceFile.slice(PUBLIC.length), at: VOICE_DELAY, seconds: voiceSeconds }];
   const plan = VOICE_PARTS[n];
   if (!plan) return whole;
+  if (SYNCED_VOICE[n] !== undefined && Math.abs(voiceSeconds - SYNCED_VOICE[n]) > 0.02) {
+    console.log(`  scene ${n}: its voice line changed since its pauses were measured, so it plays whole (update VOICE_PARTS)`);
+    return whole;
+  }
   if ((plan.anchors ?? []).some(([cue]) => cue && cues?.[cue] === undefined)) {
     console.log(`  scene ${n}: no cue times in the recording, so the voice line plays whole`);
     return whole;
