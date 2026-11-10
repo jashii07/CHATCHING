@@ -1,6 +1,7 @@
 // Prepares Jasper's voice lines for the video (7 Nov). Run: npm run voice
 // Reads the originals in public/voice/ exactly as recorded on the phone ("scene 1.m4a" ... "scene 10.m4a"; scene 3 is
-// two files: "scene 3.m4a" = part 1, "scene 3 second part*.m4a" = part 2) and NEVER changes them. It writes processed
+// two files: "scene 3.m4a" = part 1, "scene 3 second part*.m4a" = part 2; scene 1 is "scene 1 hook.mp3" since 10 Nov,
+// see HOOK below) and NEVER changes them. It writes processed
 // copies to public/voice-ready/scene1.wav ... scene10.wav (git-ignored), which timeline.mjs uses first:
 //   - silence at the start and end trimmed, keeping 0.2 s on each side (speech found with silencedetect at -45 dB)
 //   - scene 3: part 1, a 0.3 s pause, part 2
@@ -30,11 +31,22 @@ const LONG_GAP = 1.2; // a pause longer than this inside a line is reported
 const VOICE_DELAY = 0.25; // timeline.mjs: a line starts this long after its scene...
 const VOICE_PAD = 0.8; // ...and the scene keeps this much quiet after it
 
-// The original file(s) of each scene, part 1 first.
+// Scene 1's new hook (Tue 10 Nov): "scene 1 hook.mp3" is used instead of "scene 1.m4a". That file is a read-through
+// of the whole new script (107 s), so only its start is the hook: "11 PM. ... every single night." ends at 12.8 s,
+// followed by 0.3 s of digital silence (where the takes were joined) and then "So I built ChatChing...". `until`
+// cuts the file inside that silence; the trim below then finds the end of the speech as usual.
+const HOOK = { n: 1, name: /^scene ?1 hook\.(m4a|mp3|wav|aac)$/i, until: 12.95 };
+
+// The original file(s) of each scene, part 1 first. -> { n, files, until }
 function sources() {
   const names = existsSync(SOURCE) ? readdirSync(SOURCE).filter((name) => /\.(m4a|mp3|wav|aac)$/i.test(name)) : [];
   const scenes = [];
   for (let n = 1; n <= 10; n++) {
+    const hook = n === HOOK.n ? names.find((name) => HOOK.name.test(name)) : null;
+    if (hook) {
+      scenes.push({ n, files: [hook], until: HOOK.until });
+      continue;
+    }
     const main = names.find((name) => new RegExp(`^scene ?${n}\\.(m4a|mp3|wav|aac)$`, "i").test(name));
     const second = names.find((name) => new RegExp(`^scene ?${n} second part`, "i").test(name));
     scenes.push({ n, files: [main, second].filter(Boolean) });
@@ -43,8 +55,12 @@ function sources() {
 }
 
 // silencedetect -> the quiet stretches of a file: [{ start, end }] (end = the file's end if it runs to the end).
-function silences(file, duration) {
-  const log = runLog("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", `silencedetect=noise=${THRESHOLD}:d=${MIN_SILENCE}`, "-f", "null", "-"]);
+// With `until`, only the file's first `until` seconds count, and a short pad after them lets silencedetect see a
+// quiet stretch that runs to that point.
+function silences(file, duration, until) {
+  const limit = until ? ["-t", String(until)] : [];
+  const pad = until ? "apad=pad_dur=0.5," : "";
+  const log = runLog("ffmpeg", ["-hide_banner", "-nostats", ...limit, "-i", file, "-af", `${pad}silencedetect=noise=${THRESHOLD}:d=${MIN_SILENCE}`, "-f", "null", "-"]);
   const quiet = [];
   for (const line of log.split(/\r?\n/)) {
     const start = line.match(/silence_start: (-?[\d.]+)/);
@@ -60,10 +76,10 @@ function silences(file, duration) {
 // with digital silence (-80 dB) that silencedetect reports a moment late, and end with the tap on the phone's stop
 // button (peaks near -38 dB, under 0.2 s; speech averages about -34 dB). Measured on the 7 Nov recordings.
 const EDGE = 0.4;
-function speech(file) {
-  const duration = mediaSeconds(file);
+function speech(file, until) {
+  const duration = until ? Math.min(until, mediaSeconds(file)) : mediaSeconds(file);
   const quiet = [];
-  for (const q of silences(file, duration)) {
+  for (const q of silences(file, duration, until)) {
     const last = quiet.at(-1);
     if (last && q.start - last.end < 0.25) last.end = q.end;
     else quiet.push({ ...q });
@@ -146,7 +162,7 @@ for (const scene of scenes) {
     continue;
   }
   if (scene.n === 3 && scene.files.length !== 2) warnings.push("scene 3: expected 2 parts (\"scene 3.m4a\" and \"scene 3 second part...\"), found " + scene.files.length + ".");
-  const parts = scene.files.map((name) => speech(`${SOURCE}${name}`));
+  const parts = scene.files.map((name) => speech(`${SOURCE}${name}`, scene.until));
   const spoken = parts.reduce((sum, p) => sum + p.length, 0);
   if (spoken < 0.5) {
     warnings.push(`scene ${scene.n}: no speech found (empty or silent file).`);
@@ -165,7 +181,7 @@ for (const scene of scenes) {
   for (const p of parts) for (const g of p.gaps) problems.push(`a ${f1(g.seconds)} s pause ${f1(g.at)} s into ${p.file.split("/").pop()}`);
   // Natural speech is about 2 to 3 words a second; well outside that, the recording and the written line differ.
   if (wps !== null && (wps < 1.0 || wps > 3.8)) problems.push(`${f1(wps)} words a second for the ${words[scene.n].count} words in Section 14: the recording may not match that line`);
-  rows.push({ n: scene.n, files: scene.files, original: parts.reduce((s, p) => s + p.duration, 0), seconds, planned, needs, room: planned - needs, wps, before, after, mode, problems });
+  rows.push({ n: scene.n, files: scene.files.map((name) => (scene.until ? `${name} (first ${scene.until} s)` : name)), original: parts.reduce((s, p) => s + p.duration, 0), seconds, planned, needs, room: planned - needs, wps, before, after, mode, problems });
 }
 
 // ---- The report ----

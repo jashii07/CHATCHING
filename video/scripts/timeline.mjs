@@ -4,7 +4,10 @@
 //   - Jasper's voice lines public/voice/scene1.m4a ... scene10.m4a, if they exist (their lengths set the scene lengths)
 //   - Jasper's phone clip public/phone/pickup.mp4 (or .mov, or the newest video there), cropped to the page and turned
 //     into a plain H.264 copy the edit can play; the scene 8 lead-in still from the recording
-//   - voice lines 6 and 8 split at pauses and placed on their moments; the cha-ching sound (lib/chime.mjs)
+//   - voice lines 3, 6 and 8 split at pauses and placed on their moments; the cha-ching sound (lib/chime.mjs), on the
+//     title card and when Lina turns Paid
+//   - the sync edits (10 Nov): scenes 3, 4 and 5 re-cut into shots so each moment lands on its words, row highlights
+//     in scene 3, the question times in scene 1, the word times in scene 9
 //   - the demo chats (scene 1), the npm run check result and the real-orders score (scene 9)
 // Run on its own: node scripts/timeline.mjs   (npm run draft / final / studio run it first anyway)
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -25,27 +28,124 @@ const MIN_SECONDS = { 1: 6, 8: 8, 9: 7, 10: 4 }; // for the scenes made here, wh
 const VOICE_PAD = 0.8; // seconds of quiet after each voice line
 const VOICE_DELAY = 0.25; // each voice line starts this long after its scene
 
-// Two voice lines are split at a pause, so each part plays over its moment (Mon 9 Nov). Scene 6 has about 28 s of
-// screen for a 12 s line, and scene 8's "Paid?" should come when the phone shows Paid. `splits` are points inside
-// a pause of Jasper's 7 Nov recording (checked below: if one isn't silent, the line plays whole, as before).
-// Each part starts at its anchor: a cue from the recording, minus how far into the part its key word is.
+// Voice lines split at a pause, so each part plays over its moment (Mon 9 Nov; scenes 3 and 8 on Tue 10 Nov).
+// `splits` are points inside a pause of Jasper's recording (checked below: if one isn't silent, the line plays
+// whole, as before). A part with an anchor starts at that cue (from the recording), minus how far into the part
+// its key word is; a part without one follows the part before it (the pause is inside the split), plus `extra`.
+//   3: "Watch this. ... each buyer's final order." | "Lina changed her mind? Updated." | "Aisyah said 'same as Lina'?
+//      Understood." | "Danish cancelled? Removed." | "But here's the important part: the AI never sets a price. Prices
+//      always come from the menu." | "So when Jun Wei quotes the wrong price, ... for me to check." The picture
+//      follows these parts (EDITS below); 0.3 s more before "But here's the important part", where it cuts to the totals.
 //   6: "Next, each buyer gets a private order page. Lina checks her order, taps 'Looks right'," (taps at 6.1 s)
 //      | "and pays with PayPal." | "A moment later, | ChatChing shows her as Paid. Cha-ching!" (the pause at 1.15 s:
 //      the cha-ching sound lands there, just before "ChatChing shows her as Paid")
-//   8: "Then at pickup, I simply scan the buyer's QR code with my phone." | "Paid? Great, it's collected. Not paid
-//      yet? I'll know before handing anything over." ("Paid?" right after the phone shows Paid)
+//   8: "Then at pickup, I simply scan the buyer's QR code with my phone." ("scan" 2.26 s in, as the phone's scanner
+//      opens) | "Paid? Great," ("Paid?" right after the phone shows Paid) | "it's collected. Not paid yet? I'll know
+//      before handing anything over." ("collected" starts 0.41 s in: 0.3 s before the tap on Collected)
 const VOICE_PARTS = {
+  3: { splits: [5.95, 8.4, 11.4, 13.44, 19.85], extra: [0, 0, 0, 0, 0.3, 0] },
   6: { splits: [7.43, 8.88], anchors: [["looks", 6.1], ["pay", 0.2], ["paid", 1.15]] },
-  8: { splits: [5.03], anchors: [[null, 0], ["paid", 0.1]] },
+  8: { splits: [5.03, 7.11], anchors: [["scan", 2.26], ["paid", 0.1], ["collected", 0.71]] },
 };
 
 // Scene 8: a 1.5 s still of the paid buyer's order page (record.mjs) before the phone clip.
 const LEAD_IN_SECONDS = 1.5;
-// Jasper's phone clip (Mon 9 Nov, video_2026-11-09_17-39-37.mp4, a screen recording, 576 x 1280): the page shows
-// "Paid: Aisyah" 4.9 s in. The phone's status bar (notification icons), Chrome's address bar and the navigation
-// bar are cropped off, so only ChatChing's page shows.
+// Jasper's phone clip (Mon 9 Nov, video_2026-11-09_17-39-37.mp4, a screen recording, 576 x 1280): the scanner opens
+// 2.0 s in, the page shows "Paid: Aisyah" 4.9 s in, and the tap on Collected is at 8.0 s. The phone's status bar
+// (notification icons), Chrome's address bar and the navigation bar are cropped off, so only ChatChing's page shows.
+const PHONE_SCAN_AT = 2.0;
 const PHONE_PAID_AT = 4.9;
+const PHONE_COLLECTED_AT = 8.0;
 const PHONE_CROPS = { "576x1280": { top: 152, height: 1054 } };
+
+// ---- Sync (Tue 10 Nov): the picture shows what the voice says, within about 0.3 s ----
+// Where each key word starts was measured on the processed voice lines (Windows' own speech recognizer for the
+// words, the loudness for the exact starts), and where each moment is in the 9 Nov recording on its frames. So
+// these edits belong to that recording and those voice lines: if either changes, the edit switches off with a
+// warning and the scene plays as before (the clip straight through, the voice whole).
+const SYNCED_RECORDING = "2026-11-09T10:35:26.680Z";
+const SYNCED_VOICE = { 1: 13.161, 3: 27.267, 4: 8.638, 5: 15.146, 9: 19.199 }; // seconds, public/voice-ready/sceneN.wav
+
+// Scene 1 (the 10 Nov hook): when each question starts in the voice line, and "My friend sorts this out...".
+const HOOK = { questions: [["Who wants what?", 3.95], ["Who changed their mind?", 5.63], ["Who actually paid?", 6.98]], friend: 8.62 };
+// Scene 9: when each thing is named ("Under the hood" 0.23 s, "PayPal's" 1.34 s ...), so it appears then.
+const TECH = { hood: 0.23, paypal: 1.34, gemini: 3.58, aggrid: 4.66, tests: 6.17, real: 9.3, quote: 16.63 };
+
+// Boxes on the 1920 x 1080 recording, measured on its frames: the rows of the table and the cards named in the voice.
+const BOX = {
+  lina: { x: 288, y: 269, width: 1344, height: 94 }, // scene 3, page 1 (clip 8.7-10 s)
+  aisyah: { x: 288, y: 556, width: 1344, height: 94 }, // page 1 after Lina's panel closed (clip 16-19 s)
+  danish: { x: 288, y: 302, width: 1344, height: 94 }, // page 2, crossed out: Cancelled
+  junWei: { x: 288, y: 584, width: 1344, height: 170 }, // page 2, amber: the price check
+  junWeiCheck: { x: 300, y: 600, width: 660, height: 140 }, // his name, items and "Check: buyer mentioned RM 15.00, menu says RM 18.00."
+  expected: { x: 256, y: 180, width: 483, height: 255 }, // the Expected RM 366.00 card (clip 3-7.5 s)
+  question: { x: 1492, y: 694.6, width: 376, height: 127 }, // scene 4: Priya's question + Copy question
+  sent: { x: 274, y: 662, width: 1170, height: 180 }, // scene 5: "All invoices sent" (disabled) + "7 of 7 sent."
+};
+
+// The picture of a recorded scene as shots: from scene time `at`, the clip plays from `from` to `to` (at `speed`),
+// then holds on `to` until the next shot. `v` = the scene's voice parts (scene time `at`); word times are seconds
+// into the voice line (file), measured as above. Zooms and highlights are in scene time; `until` ends one at a cut.
+const EDITS = {
+  // Scene 3 (clip: 0.9 s Read orders, 1.6 s rows in, 3-7.5 s the totals, 8.7 s page 1, 9.6 s cursor on Lina's
+  // items, 17.6-18.9 s on Aisyah's, 22.4-23.4 s page 2 on Danish's, 25.6 s on: Jun Wei's amber row, cursor below it).
+  3: (v) => {
+    const [, b, c, d, e, f] = v.map((p) => p.at);
+    const lina = b + 0.37, aisyah = c + 0.28, danish = d + 0.24, ai = e + 2.11, junWei = f + 0.64, price = f + 2.0;
+    return {
+      shots: [
+        { at: 0, from: 0, to: 2.7 }, // "Watch this. Gemini reads every conversation...": Read orders, the rows come in
+        { at: 2.7, from: 8.25, to: 8.75 }, // "...each buyer's final order": down to the table
+        { at: lina - 0.85, from: 8.75, to: 9.95 }, // the cursor reaches Lina's items as her name is said
+        { at: c, from: 17.55, to: 18.85 }, // Aisyah's items
+        { at: d, from: 22.35, to: 23.4 }, // page 2: Danish, crossed out
+        { at: e, from: 3.05, to: 7.5 }, // "But here's the important part": the totals
+        { at: f, from: 25.6, to: 29.9 }, // "So when Jun Wei...": his amber row
+      ],
+      highlights: [
+        { from: lina - 0.1, to: c, box: BOX.lina },
+        { from: aisyah - 0.1, to: d, box: BOX.aisyah },
+        { from: danish - 0.1, to: e, box: BOX.danish },
+        { from: ai - 0.1, to: f, box: BOX.expected, radius: 30 },
+        { from: junWei - 0.1, to: Infinity, box: BOX.junWei },
+      ],
+      zooms: [
+        { at: ai - 0.6, hold: 99, until: f, box: BOX.expected }, // "the AI never sets a price"
+        { at: price - 0.4, hold: 99, box: BOX.junWeiCheck }, // "quotes the wrong price": the check
+      ],
+    };
+  },
+  // Scene 4 (clip: 3.85 s Priya's row clicked, 5.5 s her panel shows the question, 12.25 s Copy question -> Copied,
+  // 13.5 s the panel closes). Voice: "Priya's" 2.03 s, "tap" 4.45 s.
+  4: (v) => {
+    const priya = v[0].at + 2.03, tap = v[0].at + 4.45;
+    return {
+      shots: [
+        { at: 0, from: 3.85 - (priya + 0.1), to: 5.75 }, // page 1, Priya's amber row clicked on "Priya's"
+        { at: tap + 0.05 - 0.4, from: 11.85, to: 13.4 }, // "One tap copies...": the tap on Copy question
+      ],
+      highlights: [],
+      zooms: [{ at: tap - 0.85, hold: 99, box: BOX.question }],
+    };
+  },
+  // Scene 5 (clip: 1.8 s cursor on Send 7 invoices, 3.35 s the click, 3.6-8.6 s the bar fills, 8.5 s "Invoices
+  // sent", 13.5 s cursor to the button again, 14.0 s the second click: nothing). Voice: "click" 5.05 s, "click
+  // again" 9.42 s, "Nothing happens" 11.25 s.
+  5: (v) => {
+    const click = v[0].at + 5.05, again = v[0].at + 9.42, nothing = v[0].at + 11.25;
+    return {
+      shots: [
+        { at: 0, from: 0, to: 1.85 }, // "Now, seven orders are ready, worth RM 366.": the totals, cursor on the button
+        { at: click - 0.9, from: 2.45, to: 3.6 }, // "One click"
+        { at: click + 0.25, from: 3.6, to: 8.6, speed: 2 }, // "...every buyer gets their own PayPal invoice": the bar
+        { at: click + 2.75, from: 8.6, to: 9.7 }, // "Invoices sent"
+        { at: again - 0.5, from: 13.5, to: 15.9 }, // "And if I click again by accident?"
+      ],
+      highlights: [],
+      zooms: [{ at: nothing - 0.3, hold: 99, box: BOX.sent }], // "Nothing happens": still 7 of 7
+    };
+  },
+};
 
 // Seconds added to a scene on top of what its clip and voice need: the time scene 6 (sped-up waits) and scene 8
 // (a 12.7 s phone clip) saved, given to the scenes with the least quiet after their line.
@@ -53,6 +153,9 @@ const EXTRA = { 7: 0.3, 9: 0.5, 10: 0.3 };
 // The cha-ching's loudest sample in the video (0..1). The voice lines peak at -1.5 dBTP; the chime is a short,
 // bright sound, so it sits well below them.
 const CHIME_PEAK = 0.4;
+// The title card plays the same cha-ching (same file, same level) as the logo appears: Demo.jsx fades the logo in
+// from this moment (0.2 s, so the video doesn't open on the sound's first instant).
+const TITLE_CHIME_AT = 0.2;
 
 // PLAN.md Section 13: | # | Time | On screen | Caption | Moment | Built in step |
 export function storyboard() {
@@ -159,25 +262,59 @@ function splitVoice(n, voiceFile, splits) {
   });
 }
 
-// Where each voice part starts in its scene: at its anchor, never before the previous part has ended.
+// Where each voice part starts in its scene: at its anchor (never before the previous part has ended, plus 0.1 s),
+// or right after the previous part (plus its `extra`) when it has none. The first part without an anchor starts
+// VOICE_DELAY into the scene.
 function placeVoice(n, voiceFile, voiceSeconds, cues) {
   const whole = [{ file: voiceFile.slice(PUBLIC.length), at: VOICE_DELAY, seconds: voiceSeconds }];
   const plan = VOICE_PARTS[n];
   if (!plan) return whole;
-  if (plan.anchors.some(([cue]) => cue && cues?.[cue] === undefined)) {
+  if ((plan.anchors ?? []).some(([cue]) => cue && cues?.[cue] === undefined)) {
     console.log(`  scene ${n}: no cue times in the recording, so the voice line plays whole`);
     return whole;
   }
   const parts = splitVoice(n, voiceFile, plan.splits);
   if (!parts) return whole;
-  let free = VOICE_DELAY;
+  let end = null; // where the previous part ends
   return parts.map((part, i) => {
-    const [cue, offset] = plan.anchors[i];
-    const at = Math.max(free, cue ? cues[cue] - offset : VOICE_DELAY);
-    free = at + part.seconds + 0.1;
+    const [cue, offset] = plan.anchors?.[i] ?? [];
+    const after = end === null ? VOICE_DELAY : end + (cue ? 0.1 : plan.extra?.[i] ?? 0);
+    const at = cue ? Math.max(after, cues[cue] - offset) : after;
+    end = at + part.seconds;
     return { ...part, at: +at.toFixed(3) };
   });
 }
+
+// The scene's picture edit (EDITS), if it still fits: the same recording, the same voice line, every part placed.
+function pictureEdit(n, clip, manifest, voiceFile, voiceParts) {
+  if (!EDITS[n] || !clip) return null;
+  const off = (why) => {
+    console.log(`  scene ${n}: ${why}, so the sync edit is off: the clip plays straight (check the timing by eye)`);
+    return null;
+  };
+  if (manifest?.recordedAt !== SYNCED_RECORDING) return off(`a new recording (${manifest?.recordedAt}, the edit was made on ${SYNCED_RECORDING})`);
+  if (!voiceFile || Math.abs(mediaSeconds(voiceFile) - SYNCED_VOICE[n]) > 0.02) return off("its voice line changed since the word times were measured");
+  if (VOICE_PARTS[n] && voiceParts.length !== VOICE_PARTS[n].splits.length + 1) return off("its voice line plays whole");
+  if (clip.popup || clip.masks?.length) return off("the clip has a popup or a cover, which the edit doesn't move");
+  const edit = EDITS[n](voiceParts);
+  for (let i = 1; i < edit.shots.length; i++) {
+    const prev = edit.shots[i - 1];
+    if (edit.shots[i].at < prev.at - 0.001) return off(`shot ${i + 1} starts before shot ${i}`);
+  }
+  if (edit.shots.some((s) => s.from < 0 || s.to > clip.duration + 0.01 || s.to < s.from)) return off("a shot is outside the clip");
+  const round = (x) => (Number.isFinite(x) ? +x.toFixed(3) : x);
+  return {
+    shots: edit.shots.map((s) => ({ at: round(s.at), from: round(s.from), to: round(s.to), speed: s.speed ?? 1 })),
+    highlights: edit.highlights.map((h) => ({ ...h, from: round(h.from), to: Number.isFinite(h.to) ? round(h.to) : null })),
+    zooms: edit.zooms.map((z) => ({ ...z, at: round(z.at), ...(z.until !== undefined ? { until: round(z.until) } : {}) })),
+  };
+}
+
+// When a shot list's picture ends (its last shot reaches `to`); after that the last frame holds.
+const shotsEnd = (shots) => Math.max(...shots.map((s) => s.at + (s.to - s.from) / (s.speed ?? 1)));
+
+// A voice line measured for scenes 1 and 9: still the same file? (else its times would be off)
+const sameVoice = (n, voiceFile) => voiceFile && Math.abs(mediaSeconds(voiceFile) - SYNCED_VOICE[n]) <= 0.02;
 
 export function buildTimeline({ draft = true, freshCheck = false } = {}) {
   mkdirSync(GENERATED, { recursive: true });
@@ -198,7 +335,8 @@ export function buildTimeline({ draft = true, freshCheck = false } = {}) {
     if (!voiceFile) missing.voice.push(b.n);
     const scene = { n: b.n, caption: b.caption, planned: b.planned, voice: voiceFile ? voiceFile.slice(PUBLIC.length) : null, voiceSeconds, sounds: [] };
     const clip = CLIP_SCENES.includes(b.n) ? manifest?.scenes?.[b.n] ?? null : null;
-    const cues = b.n === 8 ? { paid: (leadIn ? LEAD_IN_SECONDS : 0) + PHONE_PAID_AT } : clip?.cues;
+    const lead = leadIn ? LEAD_IN_SECONDS : 0;
+    const cues = b.n === 8 ? { scan: lead + PHONE_SCAN_AT, paid: lead + PHONE_PAID_AT, collected: lead + PHONE_COLLECTED_AT } : clip?.cues;
     scene.voiceParts = voiceFile ? placeVoice(b.n, voiceFile, voiceSeconds, phone || b.n !== 8 ? cues : null) : [];
     const last = scene.voiceParts.at(-1);
     const voiceNeeds = last ? last.at + last.seconds + VOICE_PAD : 0;
@@ -206,8 +344,14 @@ export function buildTimeline({ draft = true, freshCheck = false } = {}) {
       if (!clip) missing.clips.push(b.n);
       scene.kind = "clip";
       scene.clip = clip;
-      // The clip plays at normal speed; a longer voice line holds the last frame a little.
-      scene.seconds = Math.max(clip?.duration ?? b.planned, voiceNeeds);
+      const edit = pictureEdit(b.n, clip, manifest, voiceFile, scene.voiceParts);
+      // Without an edit the clip plays straight through at normal speed; with one, its shots (EDITS). Either way a
+      // longer voice line holds the last frame a little.
+      scene.shots = edit?.shots ?? (clip ? [{ at: 0, from: 0, to: (Math.max(1, Math.floor(clip.duration * FPS) - 1) - 1) / FPS, speed: 1 }] : null);
+      scene.zooms = edit?.zooms ?? clip?.zooms ?? [];
+      scene.highlights = edit?.highlights ?? [];
+      scene.edited = Boolean(edit);
+      scene.seconds = Math.max(edit ? shotsEnd(edit.shots) : clip?.duration ?? b.planned, voiceNeeds);
       // The cha-ching: the app plays it when Lina turns Paid, but the screen recording has no sound.
       if (clip?.cues?.paid !== undefined) scene.sounds.push({ file: "generated/chime.wav", at: clip.cues.paid });
     } else {
@@ -218,6 +362,18 @@ export function buildTimeline({ draft = true, freshCheck = false } = {}) {
         base = Math.min(Math.max(phone.duration + (leadIn ? LEAD_IN_SECONDS : 0), 6), 22);
       }
       scene.seconds = voiceSeconds ? Math.max(voiceNeeds, MIN_SECONDS[b.n], b.n === 8 && phone ? base : 0) : base;
+      const voiceAt = scene.voiceParts[0]?.at ?? VOICE_DELAY;
+      // Scene 1: each question appears as it is said; the scroll slows down on "My friend sorts this out...".
+      if (b.n === 1) {
+        if (sameVoice(1, voiceFile)) {
+          scene.hook = { questions: HOOK.questions.map(([text, t]) => ({ text, at: +(voiceAt + t).toFixed(3) })), slowAt: +(voiceAt + HOOK.friend).toFixed(3) };
+        } else console.log("  scene 1: its voice line changed since the question times were measured, so the questions are off");
+      }
+      // Scene 9: each name and number appears as it is said.
+      if (b.n === 9) {
+        if (sameVoice(9, voiceFile)) scene.reveals = Object.fromEntries(Object.entries(TECH).map(([k, t]) => [k, +(voiceAt + t).toFixed(3)]));
+        else console.log("  scene 9: its voice line changed since the word times were measured, so everything appears at the start, as before");
+      }
     }
     scene.extra = EXTRA[b.n] ?? 0;
     scene.seconds = Math.round((scene.seconds + scene.extra) * FPS) / FPS;
@@ -227,6 +383,7 @@ export function buildTimeline({ draft = true, freshCheck = false } = {}) {
   const totalSeconds = TITLE_SECONDS + scenes.reduce((s, sc) => s + sc.seconds, 0);
   const timeline = {
     draft, fps: FPS, width: 1920, height: 1080, titleSeconds: TITLE_SECONDS, totalSeconds: Math.round(totalSeconds * FPS) / FPS,
+    titleSounds: [{ file: "generated/chime.wav", at: TITLE_CHIME_AT }],
     limitSeconds: LIMIT_SECONDS, scenes, chats: chats(), check: checkResult({ fresh: freshCheck }), realScore: realScore(), phone,
     recording: manifest ? { base: manifest.base, version: manifest.version, recordedAt: manifest.recordedAt } : null, missing,
   };
@@ -244,7 +401,8 @@ export function printTimeline(t) {
     const lead = s.leadIn ? ` + ${s.leadIn.buyer}'s page ${s.leadIn.seconds} s` : "";
     const clip = s.kind === "clip" ? (s.clip ? `clip ${s.clip.duration.toFixed(1)} s` : "NO CLIP") : s.kind === "phone" ? (t.phone ? `phone clip ${t.phone.duration.toFixed(1)} s${lead}` : "phone placeholder") : s.kind;
     const extra = s.extra ? `, +${s.extra} s extra` : "";
-    console.log(`  scene ${String(s.n).padStart(2)}    ${s.seconds.toFixed(1).padStart(4)} s   (planned ${s.planned} s; ${clip}; ${voice}${extra})`);
+    const synced = s.edited ? `, synced in ${s.shots.length} shots` : s.hook ? ", questions synced" : s.reveals ? ", names synced" : "";
+    console.log(`  scene ${String(s.n).padStart(2)}    ${s.seconds.toFixed(1).padStart(4)} s   (planned ${s.planned} s; ${clip}; ${voice}${extra}${synced})`);
   }
   console.log(`  total        ${fmt(t.totalSeconds)} (limit ${fmt(t.limitSeconds)})`);
 }
