@@ -2,7 +2,10 @@
 
 ChatChing turns a day of messy chat orders into a clean order list and one PayPal invoice per buyer. It is built for small home sellers (cakes, kuih, frozen food) who take their orders in chats.
 
-**Live app: https://chatching.onrender.com/**
+**Live app: https://chatching.onrender.com/**  
+**Demo video (2:36): https://youtu.be/aVKHnQH1AcE**  
+**Code: https://github.com/jashii07/CHATCHING**
+
 The first load can take up to a minute while the free server wakes up: the page says "Waking up the server..." and keeps trying by itself.
 
 ## Try it in 1 minute

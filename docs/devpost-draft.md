@@ -89,7 +89,8 @@ javascript, node.js, express, html5, css3, paypal, paypal-invoicing-api, google-
 ## Try it out (links)
 
 - https://chatching.onrender.com/
-- https://github.com/jashii07/CHATCHING (works once the repo is public, Tue 10 Nov)
+- https://github.com/jashii07/CHATCHING (public since Tue 10 Nov)
+- Video: https://youtu.be/aVKHnQH1AcE
 
 ## Gallery shot list
 
@@ -143,10 +144,10 @@ I stayed on the free Community edition. Features like row grouping are Enterpris
 
 ## TODO
 
-- [ ] Video link (YouTube, public, under 3 minutes): to add after recording.
+- [x] Video link (YouTube, public, 2:36): https://youtu.be/aVKHnQH1AcE (10 Nov).
 - [x] Sandbox buyer logins in the testing instructions and the README (4 Nov, done early).
 - [ ] Devpost text and Built with tags pasted into Devpost (Sat 7 Nov).
 - [ ] Gallery: `npm run gallery`, check the 6 images, upload them (Mon 9 Nov).
-- [ ] GitHub link in Try it out, once the repo is public (Tue 10 Nov).
+- [x] GitHub link in Try it out: https://github.com/jashii07/CHATCHING (public 10 Nov).
 - [x] "thousands" needed a real source: changed to "many" (2 Nov).
 - [x] Inspiration replaced with Jasper’s own words (3 Nov).
